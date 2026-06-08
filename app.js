@@ -1722,7 +1722,21 @@ function renderEditor(container) {
       // Markdown除去／旧データの自己修復チェック等）には一切触れず、
       // 確実に空の編集領域とカーソル位置だけを用意する。
       state._isNewCard = false;
+
+      // ▼▼▼ 一時的な調査用デバッグ表示（原因特定のため）。確認後に削除すること ▼▼▼
+      // Firebaseから読み込まれた生データと、セット直後のeditor.innerHTMLを
+      // そのまま画面に表示する。目に見えない文字（ゼロ幅スペース等）も
+      // JSON.stringifyによりエスケープ表記（​など）として可視化される。
+      window.alert(
+        '[DEBUG v617]\n' +
+        'Firebaseのraw = ' + JSON.stringify(raw) + '\n\n' +
+        'セット前のinnerHTML = ' + JSON.stringify(editor.innerHTML)
+      );
+      // ▲▲▲ 一時的な調査用デバッグ表示ここまで ▲▲▲
+
       editor.innerHTML = '<p><br></p>';
+
+      window.alert('[DEBUG v617] セット後のinnerHTML = ' + JSON.stringify(editor.innerHTML));
 
       const firstP = editor.querySelector('p');
       if (firstP) {
@@ -2236,6 +2250,11 @@ function initializeNativeParagraphActions(editor) {
         wrapperP.appendChild(node);
       }
     });
+
+    // iPhoneのIME確定時、ゼロ幅スペース(U+200B)や異体字セレクタ(U+FE0E/F)など
+    // 目に見えない特殊文字が紛れ込むことがあり、これが段落構造の混乱や
+    // 見た目上の「インデント」の原因になりうるため、確定直後に除去する
+    cleanupInvalidUnicodeCharacters(editor);
 
     // 確定時に正規化を実行（DOMを直接変更しない。保存時にgetCleanEditorHTML内でクリーンアップする）
     normalizeEditorHTML(editor);
