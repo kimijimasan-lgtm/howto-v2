@@ -41,6 +41,59 @@
     }
     .ProseMirror p { margin: 0 0 0.6em; }
     .ProseMirror p:last-child { margin-bottom: 0; }
+    .ProseMirror img {
+      max-width: 100%;
+      border-radius: 8px;
+      display: block;
+      margin: 0.5em 0;
+    }
+    .ProseMirror div[data-youtube-video] {
+      margin: 0.5em 0;
+    }
+    .ProseMirror div[data-youtube-video] iframe {
+      max-width: 100%;
+      border-radius: 8px;
+      aspect-ratio: 16 / 9;
+      width: 100%;
+    }
+    .ProseMirror ul[data-type="taskList"] {
+      list-style: none;
+      padding-left: 0;
+      margin: 0.4em 0;
+    }
+    .ProseMirror ul[data-type="taskList"] li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5em;
+    }
+    .ProseMirror ul[data-type="taskList"] li > label {
+      flex-shrink: 0;
+      margin-top: 0.2em;
+    }
+    .ProseMirror ul[data-type="taskList"] li > div {
+      flex: 1;
+    }
+    .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+      text-decoration: line-through;
+      color: #8b949e;
+    }
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .btn-attach {
+      display: inline-block;
+      padding: 0.6rem 1rem;
+      font-size: 0.9rem;
+      color: #e6edf3;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn-attach:active { background: #30363d; }
     .log {
       margin-top: 1rem;
       font-size: 0.75rem;
@@ -53,43 +106,155 @@
   </style>
 </head>
 <body>
-  <h1>🧪 TipTap 基本セットアップ テストページ</h1>
+  <h1>🧪 TipTap 基本セットアップ テストページ（Step 4: チェックボックス）</h1>
   <p class="note">
     これは本番アプリ（index.html）とは完全に独立したテスト用ページです。<br>
-    現段階では「テキスト入力・改行」だけを確認します（最優先項目）。<br>
-    iPhoneでこのページを開き、日本語入力 → 変換確定 → Enter改行の挙動を試してください。
+    Step 1（テキスト入力・改行）・Step 2（画像インライン挿入）・Step 3（YouTube埋め込み）に続き、今回は「チェックボックス（タスクリスト）」を確認します。<br>
+    画像は現行アプリと同じ方式（最大800px・JPEG圧縮・base64データURL化）で取り込み、チェックボックスはボタンでカーソル位置にタスクリストを挿入・タップでチェックのON/OFFができます。
   </p>
   <div class="status" id="status">読み込み中…</div>
+  <div class="btn-row">
+    <button class="btn-attach" id="btnAttach" type="button">📎 画像を挿入（カーソル位置に追加）</button>
+    <button class="btn-attach" id="btnYoutube" type="button">▶️ YouTube動画を埋め込む</button>
+    <button class="btn-attach" id="btnCheckbox" type="button">☑️ チェックボックスを挿入</button>
+  </div>
+  <input type="file" id="fileInput" accept="image/*" style="display:none" />
   <div class="editor-shell">
     <div id="editor"></div>
   </div>
   <div class="log" id="log"></div>
 
   <script type="module">
-    import { Editor } from 'https://esm.sh/@tiptap/core@2.x';
-    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.x';
-
     const statusEl = document.getElementById('status');
     const logEl = document.getElementById('log');
+    const btnAttach = document.getElementById('btnAttach');
+    const fileInput = document.getElementById('fileInput');
+    const btnYoutube = document.getElementById('btnYoutube');
+    const btnCheckbox = document.getElementById('btnCheckbox');
 
+    // 「読み込み中…」のまま固まる問題（iPhoneからesm.sh CDNに到達できない）への対策として、
+    // CDNには一切依存せず、事前にローカルでビルドした単一ファイル
+    // tiptap-bundle.js（TipTap core + StarterKit + Image拡張を1ファイルに同梱）を
+    // 同じプロジェクトフォルダから読み込む方式に変更。
+    // （tiptap-bundle.js は .tiptap-build/entry.js を esbuild でバンドルして生成済み。
+    //   通常の動作にビルド作業は不要で、このファイルを置くだけで動く。
+    //   Step 3でYoutubeExtensionも同梱するように再ビルド済み。）
+    let settled = false;
+    const watchdog = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      statusEl.style.color = '#f85149';
+      statusEl.textContent = '⏱️ タイムアウト: tiptap-bundle.js の読み込みが10秒以上応答していません。同じフォルダにファイルが存在するか確認してください。';
+    }, 10000);
+
+    function markSettled() {
+      settled = true;
+      clearTimeout(watchdog);
+    }
+
+    let editor;
     try {
-      const editor = new Editor({
+      statusEl.textContent = '⏳ ローカルのTipTapバンドル（tiptap-bundle.js）を読み込み中…';
+      const { Editor, StarterKit, ImageExtension: Image, YoutubeExtension, TaskList, TaskItem } = await import('./tiptap-bundle.js');
+
+      statusEl.textContent = '⏳ エディターを初期化しています…';
+      editor = new Editor({
         element: document.querySelector('#editor'),
-        extensions: [StarterKit],
-        content: '<p>ここに日本語を入力して、変換確定とEnter改行の挙動を確認してください。</p><p>2行目はこちら。</p>',
+        extensions: [
+          StarterKit,
+          Image.configure({ inline: true, allowBase64: true }),
+          YoutubeExtension.configure({ inline: false, controls: true, nocookie: false }),
+          TaskList,
+          TaskItem.configure({ nested: true }),
+        ],
+        content: '<p>ここに日本語を入力してテストできます。</p><p>下のボタンから画像・YouTube動画・チェックボックスを挿入すると、この段落の間に差し込まれます。</p>',
         autofocus: 'end',
         onUpdate: ({ editor }) => {
           logEl.textContent = 'HTML出力:\n' + editor.getHTML();
         },
       });
 
-      statusEl.textContent = '✅ TipTapエディターの初期化に成功しました（StarterKit使用）';
+      markSettled();
+      statusEl.style.color = '#3fb950';
+      statusEl.textContent = '✅ TipTapエディターの初期化に成功しました（StarterKit + Image + YouTube + チェックボックス拡張）';
       logEl.textContent = 'HTML出力:\n' + editor.getHTML();
     } catch (err) {
+      markSettled();
       statusEl.style.color = '#f85149';
-      statusEl.textContent = '❌ TipTapの初期化に失敗しました: ' + err.message;
+      statusEl.textContent = '❌ TipTapの読み込み/初期化に失敗しました: ' + (err && err.message ? err.message : err);
       console.error(err);
     }
+
+    // 現行アプリと同じ方式：最大800px・JPEG 0.75品質に圧縮してbase64データURL化
+    function compressImageToDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const tempImg = new window.Image();
+          tempImg.onload = () => {
+            const MAX_SIZE = 800;
+            let width = tempImg.width;
+            let height = tempImg.height;
+            if (width > MAX_SIZE || height > MAX_SIZE) {
+              if (width > height) {
+                height = Math.round((height * MAX_SIZE) / width);
+                width = MAX_SIZE;
+              } else {
+                width = Math.round((width * MAX_SIZE) / height);
+                height = MAX_SIZE;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(tempImg, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.75));
+          };
+          tempImg.onerror = reject;
+          tempImg.src = evt.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    btnYoutube.onclick = () => {
+      if (!editor) return;
+      const url = window.prompt('YouTubeの動画URLを貼り付けてください\n例: https://www.youtube.com/watch?v=XXXXXXXXXXX');
+      if (!url) return;
+      const inserted = editor.commands.setYoutubeVideo({ src: url.trim() });
+      if (inserted) {
+        statusEl.style.color = '#3fb950';
+        statusEl.textContent = '✅ YouTube動画をカーソル位置に埋め込みました';
+      } else {
+        statusEl.style.color = '#f85149';
+        statusEl.textContent = '❌ YouTube動画の埋め込みに失敗しました（URLの形式を確認してください）';
+      }
+    };
+
+    btnCheckbox.onclick = () => {
+      if (!editor) return;
+      editor.chain().focus().toggleTaskList().run();
+    };
+
+    btnAttach.onclick = () => fileInput.click();
+
+    fileInput.onchange = async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = '';
+      if (!file || !editor) return;
+
+      statusEl.textContent = '⏳ 画像を圧縮・挿入しています…';
+      try {
+        const dataURL = await compressImageToDataURL(file);
+        editor.chain().focus().setImage({ src: dataURL }).run();
+        statusEl.textContent = '✅ 画像をカーソル位置に挿入しました（インライン表示を確認してください）';
+      } catch (err) {
+        statusEl.style.color = '#f85149';
+        statusEl.textContent = '❌ 画像の挿入に失敗しました: ' + err.message;
+        console.error(err);
+      }
+    };
   </script>
 </body>
 </html>
