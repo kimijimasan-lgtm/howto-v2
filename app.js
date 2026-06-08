@@ -1722,21 +1722,7 @@ function renderEditor(container) {
       // Markdown除去／旧データの自己修復チェック等）には一切触れず、
       // 確実に空の編集領域とカーソル位置だけを用意する。
       state._isNewCard = false;
-
-      // ▼▼▼ 一時的な調査用デバッグ表示（原因特定のため）。確認後に削除すること ▼▼▼
-      // Firebaseから読み込まれた生データと、セット直後のeditor.innerHTMLを
-      // そのまま画面に表示する。目に見えない文字（ゼロ幅スペース等）も
-      // JSON.stringifyによりエスケープ表記（​など）として可視化される。
-      window.alert(
-        '[DEBUG v617]\n' +
-        'Firebaseのraw = ' + JSON.stringify(raw) + '\n\n' +
-        'セット前のinnerHTML = ' + JSON.stringify(editor.innerHTML)
-      );
-      // ▲▲▲ 一時的な調査用デバッグ表示ここまで ▲▲▲
-
       editor.innerHTML = '<p><br></p>';
-
-      window.alert('[DEBUG v617] セット後のinnerHTML = ' + JSON.stringify(editor.innerHTML));
 
       const firstP = editor.querySelector('p');
       if (firstP) {
