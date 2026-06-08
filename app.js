@@ -1758,20 +1758,20 @@ function renderEditor(container) {
 
     if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
     
-    // 新規カード作成時はプレースホルダーを表示しフォーカス
+    // 新規カード作成時はカーソルを先頭に配置してフォーカス
+    // （プレースホルダーは実テキストではなくCSS（data-placeholder）で表示するため、本文への書き込みは行わない）
     if (state._isNewCard) {
       state._isNewCard = false;
-      const raw2 = snap.val()?.content || '';
-      if (!raw2 || raw2.trim() === '' || raw2 === '<p><br></p>') {
-        // 新規カードのみ: プレースホルダーテキストを表示（Firebaseには保存しない）
-        editor.innerHTML = '<p>1行目がタイトルになります</p><p>2行目から本文を書いてください…</p>';
-      }
       // 1行目の先頭にカーソルを配置
       const firstP = editor.querySelector('p');
-      if (firstP && firstP.firstChild) {
+      if (firstP) {
         const range = document.createRange();
         const sel = window.getSelection();
-        range.setStart(firstP.firstChild, 0);
+        if (firstP.firstChild && firstP.firstChild.nodeType === Node.TEXT_NODE) {
+          range.setStart(firstP.firstChild, 0);
+        } else {
+          range.setStart(firstP, 0);
+        }
         range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
@@ -2276,6 +2276,12 @@ function initializeNativeParagraphActions(editor) {
     // 太陽マーク等の記号に関係なく発生する、Enter改行時の段落統合バグを完全解決するため、
     // ブラウザのデフォルトのEnter改行挙動を阻止し、自前で安全に段落を分割する
     if (e.key === 'Enter') {
+      // IME変換確定のためのEnter（isComposing中、またはkeyCode 229）は素通りさせる。
+      // ここで段落分割処理を行うと、確定処理と競合して複数行が1行に連結される不具合が起きる。
+      if (isComposing || e.isComposing || e.keyCode === 229) {
+        return;
+      }
+
       e.preventDefault(); // デフォルトのEnter改行を阻止
 
       const sel = window.getSelection();
@@ -2351,6 +2357,11 @@ function initializeNativeParagraphActions(editor) {
           newRange.collapse(true);
           sel.removeAllRanges();
           sel.addRange(newRange);
+
+          // 元のPタグを置き換えるDOM操作でフォーカスが外れることがあるため、
+          // 編集モードのまま維持されるよう明示的にフォーカスを戻す
+          // （フォーカスが外れるとキーボードが閉じ、見た目上「閲覧モードに切り替わった」ように見えてしまう）
+          editor.focus();
 
           // Enter直後はnormalizeEditorHTMLを呼ばない（カーソル位置が破壊されるため）
           // scrollLockTimerが「Enter後のカーソル位置」を破壊しないよう、フラグをセット

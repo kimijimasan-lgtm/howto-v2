@@ -496,7 +496,8 @@ body {
   word-break: break-word;
   -webkit-overflow-scrolling: touch;
 }
-.editor-content:empty::before {
+.editor-content:empty::before,
+.editor-content:has(> p:only-child > br:only-child)::before {
   content: attr(data-placeholder);
   color: var(--text-muted);
   pointer-events: none;
