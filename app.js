@@ -2273,110 +2273,114 @@ function initializeNativeParagraphActions(editor) {
       }
     }
 
-    // 太陽マーク等の記号に関係なく発生する、Enter改行時の段落統合バグを完全解決するため、
-    // ブラウザのデフォルトのEnter改行挙動を阻止し、自前で安全に段落を分割する
-    if (e.key === 'Enter') {
-      // IME変換確定のためのEnter（isComposing中、またはkeyCode 229）は素通りさせる。
-      // ここで段落分割処理を行うと、確定処理と競合して複数行が1行に連結される不具合が起きる。
-      if (isComposing || e.isComposing || e.keyCode === 229) {
-        return;
-      }
-
-      e.preventDefault(); // デフォルトのEnter改行を阻止
-
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        let p = range.startContainer;
-
-        // エディタ直下の P タグ（段落）を特定
-        while (p && p.parentNode !== editor) {
-          p = p.parentNode;
-        }
-
-        if (p && p.tagName === 'P') {
-          // 注意: 以前は「キャレットが段落末尾にいる時に次の段落に補正する」ガード処理があったが、
-          // 正常な段落末尾でのEnter操作（空行を挿入する操作）を妨害していたため完全に削除。
-          // 根本原因（oninputでのDOM変更による段落マージ）は既に修正済み。
-          // キャレットより前のコンテンツと後ろのコンテンツを分割抽出
-          const leftRange = document.createRange();
-          leftRange.setStart(p, 0);
-          leftRange.setEnd(range.startContainer, range.startOffset);
-          const leftFragment = leftRange.cloneContents();
-
-          const rightRange = document.createRange();
-          rightRange.setStart(range.startContainer, range.startOffset);
-          rightRange.setEnd(p, p.childNodes.length);
-          const rightFragment = rightRange.cloneContents();
-
-          // 新しい段落を生成
-          const leftP = document.createElement('p');
-          leftP.appendChild(leftFragment);
-          if (p.className) {
-            leftP.className = p.className;
-          }
-
-          const rightP = document.createElement('p');
-          rightP.appendChild(rightFragment);
-          if (p.className) {
-            rightP.className = p.className;
-            rightP.classList.remove('para-selected'); // 選択状態はコピーしない
-            const chk = rightP.querySelector('.para-checkbox');
-            if (chk) chk.remove();
-            if (rightP.getAttribute('class') === '') rightP.removeAttribute('class');
-          }
-
-          // 空段落の場合はBRを補充
-          const isLeftEmpty = leftP.textContent.trim() === '' && !leftP.querySelector('img');
-          const isRightEmpty = rightP.textContent.trim() === '' && !rightP.querySelector('img');
-
-          if (isLeftEmpty) {
-            leftP.innerHTML = '<br>';
-          }
-          if (isRightEmpty) {
-            rightP.innerHTML = '<br>';
-          }
-
-          // DOMの置き換え
-          const parent = p.parentNode;
-          parent.insertBefore(leftP, p);
-          parent.insertBefore(rightP, p);
-          p.remove();
-
-          // キャレットを後半段落 (rightP) の先頭に配置
-          const newRange = document.createRange();
-          if (rightP.firstChild) {
-            if (rightP.firstChild.nodeType === Node.TEXT_NODE) {
-              newRange.setStart(rightP.firstChild, 0);
-            } else {
-              newRange.setStart(rightP, 0);
-            }
-          } else {
-            newRange.setStart(rightP, 0);
-          }
-          newRange.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(newRange);
-
-          // 元のPタグを置き換えるDOM操作でフォーカスが外れることがあるため、
-          // 編集モードのまま維持されるよう明示的にフォーカスを戻す
-          // （フォーカスが外れるとキーボードが閉じ、見た目上「閲覧モードに切り替わった」ように見えてしまう）
-          editor.focus();
-
-          // Enter直後はnormalizeEditorHTMLを呼ばない（カーソル位置が破壊されるため）
-          // scrollLockTimerが「Enter後のカーソル位置」を破壊しないよう、フラグをセット
-          window._isEnterJustPressed = true;
-          setTimeout(() => { window._isEnterJustPressed = false; }, 300);
-
-          editor.dispatchEvent(new Event('input'));
-
-          // 改行した要素が見えるようにスクロール
-          rightP.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          // → Enter後は編集モードのまま継続（閲覧モード自動切替は废止）
-        }
-      }
-    }
   };
+
+  // 太陽マーク等の記号に関係なく発生する、Enter改行時の段落統合バグを完全解決するため、
+  // ブラウザのデフォルトの改行挙動を阻止し、自前で安全に段落を分割する。
+  //
+  // ★ keydownではなくbeforeinputで処理する理由:
+  // iPhoneの日本語IMEでは「変換確定キー」と「改行キー」が同じEnterキーに割り当てられており、
+  // keydownの時点では「これは変換確定なのか、本当に改行したいのか」を確実に区別できない
+  // （isComposing/keyCodeはタイミング次第で信頼できない）。
+  // beforeinputのinputType==='insertParagraph'は、IMEの変換確定処理がすべて完了し、
+  // ブラウザが「ユーザーが段落区切りを挿入しようとしている」と判断した時にのみ発火するため、
+  // IME確定処理と競合せず、安全に改行（段落分割）だけを検出できる。
+  editor.addEventListener('beforeinput', (e) => {
+    if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return;
+
+    e.preventDefault(); // デフォルトの改行挙動を阻止
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    let p = range.startContainer;
+
+    // エディタ直下の P タグ（段落）を特定
+    while (p && p.parentNode !== editor) {
+      p = p.parentNode;
+    }
+
+    if (!p || p.tagName !== 'P') return;
+
+    // 注意: 以前は「キャレットが段落末尾にいる時に次の段落に補正する」ガード処理があったが、
+    // 正常な段落末尾での改行操作（空行を挿入する操作）を妨害していたため完全に削除。
+    // 根本原因（oninputでのDOM変更による段落マージ）は既に修正済み。
+    // キャレットより前のコンテンツと後ろのコンテンツを分割抽出
+    const leftRange = document.createRange();
+    leftRange.setStart(p, 0);
+    leftRange.setEnd(range.startContainer, range.startOffset);
+    const leftFragment = leftRange.cloneContents();
+
+    const rightRange = document.createRange();
+    rightRange.setStart(range.startContainer, range.startOffset);
+    rightRange.setEnd(p, p.childNodes.length);
+    const rightFragment = rightRange.cloneContents();
+
+    // 新しい段落を生成
+    const leftP = document.createElement('p');
+    leftP.appendChild(leftFragment);
+    if (p.className) {
+      leftP.className = p.className;
+    }
+
+    const rightP = document.createElement('p');
+    rightP.appendChild(rightFragment);
+    if (p.className) {
+      rightP.className = p.className;
+      rightP.classList.remove('para-selected'); // 選択状態はコピーしない
+      const chk = rightP.querySelector('.para-checkbox');
+      if (chk) chk.remove();
+      if (rightP.getAttribute('class') === '') rightP.removeAttribute('class');
+    }
+
+    // 空段落の場合はBRを補充
+    const isLeftEmpty = leftP.textContent.trim() === '' && !leftP.querySelector('img');
+    const isRightEmpty = rightP.textContent.trim() === '' && !rightP.querySelector('img');
+
+    if (isLeftEmpty) {
+      leftP.innerHTML = '<br>';
+    }
+    if (isRightEmpty) {
+      rightP.innerHTML = '<br>';
+    }
+
+    // DOMの置き換え
+    const parent = p.parentNode;
+    parent.insertBefore(leftP, p);
+    parent.insertBefore(rightP, p);
+    p.remove();
+
+    // キャレットを後半段落 (rightP) の先頭に配置
+    const newRange = document.createRange();
+    if (rightP.firstChild) {
+      if (rightP.firstChild.nodeType === Node.TEXT_NODE) {
+        newRange.setStart(rightP.firstChild, 0);
+      } else {
+        newRange.setStart(rightP, 0);
+      }
+    } else {
+      newRange.setStart(rightP, 0);
+    }
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+
+    // 元のPタグを置き換えるDOM操作でフォーカスが外れることがあるため、
+    // 編集モードのまま維持されるよう明示的にフォーカスを戻す
+    // （フォーカスが外れるとキーボードが閉じ、見た目上「閲覧モードに切り替わった」ように見えてしまう）
+    editor.focus();
+
+    // 改行直後はnormalizeEditorHTMLを呼ばない（カーソル位置が破壊されるため）
+    // scrollLockTimerが「改行後のカーソル位置」を破壊しないよう、フラグをセット
+    window._isEnterJustPressed = true;
+    setTimeout(() => { window._isEnterJustPressed = false; }, 300);
+
+    editor.dispatchEvent(new Event('input'));
+
+    // 改行した要素が見えるようにスクロール
+    rightP.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // → 改行後は編集モードのまま継続（閲覧モード自動切替は廃止）
+  });
 
   // フォーカスイン時にも解除 ＆ キーボード表示時のスクロールリセットタイマー（ヘッダー消失の完全防止）
   let scrollLockTimer = null;

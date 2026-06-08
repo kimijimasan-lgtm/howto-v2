@@ -481,6 +481,7 @@ body {
 
 
 .editor-content {
+  position: relative;
   flex: 1;
   width: 100%;
   overflow-y: auto;
@@ -499,6 +500,13 @@ body {
 .editor-content:empty::before,
 .editor-content:has(> p:only-child > br:only-child)::before {
   content: attr(data-placeholder);
+  /* 通常のフロー上に置くと空段落（カーソル位置）を後ろに押し下げてしまうため、
+     絶対配置でテキスト開始位置に重ねて表示する（カーソルが常に1行目に来るように） */
+  position: absolute;
+  top: 1.25rem;
+  left: 1.25rem;
+  right: 1.25rem;
+  line-height: 1.85;
   color: var(--text-muted);
   pointer-events: none;
   white-space: pre-line;
