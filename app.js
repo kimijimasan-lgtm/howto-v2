@@ -1720,7 +1720,18 @@ function renderEditor(container) {
     const status = document.getElementById('saveStatus');
     if (!editor) return;
 
-    const raw = snap.val()?.content || '';
+    let raw = snap.val()?.content || '';
+
+    // 過去のバージョンの不具合により、新規カードのプレースホルダー文言が
+    // 実テキストとしてそのまま保存されてしまったカードを自動修復する
+    // （本来は空のカードとして扱い、CSSのプレースホルダー表示に戻す）
+    const legacyPlaceholderHTML = '<p>1行目がタイトルになります</p><p>2行目から本文を書いてください…</p>';
+    if (raw.trim() === legacyPlaceholderHTML) {
+      raw = '';
+      db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+        .update({ content: '', updatedAt: Date.now() })
+        .catch(() => {});
+    }
 
     // ── コンテンツをクリーンなHTMLに変換 ──────────────────
     let displayHTML;
@@ -2135,6 +2146,13 @@ function normalizeEditorHTML(editor) {
   if (needNormalize || hasSplit) {
     const tempDiv = document.createElement('div');
     let currentP = null;
+    // currentPが既存の<p>タグの複製である場合はtrue。
+    // iPhoneのIME確定時に、変換確定したテキストが<p>の外側へ
+    // 直接のテキストノードとして漏れ出すことがあり、これを複製済みの
+    // currentP（＝直前の段落）にそのまま追記すると段落同士が連結されて
+    // しまうバグの原因になっていた。漏れ出したテキストは直前の段落に
+    // 混ぜず、必ず新しい段落として独立させる。
+    let currentPIsClone = false;
 
     // 子ノードを走査し、すべてPタグまたは特別に許可したDIVコンテナにする
     Array.from(editor.childNodes).forEach(node => {
@@ -2143,15 +2161,17 @@ function normalizeEditorHTML(editor) {
         if (text.replace(/\s+/g, '') === '') {
           return;
         }
-        if (!currentP) {
+        if (!currentP || currentPIsClone) {
           currentP = document.createElement('p');
           tempDiv.appendChild(currentP);
+          currentPIsClone = false;
         }
         currentP.appendChild(document.createTextNode(text));
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const tagName = node.tagName;
         if (tagName === 'P') {
           currentP = node.cloneNode(true);
+          currentPIsClone = true;
           tempDiv.appendChild(currentP);
         } else if (tagName === 'BR') {
           currentP = document.createElement('p');
