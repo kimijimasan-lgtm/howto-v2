@@ -1302,10 +1302,7 @@ function renderEditor(container) {
           </button>
         </div>
       </header>
-      <div id="edContent" class="editor-content" contenteditable="false"
-        data-placeholder="1行目がタイトルになります
-
-2行目から本文を書いてください…"></div>
+      <div id="edContent" class="editor-content" contenteditable="false"></div>
       <div class="mode-toggle-bar mode-view" id="btnModeToggle"><span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span></div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
@@ -1774,8 +1771,7 @@ function renderEditor(container) {
 
     if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
     
-    // 新規カード作成時はカーソルを先頭に配置してフォーカス
-    // （プレースホルダーは実テキストではなくCSS（data-placeholder）で表示するため、本文への書き込みは行わない）
+    // 新規カード作成時はカーソルを先頭に配置してフォーカス（本文には何も書き込まず、完全に空のまま開く）
     if (state._isNewCard) {
       state._isNewCard = false;
       // 1行目の先頭にカーソルを配置
