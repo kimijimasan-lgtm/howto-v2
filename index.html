@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      // iOS Safariの共有メニューや外部の無害な拡張機能バグ（Script error. / 行数0など）は無視する
+      if (message === 'Script error.' && (lineno === 0 || !source)) {
+        return true; // エラー表示を抑止してブラウザ標準処理（何もしない）に任せる
+      }
+      if (message && (message.includes('ResizeObserver') || message.includes('Script error'))) {
+        if (lineno === 0 || !source) return true;
+      }
+
+      const errDiv = document.createElement('div');
+      errDiv.style.position = 'fixed';
+      errDiv.style.inset = '0';
+      errDiv.style.background = '#7f1d1d';
+      errDiv.style.color = '#fecaca';
+      errDiv.style.padding = '2rem';
+      errDiv.style.zIndex = '999999';
+      errDiv.style.fontFamily = 'monospace';
+      errDiv.style.overflow = 'auto';
+      
+      let extraTip = '';
+      if (message === 'Script error.') {
+        extraTip = `
+          <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; margin-top: 1.5rem; font-family: sans-serif; line-height: 1.6; color: #fff;">
+            <strong>💡 【CORSによる隠蔽が発生しています】</strong><br>
+            このエラーはブラウザのセキュリティ（CORS）制限によって詳細が隠されています。<br>
+            PCで開いている場合は、キーボードの<strong>「F12キー」</strong>（または右クリックして「検証・調査」）を押し、一番上の<strong>「コンソール（Console）」</strong>タブを開くと、赤文字で本物のエラー原因と行数が表示されます！そちらを教えてください！
+          </div>
+        `;
+      }
+
+      errDiv.innerHTML = `
+        <h1 style="font-size: 1.5rem; margin-bottom: 1rem;">🚨 JavaScript Runtime Error</h1>
+        <p><strong>Error:</strong> ${message}</p>
+        <p><strong>Source:</strong> ${source}</p>
+        <p><strong>Line:</strong> ${lineno} : ${colno}</p>
+        <pre style="background: #450a0a; padding: 1rem; border-radius: 8px; margin-top: 1rem; white-space: pre-wrap;">${error ? error.stack : ''}</pre>
+        ${extraTip}
+      `;
+      document.body.appendChild(errDiv);
+      return false;
+    };
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PCスマホ連動メモ</title>
+  <meta name="description" content="ハウツー・解説をカテゴリ別に管理するアプリ" />
+  <!-- PWA / アイコン設定 -->
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <link rel="icon" type="image/png" href="icon.png" />
+  <meta name="theme-color" content="#0d1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PC連動メモ" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=611" />
+</head>
+<body>
+  <div id="app" class="visible"></div>
+  <div id="modal-root"></div>
+
+  <!-- Firebase CDN (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+  <script src="app.js?v=611"></script>
+</body>
+</html>

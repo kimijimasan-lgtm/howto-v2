@@ -1,0 +1,3599 @@
+// ============================================
+//  ハウツー解説 v2 – app.js
+//  Firebase Realtime Database (CDN compat)
+// ============================================
+
+// ── Firebase CDN 読み込みエラー検出 ──
+if (typeof firebase === 'undefined' || typeof firebase.database === 'undefined' || typeof firebase.auth === 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const errDiv = document.createElement('div');
+    errDiv.style.position = 'fixed';
+    errDiv.style.inset = '0';
+    errDiv.style.background = '#1e293b';
+    errDiv.style.color = '#f1f5f9';
+    errDiv.style.padding = '2rem';
+    errDiv.style.zIndex = '999999';
+    errDiv.style.fontFamily = 'sans-serif';
+    errDiv.style.lineHeight = '1.6';
+    
+    let reason = "インターネット環境がないか、セキュリティによりアプリが起動できません。";
+    if (typeof firebase !== 'undefined' && typeof firebase.auth === 'undefined') {
+      reason = "ブラウザの強力なキャッシュ機能により、古いHTMLと新しいプログラムが混ざって競合しています（認証ライブラリが未ロード）。";
+    }
+
+    errDiv.innerHTML = `
+      <h1 style="font-size: 1.5rem; color: #f43f5e; margin-bottom: 1rem;">⚠️ アプリ起動エラー（キャッシュ不整合）</h1>
+      <p style="font-weight: 700; margin-bottom: 1rem;">${reason}</p>
+      <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; margin-top: 1rem; font-size: 0.9rem; line-height: 1.6;">
+        <strong>💡 超簡単な解決策：</strong><br>
+        1. ブラウザで<strong>「ページを再読み込み（リロード）」</strong>を数回行ってください。<br>
+        2. それでも解消しない場合は、Safariの<strong>「プライベートブラウズモード」</strong>（Chromeの場合はシークレットモード）で開いていただくか、ブラウザのキャッシュ（履歴とWebサイトデータ）をクリアしてください。これで最新版が読み込まれて完全に解決します！
+      </div>
+    `;
+    document.body.appendChild(errDiv);
+  });
+  throw new Error("Firebase library is not loaded properly");
+}
+
+// ── Firebase 初期化 ──────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyCWRY0dXtRqybI048q0btT-kW-rMnHfiW8",
+  authDomain: "torisetu-234c3.firebaseapp.com",
+  databaseURL: "https://torisetu-234c3-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "torisetu-234c3",
+  storageBucket: "torisetu-234c3.firebasestorage.app",
+  messagingSenderId: "1036476479724",
+  appId: "1:1036476479724:web:2996ecebe04f61bc448dc9",
+  measurementId: "G-V24PQM9NYD"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ── カラーパレット（24色・白テキストとのコントラスト保証） ──────────
+const COLORS = [
+  // ブルー系
+  { label: 'インディゴ',   grad: 'linear-gradient(135deg,#4f46e5,#6366f1)' },
+  { label: 'バイオレット', grad: 'linear-gradient(135deg,#7c3aed,#8b5cf6)' },
+  { label: 'ブルー',       grad: 'linear-gradient(135deg,#1d4ed8,#3b82f6)' },
+  { label: 'スカイ',       grad: 'linear-gradient(135deg,#0284c7,#0ea5e9)' },
+  { label: 'シアン',       grad: 'linear-gradient(135deg,#0891b2,#06b6d4)' },
+  { label: 'ネイビー',     grad: 'linear-gradient(135deg,#1e3a5f,#1e40af)' },
+  // グリーン系
+  { label: 'ティール',     grad: 'linear-gradient(135deg,#0d9488,#14b8a6)' },
+  { label: 'エメラルド',   grad: 'linear-gradient(135deg,#059669,#10b981)' },
+  { label: 'グリーン',     grad: 'linear-gradient(135deg,#16a34a,#22c55e)' },
+  { label: 'ライム',       grad: 'linear-gradient(135deg,#4d7c0f,#65a30d)' },
+  { label: 'フォレスト',   grad: 'linear-gradient(135deg,#14532d,#166534)' },
+  { label: 'オリーブ',     grad: 'linear-gradient(135deg,#713f12,#854d0e)' },
+  // レッド・ピンク・オレンジ系
+  { label: 'レッド',       grad: 'linear-gradient(135deg,#b91c1c,#ef4444)' },
+  { label: 'ローズ',       grad: 'linear-gradient(135deg,#9d174d,#db2777)' },
+  { label: 'ピンク',       grad: 'linear-gradient(135deg,#be185d,#ec4899)' },
+  { label: 'オレンジ',     grad: 'linear-gradient(135deg,#c2410c,#f97316)' },
+  { label: 'アンバー',     grad: 'linear-gradient(135deg,#b45309,#f59e0b)' },
+  { label: 'イエロー',     grad: 'linear-gradient(135deg,#a16207,#ca8a04)' },
+  // ダーク・ニュートラル系
+  { label: 'バーガンディ', grad: 'linear-gradient(135deg,#7f1d1d,#991b1b)' },
+  { label: 'ブラウン',     grad: 'linear-gradient(135deg,#431407,#7c2d12)' },
+  { label: 'スレート',     grad: 'linear-gradient(135deg,#334155,#64748b)' },
+  { label: 'グレー',       grad: 'linear-gradient(135deg,#374151,#6b7280)' },
+  { label: 'チャコール',   grad: 'linear-gradient(135deg,#111827,#374151)' },
+  { label: 'ブラック',     grad: 'linear-gradient(135deg,#030712,#1f2937)' },
+];
+const DEFAULT_GRAD = COLORS[0].grad;
+
+// ── 状態管理 ─────────────────────────────────
+let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view' };
+let activePasteMarkerP = null;
+let activePasteLocation = null;
+let isComposing = false;
+let toastQueue = [];
+let isToastShowing = false;
+
+function removePasteMarker() {
+  const editor = document.getElementById('edContent');
+  if (editor) {
+    const existing = editor.querySelector('.paste-insert-line');
+    if (existing) existing.remove();
+  }
+  activePasteMarkerP = null;
+  activePasteLocation = null;
+}
+
+function showPasteMarker(targetP, location) {
+  removePasteMarker(); // 既存のものを消す
+  
+  activePasteMarkerP = targetP;
+  activePasteLocation = location;
+
+  const editor = document.getElementById('edContent');
+  if (!editor || !targetP) return;
+
+  const marker = document.createElement('div');
+  marker.className = 'paste-insert-line';
+  marker.style.pointerEvents = 'none';
+
+  // ガイドメッセージを追加
+  const guide = document.createElement('div');
+  guide.className = 'paste-guide-message';
+  guide.textContent = 'ラインの下に貼り付け位置をタップしてください';
+  guide.style.position = 'absolute';
+  guide.style.top = '8px'; // ラインの少し下
+  guide.style.left = '50%';
+  guide.style.transform = 'translateX(-50%)';
+  guide.style.background = 'rgba(249, 115, 22, 0.9)'; // オレンジ背景
+  guide.style.color = '#ffffff';
+  guide.style.padding = '0.35rem 0.75rem';
+  guide.style.borderRadius = '6px';
+  guide.style.fontSize = '0.75rem';
+  guide.style.fontWeight = 'bold';
+  guide.style.whiteSpace = 'nowrap';
+  guide.style.boxShadow = '0 4px 12px rgba(0,0,0,0.25)';
+  guide.style.zIndex = '9999999';
+  marker.appendChild(guide);
+
+  // targetP に対する絶対的な位置を計算する
+  const rect = targetP.getBoundingClientRect();
+  const editorRect = editor.getBoundingClientRect();
+  const scrollTop = editor.scrollTop;
+
+  let top = 0;
+  if (location === 'before') {
+    top = rect.top - editorRect.top + scrollTop - 2;
+  } else {
+    top = rect.bottom - editorRect.top + scrollTop - 2;
+  }
+
+  marker.style.top = `${top}px`;
+  editor.appendChild(marker);
+}
+let listeners   = [];   // Firebase off() 用
+let saveTimer   = null;
+let catSortable = null;
+let artSortable = null;
+let navHistory  = [];   // 画面履歴スタック
+let isDragging  = false; // ドラッグ並び替え中ガードフラグ
+let paraSortable = null;
+let paraSwipeListeners = [];
+let justEditedArticleId = null;  // 直前に編集したカードのID（フラッシュ明滅用）
+let lastDeletedContent = null;   // 削除直前のエディタHTML（Undo用）
+
+// ── エディター内容の即時強制保存 ─────────────────
+function forceSaveEditorContent() {
+  if (state.screen !== 'editor' || !state.articleId || !state.categoryId || !state.uid) return;
+  const editor = document.getElementById('edContent');
+  if (!editor) return;
+  
+  if (saveTimer) clearTimeout(saveTimer);
+  
+  // 保存時は確実にスワイプなどの付帯タグを取り除いたクリーンなHTMLを保存する
+  const cleanHTML = getCleanEditorHTML(editor);
+  
+  db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
+    content: cleanHTML,
+    updatedAt: Date.now()
+  }).catch(err => console.error("Force save error:", err));
+
+  // リスナー解放
+  cleanupNativeParagraphListeners(editor);
+}
+
+// ── 画面遷移 ─────────────────────────────────
+function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
+  // エディターから遷移する場合は即座に強制保存
+  if (state.screen === 'editor' && !skipSave) {
+    justEditedArticleId = state.articleId;
+    forceSaveEditorContent();
+  }
+
+  // 履歴管理
+  if (screen === 'home' || screen === 'login') {
+    navHistory = [];  // ホームやログインへ戻ると履歴リセット
+  } else {
+    navHistory.push({ screen: state.screen, categoryId: state.categoryId, articleId: state.articleId });
+  }
+
+  // 前の画面のリスナーをすべて解除
+  listeners.forEach(fn => fn());
+  listeners = [];
+  if (saveTimer) clearTimeout(saveTimer);
+
+  state = { screen, categoryId, articleId, uid: state.uid };
+
+  const app = document.getElementById('app');
+  app.classList.remove('visible');
+
+  setTimeout(() => {
+    app.innerHTML = '';
+    if (screen === 'login')    renderLogin(app);
+    else if (screen === 'home')     renderHome(app);
+    else if (screen === 'category') renderCategory(app);
+    else if (screen === 'editor')   renderEditor(app);
+    app.classList.add('visible');
+  }, 180);
+}
+
+// ── 1つ前の画面へ戻る ────────────────────────
+function goBack(skipSave = false) {
+  if (navHistory.length === 0) return;
+
+  // カテゴリ一覧からホームへ戻る際、カテゴリIDを記憶する
+  if (state.screen === 'category') {
+    window.justVisitedCategoryId = state.categoryId;
+  }
+
+  // エディターから戻る場合は即座に強制保存
+  if (state.screen === 'editor' && !skipSave) {
+    justEditedArticleId = state.articleId;
+    forceSaveEditorContent();
+  }
+
+  const prev = navHistory.pop();
+
+  listeners.forEach(fn => fn());
+  listeners = [];
+  if (saveTimer) clearTimeout(saveTimer);
+
+  state = { screen: prev.screen, categoryId: prev.categoryId, articleId: prev.articleId, uid: state.uid };
+
+  const app = document.getElementById('app');
+  app.classList.remove('visible');
+  setTimeout(() => {
+    app.innerHTML = '';
+    if (state.screen === 'home')     renderHome(app);
+    if (state.screen === 'category') renderCategory(app);
+    if (state.screen === 'editor')   renderEditor(app);
+    app.classList.add('visible');
+  }, 180);
+}
+
+// ── 右スワイプで戻る ─────────────────────
+function addSwipeBack(el, onSwipe) {
+  let sx = 0, sy = 0;
+  let startTime = 0;
+  const onStart = e => {
+    sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
+    startTime = Date.now();
+  };
+  const onEnd = e => {
+    // 文字選択（範囲選択）中である場合は絶対に無効化する
+    if (window.getSelection().toString() !== '') return;
+
+    // タッチ時間（フリックの素早さ）を判定（300ms以上かかるゆっくりしたドラッグ選択などは除外）
+    const duration = Date.now() - startTime;
+    if (duration > 300) return;
+
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = Math.abs(e.changedTouches[0].clientY - sy);
+    // 横方向の移動が50px以上かつ縦より横の方が大きい場合は戻る（斜め戻りの感度緩和）
+    if (dx > 50 && dy < dx) onSwipe();
+  };
+  el.addEventListener('touchstart', onStart, { passive: true });
+  el.addEventListener('touchend',   onEnd,   { passive: true });
+  // 画面遷移時に必ず削除されるよう listeners に登録
+  listeners.push(() => {
+    el.removeEventListener('touchstart', onStart);
+    el.removeEventListener('touchend',   onEnd);
+  });
+}
+
+// ── プルダウンで新規メモ作成 ──────────────────────
+function addPullToCreate(el) {
+  const THRESHOLD = 80;
+  let startX = -1;
+  let startY = -1;
+  let indicator = null;
+  let isCancelled = false;
+
+  const mkIndicator = () => {
+    const d = document.createElement('div');
+    d.className = 'pull-indicator';
+    el.parentElement.insertBefore(d, el);
+    return d;
+  };
+
+  const onStart = e => {
+    // 並び替えドラッグ操作中の場合は新規作成を完全にガード
+    if (isDragging) { startY = -1; return; }
+
+    if (el.scrollTop === 0) {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      isCancelled = false;
+    } else {
+      startY = -1;
+    }
+  };
+  const onMove = e => {
+    if (startY < 0 || isCancelled || isDragging) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+
+    // 横ブレを監視：横スワイプ等の動作（横移動が15pxを超え、かつ縦移動の60%以上）を検知したら即時キャンセル
+    if (Math.abs(dx) > 15 && Math.abs(dx) > dy * 0.6) {
+      isCancelled = true;
+      if (indicator) { indicator.remove(); indicator = null; }
+      return;
+    }
+
+    if (dy <= 0) { startY = -1; return; }
+    if (!indicator) indicator = mkIndicator();
+    const ratio = Math.min(dy / THRESHOLD, 1);
+    indicator.style.height  = `${Math.min(dy * 0.6, 48)}px`;
+    indicator.style.opacity = String(ratio);
+    indicator.textContent   = ratio >= 1 ? '✚ 離して新規メモ' : '↓ 引いて新規メモ';
+    indicator.classList.toggle('pull-ready', ratio >= 1);
+  };
+  const onEnd = e => {
+    if (startY < 0 || isCancelled || isDragging) {
+      if (indicator) { indicator.remove(); indicator = null; }
+      startY = -1;
+      return;
+    }
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (indicator) { indicator.remove(); indicator = null; }
+    
+    // 最終判定：しっかり縦方向に引っ張られ、横ブレが半分以下の時だけ新規作成
+    if (dy >= THRESHOLD && Math.abs(dx) < dy * 0.5) {
+      createArticle(true);
+    }
+    startY = -1;
+  };
+
+  el.addEventListener('touchstart', onStart, { passive: true });
+  el.addEventListener('touchmove',  onMove,  { passive: true });
+  el.addEventListener('touchend',   onEnd,   { passive: true });
+  listeners.push(() => {
+    el.removeEventListener('touchstart', onStart);
+    el.removeEventListener('touchmove',  onMove);
+    el.removeEventListener('touchend',   onEnd);
+  });
+}
+
+// ── HTML → 行配列（安全な改行認識） ──────────────
+function htmlToLines(html) {
+  if (!html) return [];
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  
+  // スワイプチェックボックス ✔ など一時要素はパースから排除する
+  const checkmarks = tmp.querySelectorAll('.para-checkbox');
+  checkmarks.forEach(c => c.remove());
+
+  // 子要素から行を抽出する（innerTextが未ロードDOMで改行を無視する問題を回避）
+  const lines = [];
+  Array.from(tmp.children).forEach(child => {
+    const txt = child.textContent.trim();
+    if (txt) {
+      lines.push(txt);
+    }
+  });
+
+  // 子要素が全くないフラットなテキストの場合のフォールバック
+  if (lines.length === 0 && tmp.textContent.trim()) {
+    return tmp.textContent.split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+  }
+
+  return lines;
+}
+
+// ── Markdown 記号を除去 ────────────────────────
+function stripMarkdown(text) {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')           // # 見出し
+    .replace(/\*\*(.*?)\*\*/g, '$1')        // **太字**
+    .replace(/__(.*?)__/g, '$1')            // __太字__
+    .replace(/\*(.*?)\*/g, '$1')            // *斜体*
+    .replace(/_(.*?)_/g, '$1')              // _斜体_
+    .replace(/~~(.*?)~~/g, '$1')            // ~~取り消し線~~
+    .replace(/`{3}[\s\S]*?`{3}/g, '')       // ```コードブロック```
+    .replace(/`([^`]+)`/g, '$1')            // `インライン`
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [リンク](url)→テキスト
+    .replace(/^>\s+/gm, '')                 // > 引用
+    .replace(/^[-*+]\s+/gm, '')             // - 箇条書き
+    .replace(/^\d+\.\s+/gm, '')             // 1. 番号リスト
+    .replace(/^[-*]{3,}\s*$/gm, '')         // --- 水平線
+    .trim();
+}
+
+// ── DOMのテキストノードからMarkdownを除去（画像などは保持） ─────
+function stripMarkdownFromDOM(el) {
+  el.childNodes.forEach(node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      node.textContent = stripMarkdown(node.textContent);
+    } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'IMG') {
+      stripMarkdownFromDOM(node);
+    }
+  });
+}
+
+// ============================================
+//  SCREEN A: ホーム（カテゴリグリッド）
+// ============================================
+function renderHome(container) {
+  container.innerHTML = `
+    <div class="screen-home">
+      <header class="app-header">
+        <button class="btn-icon btn-pc-only" id="btnShowQR" title="スマホ連動用QRコードを表示" style="margin-right: 0.25rem;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="3" height="3" rx="0.5"/>
+            <rect x="18" y="18" width="3" height="3" rx="0.5"/>
+            <line x1="7" y1="7" x2="7.01" y2="7"/>
+            <line x1="17" y1="7" x2="17.01" y2="7"/>
+            <line x1="7" y1="17" x2="7.01" y2="17"/>
+            <line x1="14" y1="18" x2="14.01" y2="18"/>
+            <line x1="18" y1="14" x2="18.01" y2="14"/>
+          </svg>
+        </button>
+        <h1 class="app-title">📋 PCスマホ連動メモ</h1>
+        <button class="btn-icon accent" id="btnAddCat" title="カテゴリを追加">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <button class="btn-icon danger btn-signout" id="btnSignOut" title="サインアウト">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </header>
+      
+      <div id="migrationBannerContainer"></div>
+
+      <div class="category-grid" id="catGrid">
+        <div class="loading-spinner">読み込み中…</div>
+      </div>
+    </div>`;
+
+  document.getElementById('btnAddCat').onclick = () => showCategoryModal();
+  const showQrBtn = document.getElementById('btnShowQR');
+  if (showQrBtn) showQrBtn.onclick = () => showQRCodeModal();
+
+  const user = firebase.auth().currentUser;
+  const isGuest = user && user.isAnonymous;
+  const bannerContainer = document.getElementById('migrationBannerContainer');
+
+  if (isGuest) {
+    if (bannerContainer) {
+      bannerContainer.innerHTML = `
+        <div id="migrationBanner" style="position: relative; background: rgba(59, 130, 246, 0.1); border: 1.5px dashed #3b82f6; border-radius: 14px; padding: 0.85rem 1rem; margin: 0.75rem 0.75rem 0 0.75rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; text-align: left; animation: popIn 0.3s ease;">
+          <span style="font-size: 0.82rem; color: #fff; font-weight: 500; line-height: 1.5;">💡 現在は無料ゲストとしてお試し利用中です。月額130円〜のプレミアム会員（Googleログイン）に登録すると、PCとスマホで自動同期され、万が一のデータ消失の心配もなくなります。</span>
+          <button class="btn-primary" id="btnGoToLogin" style="font-size: 0.78rem; padding: 0.4rem 0.9rem; border-radius: 8px; font-weight: 700; align-self: flex-end; background: #3b82f6; border: 1px solid #2563eb;">Googleログイン / 登録</button>
+        </div>
+      `;
+      
+      const goLoginBtn = document.getElementById('btnGoToLogin');
+      if (goLoginBtn) {
+        goLoginBtn.onclick = () => {
+          if (confirm("サインアウトしてログイン画面に戻りますか？")) {
+            firebase.auth().signOut().then(() => {
+              goTo('login');
+            });
+          }
+        };
+      }
+    }
+  }
+  
+  const signoutBtn = document.getElementById('btnSignOut');
+  if (signoutBtn) {
+    signoutBtn.onclick = async () => {
+      if (confirm("サインアウトしますか？")) {
+        try {
+          await firebase.auth().signOut();
+        } catch (err) {
+          console.error("SignOut error:", err);
+        }
+      }
+    };
+  }
+
+  const ref = db.ref(`users/${state.uid}/categories`);
+  const handler = ref.on('value', snap => {
+    const grid = document.getElementById('catGrid');
+    if (!grid) return;
+
+    const data = snap.val();
+    if (!data) {
+      grid.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1">
+          <div class="empty-icon">📁</div>
+          <p>カテゴリがまだありません</p>
+          <button class="btn-primary" id="btnFirstCat">最初のカテゴリを作成</button>
+        </div>`;
+      document.getElementById('btnFirstCat').onclick = () => showCategoryModal();
+      return;
+    }
+
+    const cats = Object.entries(data)
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    grid.innerHTML = '';
+    cats.forEach(cat => {
+      const grad = cat.color || DEFAULT_GRAD;
+      const card = document.createElement('div');
+      card.className = 'category-card';
+      card.dataset.id = cat.id;
+      card.style.background = grad;
+      card.innerHTML = `
+        <button class="cat-edit-btn" title="編集">✏️</button>
+        <span class="cat-name">${esc(cat.name)}</span>`;
+
+      // もし直前に訪れていたカテゴリIDであれば、戻りフラッシュ効果クラスを付与
+      if (cat.id === window.justVisitedCategoryId) {
+        const targetId = cat.id;
+        setTimeout(() => {
+          const targetCard = grid.querySelector(`[data-id="${targetId}"]`);
+          if (targetCard) {
+            // 1. まず画面をスムーズにスクロールさせてパネルを表示させる
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            // 2. スクロールが到着するタイミング（400ms遅延）でピカピカッと白く光らせる！
+            setTimeout(() => {
+              targetCard.classList.add('just-visited-flash');
+              setTimeout(() => {
+                targetCard.classList.remove('just-visited-flash');
+              }, 1000);
+            }, 400);
+          }
+        }, 350); // 画面フェードイン（180ms遅延+200msトランジション）の完了に合わせて発火
+        window.justVisitedCategoryId = null; // 即座にクリアして多重発火防止
+      }
+
+      // 全角・半角の文字数をスマートに換算し、CSS変数としてセット（CSS側でレスポンシブ自動調整）
+      const vLen = getVirtualLength(cat.name);
+      card.style.setProperty('--char-len', vLen);
+
+      card.querySelector('.cat-edit-btn').onclick = e => {
+        e.stopPropagation();
+        showCategoryModal(cat.id, cat.name, cat.color || DEFAULT_GRAD);
+      };
+      card.onclick = () => goTo('category', cat.id);
+      grid.appendChild(card);
+    });
+
+    // ドラッグ並び替え初期化
+    if (window.Sortable) {
+      if (catSortable) catSortable.destroy();
+      catSortable = Sortable.create(grid, {
+        animation: 150,
+        delay: 300,
+        delayOnTouchOnly: true,
+        forceFallback: true,            // タッチ操作の並び替え安定化
+        fallbackOnBody: false,          // bodyに移設せず位置ズレを完全防止
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        fallbackClass: 'sortable-fallback-simple', // 拡大・ズレのない極めてシンプルな指追従スタイル
+        onStart: (evt) => {
+          grid.style.overflow = 'visible';
+          if (evt.item) {
+            evt.item.classList.add('category-drag-start-flash');
+          }
+        },
+        onEnd: async evt => {
+          grid.style.overflow = '';
+          if (evt.item) {
+            evt.item.classList.remove('category-drag-start-flash');
+            evt.item.classList.add('category-drag-end-flash');
+            setTimeout(() => {
+              evt.item.classList.remove('category-drag-end-flash');
+            }, 600);
+          }
+          const cards = grid.querySelectorAll('.category-card');
+          const updates = {};
+          cards.forEach((c, i) => { updates[`users/${state.uid}/categories/${c.dataset.id}/order`] = i; });
+          await db.ref().update(updates);
+        }
+      });
+    }
+  });
+  listeners.push(() => {
+    ref.off('value', handler);
+    if (catSortable) { catSortable.destroy(); catSortable = null; }
+  });
+}
+
+// ── カテゴリ追加/編集モーダル（色選択統合版） ────────────
+function showCategoryModal(catId = null, currentName = '', currentColor = null) {
+  let selectedGrad = currentColor || COLORS[0].grad;
+
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-overlay" id="modal">
+      <div class="modal-box">
+        <h3>${catId ? 'カテゴリを編集' : '新しいカテゴリ'}</h3>
+        <input id="catInput" class="modal-input" type="text"
+               placeholder="カテゴリ名（例: 料理、IT）"
+               value="${esc(currentName)}" />
+        <div class="color-grid" id="colorGrid"></div>
+        <div class="modal-actions">
+          ${catId ? `<button class="btn-danger" id="mDel">削除</button>` : ''}
+          <button class="btn-secondary" id="mCancel">キャンセル</button>
+          <button class="btn-primary"   id="mSave">${catId ? '保存' : '追加'}</button>
+        </div>
+      </div>
+    </div>`;
+
+  const input = document.getElementById('catInput');
+  const grid  = document.getElementById('colorGrid');
+  const close = () => { document.getElementById('modal-root').innerHTML = ''; };
+  input.focus(); input.select();
+
+  // 色スウォッチをグリッドに追加
+  COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'color-swatch' + (c.grad === selectedGrad ? ' selected' : '');
+    sw.style.background = c.grad;
+    sw.title = c.label;
+    sw.onclick = () => {
+      grid.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+      selectedGrad = c.grad;
+    };
+    grid.appendChild(sw);
+  });
+
+  document.getElementById('mCancel').onclick = close;
+  document.getElementById('modal').onclick = e => { if (e.target.id === 'modal') close(); };
+
+  document.getElementById('mSave').onclick = async () => {
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    if (catId) {
+      await db.ref(`users/${state.uid}/categories/${catId}`).update({ name, color: selectedGrad });
+    } else {
+      // 無料ユーザーのパネル上限チェック（3個まで）
+      if (!catId && !state.isPremium) {
+        const snapshot = await db.ref(`users/${state.uid}/categories`).once('value');
+        const currentCount = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
+        if (currentCount >= 3) {
+          close();
+          showPurchasePrompt();
+          return;
+        }
+      }
+      const newCatRef = db.ref(`users/${state.uid}/categories`).push();
+      const newCatId = newCatRef.key;
+      // 1. カテゴリ自体を作成
+      await newCatRef.set({
+        name, color: selectedGrad, order: Date.now(), createdAt: Date.now()
+      });
+      // 2. 作成されたカテゴリの中に最初から「タイトルのない新規文書」を1枚同時に作成する
+      const newArtRef = db.ref(`users/${state.uid}/articles/${newCatId}`).push();
+      await newArtRef.set({
+        content: '<p><br></p>', // 空の段落
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        order: Date.now()
+      });
+    }
+    close();
+  };
+
+  if (catId) {
+    document.getElementById('mDel').onclick = async () => {
+      if (!confirm(`「${currentName}」を削除します。\n中のメモもすべて消えます。よろしいですか？`)) return;
+      await db.ref(`users/${state.uid}/categories/${catId}`).remove();
+      await db.ref(`users/${state.uid}/articles/${catId}`).remove();
+      close();
+    };
+  }
+
+  input.onkeydown = e => {
+    if (e.key === 'Enter') document.getElementById('mSave').click();
+    if (e.key === 'Escape') close();
+  };
+}
+
+// ============================================
+//  SCREEN B: カテゴリ内記事一覧
+// ============================================
+function renderCategory(container) {
+  let isAutoCreating = false;
+  container.innerHTML = `
+    <div class="screen-category">
+      <header class="app-header">
+        <button class="btn-icon" id="btnHome" title="ホームへ">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M3 12L12 3l9 9"/><path d="M9 21V12h6v9"/>
+          </svg>
+        </button>
+        <h2 class="screen-title" id="catTitle">…</h2>
+        <div style="display: flex; gap: 0.25rem;">
+          <button class="btn-icon" id="btnExportAll" title="このカテゴリの全メモを一括エクスポート">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+          <button class="btn-icon accent" id="btnNewArt" title="新規メモ">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <ul class="article-list" id="artList">
+        <div class="loading-spinner">読み込み中…</div>
+      </ul>
+    </div>`;
+
+  document.getElementById('btnHome').onclick   = () => goTo('home');
+  document.getElementById('btnExportAll').onclick = () => showExportAllModal(state.categoryId);
+  document.getElementById('btnNewArt').onclick = () => createArticle();
+  addSwipeBack(container, () => goBack());
+  addPullToCreate(document.getElementById('artList'));
+
+  // カテゴリ名・色
+  let catColor = DEFAULT_GRAD;
+  const cRef = db.ref(`users/${state.uid}/categories/${state.categoryId}`);
+  const cHandler = cRef.on('value', snap => {
+    const val = snap.val();
+    if (!val) return;
+    const titleEl = document.getElementById('catTitle');
+    if (titleEl) titleEl.textContent = val.name;
+    catColor = val.color || DEFAULT_GRAD;
+    // article-listにCSS変数としてセット → CSSで自動継承
+    const artList = document.getElementById('artList');
+    if (artList) artList.style.setProperty('--cat-color', catColor);
+  });
+  listeners.push(() => cRef.off('value', cHandler));
+
+  // 記事一覧
+  const aRef = db.ref(`users/${state.uid}/articles/${state.categoryId}`);
+  
+  // 1. カテゴリに入った瞬間に1回だけ件数をチェックして0件なら補充（無限非同期ループ防止）
+  aRef.once('value').then(async snap => {
+    const data = snap.val();
+    if (!data || Object.keys(data).length === 0) {
+      const newRef = aRef.push();
+      try {
+        await newRef.set({
+          content: '<p><br></p>', // 空の段落を初期設定
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          order: Date.now()
+        });
+      } catch (err) {
+        console.error("初期メモの補充に失敗しました:", err);
+      }
+    }
+    
+    // 2. 補充完了後（または既存データがある場合）にのみ、通常の監視リスナーを有効化
+    bindArticlesListener();
+  }).catch(err => {
+    console.error("初期チェック失敗:", err);
+    bindArticlesListener();
+  });
+
+  function bindArticlesListener() {
+    const aHandler = aRef.on('value', snap => {
+      const list = document.getElementById('artList');
+      if (!list) return;
+      const data = snap.val();
+
+      // リスナー内での自動補充（set）は絶対に排除する（ループ・フリーズ防止）
+      if (!data || Object.keys(data).length === 0) {
+        list.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <p>メモがありません</p>
+          </div>`;
+        return;
+      }
+
+      const arts = Object.entries(data)
+        .map(([id, v]) => ({ id, ...v }))
+        .sort((a, b) => {
+          if (a.order !== undefined && b.order !== undefined) return b.order - a.order; // 新規が上に来るよう降順ソート
+          return (b.updatedAt || 0) - (a.updatedAt || 0);
+        });
+
+      list.innerHTML = '';
+      arts.forEach((art, i) => {
+        // HTML → 行分割（<p>や<br>を改行として扱う）
+        const textLines = htmlToLines(art.content);
+        const title   = textLines[0] || '（タイトルなし）';
+        const preview = textLines.slice(1).join(' ').slice(0, 60) || '内容がありません';
+
+        const li = document.createElement('li');
+        li.className = 'article-item';
+        li.dataset.id = art.id;
+        li.style.animationDelay = `${i * 40}ms`;
+
+        // 直前編集カードのフラッシュ効果（2秒間）
+        if (art.id === justEditedArticleId) {
+          li.classList.add('just-edited');
+          setTimeout(() => {
+            li.classList.remove('just-edited');
+            justEditedArticleId = null; // アニメーション終了後にクリア
+          }, 2000);
+        }
+        li.innerHTML = `
+          <div class="article-inner">
+            <div class="article-title">${esc(title)}</div>
+            <div class="article-preview">${esc(preview)}</div>
+          </div>
+          <div class="swipe-actions">
+            <button class="swipe-action-btn swipe-action-duplicate">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              複写
+            </button>
+            <button class="swipe-action-btn swipe-action-move">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              移動
+            </button>
+            <button class="swipe-action-btn swipe-action-delete">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              削除
+            </button>
+            <button class="swipe-action-btn swipe-action-cancel" style="background: #4b5563;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+              戻る
+            </button>
+          </div>`;
+
+        // カード本体タップ→エディター
+        li.querySelector('.article-inner').onclick = () => {
+          goTo('editor', state.categoryId, art.id);
+        };
+
+        // 複写ボタン
+        li.querySelector('.swipe-action-duplicate').onclick = async e => {
+          e.stopPropagation();
+          li.classList.remove('swiped');
+          await duplicateArticle(art.id, state.categoryId);
+        };
+
+        // 移動ボタン
+        li.querySelector('.swipe-action-move').onclick = e => {
+          e.stopPropagation();
+          li.classList.remove('swiped');
+          showMoveModal(art.id, state.categoryId);
+        };
+
+        // 削除ボタン
+        li.querySelector('.swipe-action-delete').onclick = e => {
+          e.stopPropagation();
+          li.classList.remove('swiped');
+          deleteArticleById(art.id, state.categoryId);
+        };
+
+        // キャンセル（戻る）ボタン
+        li.querySelector('.swipe-action-cancel').onclick = e => {
+          e.stopPropagation();
+          li.classList.remove('swiped');
+        };
+
+        // 左スワイプ検出
+        let txStart = 0, tyStart = 0;
+        li.addEventListener('touchstart', e => {
+          txStart = e.touches[0].clientX;
+          tyStart = e.touches[0].clientY;
+        }, { passive: true });
+        li.addEventListener('touchend', e => {
+          const dx = e.changedTouches[0].clientX - txStart;
+          const dy = Math.abs(e.changedTouches[0].clientY - tyStart);
+          if (Math.abs(dx) > 40 && dy < Math.abs(dx) * 0.8) {
+            if (dx < 0) {
+              document.querySelectorAll('.article-item.swiped').forEach(el => {
+                if (el !== li) el.classList.remove('swiped');
+              });
+              li.classList.add('swiped');
+            } else {
+              li.classList.remove('swiped');
+            }
+          }
+        }, { passive: true });
+
+        list.appendChild(li);
+      });
+
+      // 直前に編集したカードがあれば、見えている範囲に自動スクロールして連れていく
+      const justEditedEl = list.querySelector('.just-edited');
+      if (justEditedEl) {
+        setTimeout(() => {
+          justEditedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 150);
+      }
+
+      // ドラッグ並び替え初期化
+      if (window.Sortable) {
+        if (artSortable) artSortable.destroy();
+        artSortable = Sortable.create(list, {
+          animation: 150,
+          delay: 300,
+          delayOnTouchOnly: true,
+          forceFallback: true,
+          fallbackOnBody: false,
+          ghostClass: 'sortable-ghost',
+          chosenClass: 'sortable-chosen',
+          fallbackClass: 'sortable-fallback-simple',
+          onStart: () => {
+            isDragging = true;
+            list.style.overflow = 'visible';
+          },
+          onEnd: async evt => {
+            isDragging = false;
+            list.style.overflow = '';
+            const items = list.querySelectorAll('.article-item');
+            const updates = {};
+            const total = items.length;
+            items.forEach((item, i) => {
+              updates[`users/${state.uid}/articles/${state.categoryId}/${item.dataset.id}/order`] = total - i;
+            });
+            await db.ref().update(updates);
+          }
+        });
+      }
+    });
+    listeners.push(() => {
+      aRef.off('value', aHandler);
+      if (artSortable) { artSortable.destroy(); artSortable = null; }
+    });
+  }
+}
+
+// カードを別カテゴリへ移動するモーダル
+async function showMoveModal(artId, currentCatId) {
+  const snap = await db.ref(`users/${state.uid}/categories`).once('value');
+  const cats = snap.val();
+  if (!cats) return;
+  const others = Object.entries(cats)
+    .filter(([id]) => id !== currentCatId)
+    .map(([id, v]) => ({ id, name: v.name, color: v.color, order: v.order || 0 }))
+    .sort((a, b) => a.order - b.order); // ホーム画面と同じ並び順（order昇順）にする
+  if (others.length === 0) { alert('移動先のカテゴリがありません'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'move-modal-overlay';
+  overlay.innerHTML = `
+    <div class="move-modal">
+      <div class="move-modal-header">
+        <span>移動先を選択</span>
+        <button class="move-modal-close" id="moveCancelBtn">キャンセル</button>
+      </div>
+      <ul class="move-cat-list">
+        ${others.map(c => `
+          <li class="move-cat-item" data-cat-id="${c.id}"
+            style="border-left:4px solid ${c.color || '#6366f1'}">
+            ${esc(c.name || '（名前なし）')}
+          </li>`).join('')}
+      </ul>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#moveCancelBtn').onclick = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelectorAll('.move-cat-item').forEach(item => {
+    item.onclick = async () => {
+      const destCatId = item.dataset.catId;
+      const artSnap = await db.ref(`users/${state.uid}/articles/${currentCatId}/${artId}`).once('value');
+      const artData = artSnap.val();
+      if (!artData) { overlay.remove(); return; }
+
+      // 移動元の記事が最後の1件かどうかチェック（1件以下の場合は自動補充フラグを立てる）
+      const srcArticlesSnap = await db.ref(`users/${state.uid}/articles/${currentCatId}`).once('value');
+      const srcArticles = srcArticlesSnap.val();
+      const isLastOne = srcArticles && Object.keys(srcArticles).length <= 1;
+
+      await db.ref(`users/${state.uid}/articles/${destCatId}/${artId}`).set(artData);
+      await db.ref(`users/${state.uid}/articles/${currentCatId}/${artId}`).remove();
+
+      // 最後の1件だった場合は、確実に新しいメモ（空文書）を補充する
+      if (isLastOne) {
+        const newRef = db.ref(`users/${state.uid}/articles/${currentCatId}`).push();
+        await newRef.set({
+          content: '<p><br></p>',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          order: Date.now()
+        });
+      }
+
+      overlay.remove();
+    };
+  });
+}
+
+// カードを削除
+async function deleteArticleById(artId, catId) {
+  // 削除前の記事が最後の1件かどうかチェック
+  const srcArticlesSnap = await db.ref(`users/${state.uid}/articles/${catId}`).once('value');
+  const srcArticles = srcArticlesSnap.val();
+  const isLastOne = srcArticles && Object.keys(srcArticles).length <= 1;
+
+  await db.ref(`users/${state.uid}/articles/${catId}/${artId}`).remove();
+
+  // 最後の1件だった場合は、確実に新しいメモ（空文書）を補充する
+  if (isLastOne) {
+    const newRef = db.ref(`users/${state.uid}/articles/${catId}`).push();
+    await newRef.set({
+      content: '<p><br></p>',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      order: Date.now()
+    });
+  }
+}
+
+// ── 実際の一括エクスポート処理の実行 ──────────────────
+function handleExportAllAction(type, articles) {
+  const catTitleEl = document.getElementById('catTitle');
+  const catName = catTitleEl ? catTitleEl.textContent : 'カテゴリ';
+
+  if (type === 'copy') {
+    let textData = `【${catName}】\n【1ページ目】\n\n`;
+    textData += articles.map((art, idx) => {
+      const lines = htmlToLines(art.content);
+      const title = lines[0] || '（タイトルなし）';
+      const body = lines.slice(1).join('\n');
+      const articleText = `■ ${title}\n${body}`;
+      if (idx === 0) {
+        return articleText;
+      } else {
+        const pageNum = idx + 1;
+        return `\n\n---- 【ここから${pageNum}ページ目】 ----\n\n${articleText}`;
+      }
+    }).join('');
+
+    navigator.clipboard.writeText(textData)
+      .then(() => alert('全メモをクリップボードに一括コピーしました！'))
+      .catch(() => alert('コピーに失敗しました。'));
+  }
+  else if (type === 'text') {
+    let textData = `【${catName}】\n【1ページ目】\n\n`;
+    textData += articles.map((art, idx) => {
+      const lines = htmlToLines(art.content);
+      const title = lines[0] || '（タイトルなし）';
+      const body = lines.slice(1).join('\n');
+      const articleText = `■ ${title}\n${body}`;
+      if (idx === 0) {
+        return articleText;
+      } else {
+        const pageNum = idx + 1;
+        return `\n\n---- 【ここから${pageNum}ページ目】 ----\n\n${articleText}`;
+      }
+    }).join('');
+
+    const blob = new Blob([textData], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${catName}_一括エクスポート.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  else if (type === 'md') {
+    let mdData = `# 【${catName}】\n\n`;
+    mdData += articles.map((art, idx) => {
+      const lines = htmlToLines(art.content);
+      const title = lines[0] || 'タイトルなし';
+      const body = lines.slice(1).join('\n\n');
+      const articleText = `## ${title}\n\n${body}`;
+      if (idx === 0) {
+        return articleText;
+      } else {
+        const pageNum = idx + 1;
+        return `\n\n### 【ここから${pageNum}ページ目】\n\n${articleText}`;
+      }
+    }).join('');
+
+    const blob = new Blob([mdData], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${catName}_一括エクスポート.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  else if (type === 'pdf' || type === 'html') {
+    const articlesHTML = articles.map((art, idx) => {
+      const lines = htmlToLines(art.content);
+      const title = lines[0] || 'タイトルなし';
+      const body = lines.slice(1);
+      const bodyHTML = body.map(line => `<p>${esc(line)}</p>`).join('');
+
+      let separatorHTML = '';
+      if (idx > 0) {
+        const pageNum = idx + 1;
+        separatorHTML = `<div class="page-separator">---- ${pageNum}ページ目 ----</div>`;
+      }
+
+      return `
+        ${separatorHTML}
+        <div class="article-section">
+          <h2 class="article-title">${esc(title)}</h2>
+          <div class="article-body">
+            ${bodyHTML}
+          </div>
+        </div>`;
+    }).join('');
+
+    const fullHTML = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${esc(catName)} - 一括エクスポート</title>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+      line-height: 1.7;
+      padding: 2rem 1rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .category-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #818cf8;
+      border-bottom: 2px solid #312e81;
+      padding-bottom: 0.5rem;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    .article-section {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .article-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-top: 0;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #374151;
+      padding-bottom: 0.5rem;
+    }
+    .article-body {
+      color: #d1d5db;
+    }
+    .article-body p {
+      margin: 0.5rem 0;
+      min-height: 1em;
+    }
+    .article-body img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 8px;
+      margin: 0.75rem 0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+    .page-separator {
+      text-align: center;
+      margin: 2.5rem 0;
+      color: #6b7280;
+      font-size: 0.9rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  <div class="category-title">【${esc(catName)}】</div>
+  ${articlesHTML}
+</body>
+</html>`;
+
+    const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${catName}_一括エクスポート.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+
+function createArticle(noTransition = false) {
+  // 通信を待たずにクライアント側で即座に一意なID（キー）を生成（遅延ゼロ）
+  const newRef = db.ref(`users/${state.uid}/articles/${state.categoryId}`).push();
+  const newKey = newRef.key;
+
+  // バックグラウンドで初期データを保存（画面遷移を待たせない）
+  newRef.set({
+    content: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    order: Date.now()
+  }).catch(err => console.error(err));
+
+  // 新規文書生成時は自動的に編集モードへ切り替えるフラグをセット
+  state.pendingAutoEditMode = true;
+
+  if (noTransition) {
+    // 一覧を経由せず、トランジションのディレイも完全にバイパスして即座にエディターを表示
+    listeners.forEach(fn => fn());
+    listeners = [];
+    if (saveTimer) clearTimeout(saveTimer);
+    navHistory.push({ screen: state.screen, categoryId: state.categoryId, articleId: state.articleId });
+    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true };
+    
+    const appEl = document.getElementById('app');
+    appEl.classList.remove('visible');
+    appEl.innerHTML = '';
+    renderEditor(appEl);
+    appEl.classList.add('visible'); // setTimeoutによる180ms遅延を完全に排除
+  } else {
+    goTo('editor', state.categoryId, newKey);
+  }
+}
+
+// ============================================
+//  SCREEN C: 記事エディター（リッチ対応）
+// ============================================
+function renderEditor(container) {
+  container.innerHTML = `
+    <div class="screen-editor">
+      <header class="app-header editor-header">
+        <button class="btn-icon" id="btnBack" title="一覧へ戻る">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <span class="save-status editing" id="saveStatus">読み込み中…</span>
+        <div class="editor-header-actions">
+          <button class="btn-icon" id="btnBulkCopy" title="選択した段落をコピー" style="display: none; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #3b82f6; transition: transform 0.2s; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+          <button class="btn-icon danger" id="btnBulkDelete" title="選択した段落をカット" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--danger); transition: transform 0.2s; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
+              <circle cx="6" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+              <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+              <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+            </svg>
+          </button>
+          <button class="btn-icon accent" id="btnPaste" title="段落を貼り付け" style="display: none; background: rgba(249, 115, 22, 0.2); border: 1px solid var(--accent); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--accent); transition: transform 0.2s; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            </svg>
+          </button>
+          <button class="btn-icon" id="btnPasteCancel" title="貼り付けキャンセル" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--danger); transition: transform 0.2s; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: block;">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+          <button class="btn-icon" id="btnAttach" title="画像を添付" style="margin-right: 0.35rem;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+          <button class="btn-icon danger" id="btnDel" title="カード全体を削除">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div id="edContent" class="editor-content" contenteditable="false"
+        data-placeholder="1行目がタイトルになります
+
+2行目から本文を書いてください…"></div>
+      <div class="mode-toggle-bar mode-view" id="btnModeToggle"><span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span></div>
+      <input type="file" id="fileInput" style="display: none;" multiple />
+    </div>`;
+
+  document.getElementById('btnBack').onclick   = () => goBack();
+
+  // 閲覧／編集モード切り替えの制御
+  function setEditorMode(mode) {
+    state.editorMode = mode;
+    const editor = document.getElementById('edContent');
+    const toggleBar = document.getElementById('btnModeToggle');
+    if (!editor || !toggleBar) return;
+
+    if (mode === 'edit') {
+      toggleBar.className = 'mode-toggle-bar mode-edit';
+      toggleBar.innerHTML = '<span class="toggle-line1">【編集モード】文字入力、範囲指定、コピペが使えます。</span><span class="toggle-line2">一部のアイコンが使えません。</span>';
+      editor.setAttribute('contenteditable', 'true');
+      cleanupAllSwipedParagraphs(editor);
+    } else {
+      toggleBar.className = 'mode-toggle-bar mode-view';
+      toggleBar.innerHTML = '<span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span>';
+      editor.setAttribute('contenteditable', 'false');
+      editor.blur();
+      const marker = editor.querySelector('.paste-insert-line');
+      if (marker) marker.remove();
+      normalizeEditorHTML(editor);
+      editor.dispatchEvent(new Event('input'));
+    }
+  }
+  // initializeNativeParagraphActions等の外部関数から呼べるように登録
+  window._setEditorMode = setEditorMode;
+
+  const modeBtn = document.getElementById('btnModeToggle');
+  if (modeBtn) {
+    modeBtn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0 && state.editorMode === 'view') {
+        showToast("ペースト先を選択するか、ペーストを完了してください");
+        return;
+      }
+      if (state.editorMode === 'view') {
+        setEditorMode('edit');
+      } else {
+        setEditorMode('view');
+      }
+    };
+  }
+
+  // 閲覧モード中にエディタ本文をタップ → 編集モードに自動切替してカーソル点滅
+  const editorEl = document.getElementById('edContent');
+  if (editorEl) {
+    editorEl.addEventListener('click', (e) => {
+      if (state.editorMode !== 'view') return;
+      // アイコンやボタンのタップは除外
+      if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
+      setEditorMode('edit');
+      editorEl.focus();
+    });
+  }
+
+  // 初期化時のモード設定（新規文書の場合は自動で編集モードに切り替える）
+  setTimeout(() => {
+    if (state.pendingAutoEditMode) {
+      state.pendingAutoEditMode = false;
+      setEditorMode('edit');
+      // プレースホルダーはFirebaseデータ読み込み後に挙動
+      // (isNewCardフラグをセットしておく)
+      state._isNewCard = true;
+    } else {
+      setEditorMode('view');
+    }
+  }, 50);
+  document.getElementById('btnDel').onclick    = deleteArticle;
+
+  // 貼り付けキャンセルボタン
+  const pasteCancelBtn = document.getElementById('btnPasteCancel');
+  if (pasteCancelBtn) {
+    pasteCancelBtn.onclick = () => {
+      window.globalCutParagraphs = null;
+      removePasteMarker();
+      updatePasteButtonState();
+      showToast('貼り付けをキャンセルしました');
+    };
+  }
+
+  const fileInput = document.getElementById('fileInput');
+  const btnAttach = document.getElementById('btnAttach');
+  if (btnAttach && fileInput) {
+    fileInput.setAttribute('accept', 'image/*'); // 画像のみ受付
+    btnAttach.onclick = () => {
+      // 非同期での画像読み込みに備えてカーソル位置を一時退避
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        state.savedRange = sel.getRangeAt(0).cloneRange();
+      } else {
+        state.savedRange = null;
+      }
+      fileInput.click();
+    };
+    
+    fileInput.onchange = async (e) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      
+      const editor = document.getElementById('edContent');
+      if (!editor) return;
+      
+      // 挿入前のHTMLを退避 (Undo用)
+      lastDeletedContent = getCleanEditorHTML(editor);
+      
+      // 保存した選択範囲を復元
+      if (state.savedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(state.savedRange);
+      }
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.indexOf('image') !== -1) {
+          await handleAttachedImage(file, editor);
+        }
+      }
+      
+      state.savedRange = null;
+      fileInput.value = '';
+      
+      normalizeEditorHTML(editor);
+      editor.dispatchEvent(new Event('input'));
+    };
+  }
+
+  const pasteBtn = document.getElementById('btnPaste');
+  if (pasteBtn) {
+    pasteBtn.onclick = () => {
+      const editor = document.getElementById('edContent');
+      if (editor) {
+        if (activePasteMarkerP) {
+          pasteCutParagraphs(editor, activePasteMarkerP, activePasteLocation);
+          removePasteMarker();
+        } else {
+          pasteCutParagraphs(editor);
+        }
+      }
+    };
+    updatePasteButtonState();
+  }
+
+  const bulkCopyBtn = document.getElementById('btnBulkCopy');
+  if (bulkCopyBtn) {
+    bulkCopyBtn.onclick = () => {
+      const editor = document.getElementById('edContent');
+      if (!editor) return;
+
+      const selectedParas = editor.querySelectorAll('p.para-selected');
+      if (selectedParas.length === 0) return;
+
+      // 1. コピーする段落のクリーンなHTMLを一時配列に格納
+      window.globalCutParagraphs = Array.from(selectedParas).map(p => {
+        const clone = p.cloneNode(true);
+        const chk = clone.querySelector('.para-checkbox');
+        if (chk) chk.remove();
+        clone.classList.remove('para-selected');
+        clone.removeAttribute('class');
+        return clone.outerHTML;
+      });
+
+      // コピー元の段落にフラッシュ効果を与える
+      selectedParas.forEach(p => {
+        p.classList.add('para-copy-animating');
+      });
+
+      // 0.5秒後に選択を解除し、保存してトーストを表示
+      setTimeout(() => {
+        selectedParas.forEach(p => {
+          p.classList.remove('para-copy-animating');
+        });
+        cleanupAllSwipedParagraphs(editor);
+        saveEditorContentDirectly(editor);
+        updatePasteButtonState();
+        showToast("段落をコピーしました");
+      }, 500);
+    };
+  }
+
+  const bulkDelBtn = document.getElementById('btnBulkDelete');
+  if (bulkDelBtn) {
+    bulkDelBtn.onclick = () => {
+      const editor = document.getElementById('edContent');
+      if (!editor) return;
+
+      const selectedParas = editor.querySelectorAll('p.para-selected');
+      if (selectedParas.length === 0) return;
+
+      // 1. カットする段落のクリーンなHTMLを一時配列に格納
+      window.globalCutParagraphs = Array.from(selectedParas).map(p => {
+        const clone = p.cloneNode(true);
+        const chk = clone.querySelector('.para-checkbox');
+        if (chk) chk.remove();
+        clone.classList.remove('para-selected');
+        clone.removeAttribute('class');
+        return clone.outerHTML;
+      });
+
+      // 削除前のHTMLを退避 (Undo用)
+      lastDeletedContent = getCleanEditorHTML(editor);
+
+      // カットアニメーションの適用
+      selectedParas.forEach(p => {
+        p.classList.add('para-cut-animating');
+      });
+
+      // 0.5秒後に実際の削除、保存、トースト表示を行う
+      setTimeout(() => {
+        selectedParas.forEach(p => p.remove());
+
+        // 完全に空なら自動カード削除
+        if (isEditorEmpty(editor)) {
+          deleteArticleSilently();
+          return;
+        }
+
+        saveEditorContentDirectly(editor);
+        updateBulkDeleteButtonState(editor);
+        updatePasteButtonState();
+
+        showToast("段落をカットしました");
+      }, 500);
+    };
+  }
+
+  addSwipeBack(container, () => {
+    if (state.editorMode === 'view') {
+      goBack();
+    }
+  });
+
+  // 罫線・特殊区切り文字を自動クリーンアップ＆スペース整形する関数
+  function cleanAndFormatBorderLines(txt) {
+    let t = txt || '';
+    
+    // 1. 横方向の罫線もどき（3つ以上連続する横線記号）の行を完全に削除
+    const horizontalBorderRegex = /^[ \t]*([-_=\*~\+\.─━┄┅┈┉＝＊◆■★☆┌┐└┘├┤┬┴┼])\1{2,}[ \t]*$/gm;
+    t = t.replace(horizontalBorderRegex, '');
+
+    // 2. 縦方向の罫線・区切り記号（│, ┃, ├, ┤, ┼, ｜, |, │ 等）を適度な複数の半角スペースに置換
+    const verticalBorderRegex = /[ \t　]*([│┃├┤┼｜\|┆┇┊┋┬┴])[ \t　]*/g;
+    t = t.replace(verticalBorderRegex, '     '); // 5個の半角スペースに置き換えて美しく整形
+
+    return t;
+  }
+
+  document.getElementById('edContent').addEventListener('paste', e => {
+    try {
+      // クリップボードのアイテムを確認（画像貼り付けの復元）
+      const clipboardData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
+      if (!clipboardData) return;
+      const items = clipboardData.items;
+      let hasImage = false;
+
+      // 非同期の画像読み込み時にカーソル位置が失われないよう、同期コンテキストで Range を保存
+      const sel = window.getSelection();
+      let savedRange = null;
+      if (sel && sel.rangeCount > 0) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+      }
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          e.preventDefault(); // デフォルト処理を阻止
+          hasImage = true;
+          
+          const file = items[i].getAsFile();
+          const reader = new FileReader();
+          
+          reader.onload = function(evt) {
+            try {
+              const base64Src = evt.target.result;
+              
+              // ── 画像自動圧縮・リサイズ処理（フリーズ＆Firebase容量オーバー根絶） ──
+              const tempImg = new Image();
+              tempImg.onload = function() {
+                try {
+                  const canvas = document.createElement('canvas');
+                  const ctx = canvas.getContext('2d');
+                  
+                  // 最大寸法（横幅または高さを 800px に制限）
+                  const MAX_SIZE = 800;
+                  let width = tempImg.width;
+                  let height = tempImg.height;
+                  
+                  if (width > MAX_SIZE || height > MAX_SIZE) {
+                    if (width > height) {
+                      height = Math.round((height * MAX_SIZE) / width);
+                      width = MAX_SIZE;
+                    } else {
+                      width = Math.round((width * MAX_SIZE) / height);
+                      height = MAX_SIZE;
+                    }
+                  }
+                  
+                  canvas.width = width;
+                  canvas.height = height;
+                  
+                  // キャンバスに描画
+                  ctx.drawImage(tempImg, 0, 0, width, height);
+                  
+                  // 軽量なJPEGに圧縮 (品質0.75)
+                  const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
+                  
+                  // 貼り付け用画像タグの生成（非編集属性を付与して変形ハンドルを完全消去！）
+                  const img = document.createElement('img');
+                  img.src = compressedBase64;
+                  img.className = 'inserted-img';
+                  img.contentEditable = 'false';
+
+                  // 画像を段落要素 <p> で囲って「段落扱い」にする
+                  const pImg = document.createElement('p');
+                  pImg.appendChild(img);
+
+                  const editor = document.getElementById('edContent');
+                  if (editor) {
+                    // 選択範囲を復元して正しい位置に挿入
+                    if (savedRange) {
+                      const sel = window.getSelection();
+                      sel.removeAllRanges();
+                      sel.addRange(savedRange);
+                    }
+                    insertNodeAtCursor(pImg, editor);
+                  }
+                  
+                  // 正規化処理を呼んでHTML構造をクリーンアップし、Firebaseに保存
+                  if (editor) {
+                    normalizeEditorHTML(editor);
+                    editor.dispatchEvent(new Event('input'));
+                  }
+                } catch (canvasErr) {
+                  console.error("Canvas compression failed:", canvasErr);
+                }
+              };
+              
+              tempImg.onerror = function() {
+                console.error("Failed to load image element for canvas compression.");
+              };
+              
+              tempImg.src = base64Src;
+            } catch (loadErr) {
+              console.error("Image loading processing failed:", loadErr);
+            }
+          };
+          
+          reader.readAsDataURL(file);
+          break; // 1枚のみ処理
+        }
+      }
+
+      if (hasImage) return; // 画像処理を行った場合はここで終了
+
+      e.preventDefault(); // デフォルトの貼り付けを阻止（テキスト処理へ移行）
+
+      // テキスト：プレーンテキストとしてデータを取得（スタイルを完全除去）
+      let text = e.clipboardData.getData('text/plain');
+      if (!text) {
+        const html = e.clipboardData.getData('text/html');
+        if (html) {
+          const tmp = document.createElement('div');
+          tmp.innerHTML = html;
+          text = tmp.textContent || tmp.innerText || '';
+        }
+      }
+
+      if (text) {
+        // 1. 純粋なテーブル罫線記号（|, │ 等）が複数（3つ以上）含まれ、かつ改行が存在する場合のみテーブル整形を実行する
+        const borderMatches = text.match(/[\|│┃┼├┤┌┐└┘｜┆┇┊┋┬┴]/g);
+        const hasTableBorders = borderMatches && borderMatches.length >= 3 && text.includes('\n');
+        const cleanedText = hasTableBorders ? cleanAndFormatBorderLines(text) : text;
+
+        // execCommand を使用してプレーンテキストをカーソル位置に綺麗に流し込む
+        // これにより、余計な HTML ネストや不要なインデントが一切入らなくなります
+        const inserted = document.execCommand('insertText', false, cleanedText);
+        
+        // 万が一 execCommand が失敗した場合のフォールバック
+        if (!inserted) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            sel.deleteFromDocument();
+            const range = sel.getRangeAt(0);
+            const textNode = document.createTextNode(cleanedText);
+            range.insertNode(textNode);
+            range.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
+
+        // 正規化処理を実行してHTML構造を整える
+        const editor = document.getElementById('edContent');
+        if (editor) {
+          normalizeEditorHTML(editor);
+          editor.dispatchEvent(new Event('input'));
+        }
+      }
+    } catch (pasteErr) {
+      console.error("Paste event listener error:", pasteErr);
+    }
+  });
+
+  // 初期コンテンツ読み込み
+  db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
+    const editor = document.getElementById('edContent');
+    const status = document.getElementById('saveStatus');
+    if (!editor) return;
+
+    const raw = snap.val()?.content || '';
+
+    // ── コンテンツをクリーンなHTMLに変換 ──────────────────
+    let displayHTML;
+    const isHTML = raw.trimStart().startsWith('<');
+
+    if (!isHTML) {
+      // プレーンテキスト or 破損（HTMLタグが文字として混入）
+      const decoded = raw
+        .replace(/<br\s*\/?>/gi,          '\n')   // <br>→改行
+        .replace(/<\/?(div|p|h\d|li)[^>]*>/gi, '\n') // ブロックタグ→改行
+        .replace(/<[^>]*>/g,              '')     // 残タグ除去
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); // エンティティ復元
+
+      const lines = decoded.split('\n')
+        .map(l => stripMarkdown(l.trim()))
+        .filter(l => l.length > 0);
+
+      displayHTML = lines.map(l => `<p>${esc(l)}</p>`).join('') || '<p><br></p>';
+      editor.innerHTML = displayHTML;
+
+      // 変換内容をFirebaseに保存（次回からHTMLとして正常ロード）
+      db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+        .update({ content: displayHTML, updatedAt: Date.now() })
+        .catch(() => {});
+
+    } else {
+      // 正常なHTML：テキストノードのMarkdownだけ除去
+      editor.innerHTML = raw;
+      const before = editor.innerHTML;
+      stripMarkdownFromDOM(editor);
+      const after = editor.innerHTML;
+      displayHTML = after;
+
+      if (after !== before) {
+        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+          .update({ content: after, updatedAt: Date.now() })
+          .catch(() => {});
+      }
+    }
+
+    if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
+    
+    // 新規カード作成時はプレースホルダーを表示しフォーカス
+    if (state._isNewCard) {
+      state._isNewCard = false;
+      const raw2 = snap.val()?.content || '';
+      if (!raw2 || raw2.trim() === '' || raw2 === '<p><br></p>') {
+        // 新規カードのみ: プレースホルダーテキストを表示（Firebaseには保存しない）
+        editor.innerHTML = '<p>1行目がタイトルになります</p><p>2行目から本文を書いてください…</p>';
+      }
+      // 1行目の先頭にカーソルを配置
+      const firstP = editor.querySelector('p');
+      if (firstP && firstP.firstChild) {
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.setStart(firstP.firstChild, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      editor.focus();
+    } else {
+      editor.focus();
+    }
+    initializeNativeParagraphActions(editor);
+
+    // 自動保存（1秒デバウンス）
+    editor.oninput = () => {
+      if (isComposing) return;
+
+      if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        try {
+          const cleanHTML = getCleanEditorHTML(editor);
+          await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
+            content: cleanHTML, updatedAt: Date.now()
+          });
+          const s = document.getElementById('saveStatus');
+          if (s) { s.textContent = '保存済み ✓'; s.className = 'save-status saved'; }
+        } catch {
+          const s = document.getElementById('saveStatus');
+          if (s) { s.textContent = '保存失敗 ✗'; s.className = 'save-status error'; }
+        }
+      }, 1000);
+    };
+  });
+}
+
+async function deleteArticle() {
+  if (!confirm("このメモを完全に削除します。よろしいですか？")) return;
+  await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).remove();
+  goTo('category', state.categoryId, null, true);
+}
+
+// 直接Firebaseから無音でカードを完全削除する（最後の段落削除時）
+async function deleteArticleSilently() {
+  if (!state.articleId || !state.categoryId || !state.uid) return;
+  await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).remove();
+  goTo('category', state.categoryId, null, true);
+}
+
+// 既存のメモを複製してコピー元のすぐ上に挿入する
+async function duplicateArticle(artId, categoryId) {
+  try {
+    // 1. 対象カードのデータを取得
+    const snap = await db.ref(`users/${state.uid}/articles/${categoryId}/${artId}`).once('value');
+    const original = snap.val();
+    if (!original) return;
+
+    // 2. 現在の全カードリストを取得してソート（表示時と同じロジック）
+    const allSnap = await db.ref(`users/${state.uid}/articles/${categoryId}`).once('value');
+    const allData = allSnap.val() || {};
+    const arts = Object.entries(allData)
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined) return b.order - a.order;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+
+    // 3. コピー元カードのインデックスを特定
+    const targetIndex = arts.findIndex(a => a.id === artId);
+    if (targetIndex === -1) return;
+
+    // 4. 新しいカードをプッシュしてキーを生成
+    const newRef = db.ref(`users/${state.uid}/articles/${categoryId}`).push();
+    const newKey = newRef.key;
+
+    // 5. 複製するデータを作成
+    const duplicateData = {
+      content: original.content || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    // 6. 新しい配列を作成し、コピー元の上に挿入
+    const newArts = [...arts];
+    newArts.splice(targetIndex, 0, { id: newKey, ...duplicateData });
+
+    // 7. 先に複製データを Firebase に新規保存 (update 時の重複パスエラーを防止)
+    await db.ref(`users/${state.uid}/articles/${categoryId}/${newKey}`).set(duplicateData);
+
+    // 8. 全カードの order を新しい順序に合わせて一括更新
+    const updates = {};
+    const total = newArts.length;
+    newArts.forEach((art, i) => {
+      updates[`users/${state.uid}/articles/${categoryId}/${art.id}/order`] = total - i;
+    });
+    
+    // 複写されたカードにフラッシュ効果を入れるため、justEditedArticleId を新しいカード of IDにセットする！
+    justEditedArticleId = newKey;
+
+    await db.ref().update(updates);
+  } catch (err) {
+    console.error("Duplicate article failed:", err);
+  }
+}
+
+
+// エディタのプレーンなコンテンツが完全に空であるかを判定
+function isEditorEmpty(editor) {
+  const cleanHTML = getCleanEditorHTML(editor).trim();
+  const temp = document.createElement('div');
+  temp.innerHTML = cleanHTML;
+  const text = temp.textContent || temp.innerText || '';
+  const hasImage = temp.querySelector('img') !== null;
+  return text.trim() === '' && !hasImage;
+}
+
+// ── ユーティリティ ───────────────────────────
+// 太陽マーク「☀︎」(U+2600 + U+FE0E) などの異体字セレクタおよびゼロ幅スペースを除去し、段落合体バグを防止する
+function cleanupInvalidUnicodeCharacters(editor) {
+  if (!editor) return;
+
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) {
+    removeInvalidUnicodeFromNode(editor);
+    return;
+  }
+
+  let anchor = sel.anchorNode;
+  if (!anchor || !editor.contains(anchor)) {
+    removeInvalidUnicodeFromNode(editor);
+    return;
+  }
+
+  // キャレットのある親段落 p を特定
+  let targetP = anchor;
+  if (targetP.nodeType === Node.TEXT_NODE) {
+    targetP = targetP.parentNode;
+  }
+  while (targetP && targetP.parentNode !== editor) {
+    targetP = targetP.parentNode;
+  }
+
+  if (targetP && targetP.tagName === 'P') {
+    const caretPos = getCaretCharacterOffsetWithin(targetP);
+    const removedCount = removeInvalidUnicodeFromNode(targetP);
+
+    if (removedCount > 0) {
+      setCaretCharacterOffsetWithin(targetP, Math.max(0, caretPos - removedCount));
+    }
+  } else {
+    // 予期しない構造の場合のフォールバック
+    const caretPos = getCaretCharacterOffsetWithin(editor);
+    const removedCount = removeInvalidUnicodeFromNode(editor);
+    if (removedCount > 0) {
+      setCaretCharacterOffsetWithin(editor, Math.max(0, caretPos - removedCount));
+    }
+  }
+}
+
+function removeInvalidUnicodeFromNode(node) {
+  let count = 0;
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent;
+    // \ufe0e, \ufe0f (異体字セレクタ) と \u200b (ゼロ幅スペース) を除去
+    const cleaned = text.replace(/[\ufe0e\ufe0f\u200b]/g, '');
+    if (cleaned !== text) {
+      count += (text.length - cleaned.length);
+      node.textContent = cleaned;
+    }
+  } else {
+    for (let i = 0; i < node.childNodes.length; i++) {
+      count += removeInvalidUnicodeFromNode(node.childNodes[i]);
+    }
+  }
+  return count;
+}
+
+function getCaretCharacterOffsetWithin(element) {
+  let caretOffset = 0;
+  const doc = element.ownerDocument || element.document;
+  const win = doc.defaultView || doc.parentWindow;
+  const sel = win.getSelection();
+  if (sel.rangeCount > 0) {
+    const range = win.getSelection().getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(element);
+    preCaretRange.setEnd(range.startContainer, range.startOffset);
+    caretOffset = preCaretRange.toString().length;
+  }
+  return caretOffset;
+}
+
+function setCaretCharacterOffsetWithin(element, offset) {
+  let charIndex = 0;
+  const range = document.createRange();
+  range.setStart(element, 0);
+  range.collapse(true);
+  
+  const nodeQueue = [element];
+  let found = false;
+  
+  while (nodeQueue.length > 0 && !found) {
+    const node = nodeQueue.shift();
+    if (node.nodeType === Node.TEXT_NODE) {
+      const nextCharIndex = charIndex + node.length;
+      if (offset >= charIndex && offset <= nextCharIndex) {
+        range.setStart(node, offset - charIndex);
+        range.collapse(true);
+        found = true;
+      }
+      charIndex = nextCharIndex;
+    } else {
+      let i = node.childNodes.length;
+      while (i--) {
+        nodeQueue.unshift(node.childNodes[i]);
+      }
+    }
+  }
+  
+  if (found) {
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+function getVirtualLength(str) {
+  let len = 0;
+  for (let i = 0; i < (str || '').length; i++) {
+    if (str.charCodeAt(i) <= 127) {
+      len += 0.5;
+    } else {
+      len += 1.0;
+    }
+  }
+  return len;
+}
+
+function esc(str) {
+  return String(str || '').replace(/[&<>'"]/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])
+  );
+}
+
+// ── 段落の常時スワイプ一括削除制御 ─────────────────
+let activeGlobalEditorClickCleanup = null;
+
+// エディタロード時にスワイプ選択を自動バインド
+// エディタ内のHTML構造を常にPタグ（画像も含む）に平坦化・正規化する
+function normalizeEditorHTML(editor) {
+  if (!editor) return;
+
+  // 全ての挿入画像に確実にcontentEditable="false"を付与して変形つまみ等の発生を根絶する
+  editor.querySelectorAll('img').forEach(img => {
+    img.setAttribute('contenteditable', 'false');
+  });
+
+  // 🎥 YouTubeリンクの自動埋め込み展開 (Shorts URL にも対応)
+  editor.querySelectorAll('p').forEach(p => {
+    const text = p.textContent.trim();
+    const ytMatch = text.match(/^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([^#\&\?\s]+)/i);
+    if (ytMatch) {
+      const videoId = ytMatch[4];
+      const iframeContainer = document.createElement('div');
+      iframeContainer.className = 'youtube-container';
+      iframeContainer.contentEditable = 'false';
+      iframeContainer.innerHTML = `
+        <iframe width="100%" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      `;
+      p.innerHTML = '';
+      p.appendChild(iframeContainer);
+      
+      // その下に操作用の空段落がなければ追加
+      if (!p.nextSibling) {
+        const nextP = document.createElement('p');
+        nextP.appendChild(document.createElement('br'));
+        p.parentNode.appendChild(nextP);
+      }
+    }
+  });
+
+  // Pタグの内部の BR タグを境界として、Pタグを別々のPタグ（段落）に自動分割する！
+  // これにより画面上の改行がすべて個別の段落として扱われるようになります。
+  let hasSplit = false;
+
+  // 入力中・編集中の段落のDOM破壊によるカーソル（キャレット）消失バグを防ぐため、現在の選択位置を取得
+  const sel = window.getSelection();
+  let activeNode = null;
+  if (sel && sel.rangeCount > 0) {
+    activeNode = sel.getRangeAt(0).startContainer;
+  }
+
+  const pTags = Array.from(editor.querySelectorAll('p'));
+  pTags.forEach(p => {
+    // 現在カーソルがある段落は、文字入力中の自動マージ等のバグを防ぐため分割対象外にする
+    if (activeNode && (p.contains(activeNode) || p === activeNode)) {
+      return;
+    }
+
+    const brs = p.querySelectorAll('br');
+    // 単なる空段落 <p><br></p> は分割対象外
+    if (brs.length === 0 || (brs.length === 1 && p.textContent.trim() === '' && !p.querySelector('img'))) {
+      return;
+    }
+
+    const parent = p.parentNode;
+    const childNodes = Array.from(p.childNodes);
+    let currentNewP = document.createElement('p');
+    if (p.className) currentNewP.className = p.className;
+
+    childNodes.forEach(node => {
+      if (node.tagName === 'BR') {
+        // 現在構築中のPタグにコンテンツがあれば挿入
+        if (currentNewP.childNodes.length > 0) {
+          parent.insertBefore(currentNewP, p);
+          currentNewP = document.createElement('p');
+          if (p.className) currentNewP.className = p.className;
+        } else {
+          // 直前がBRなどで空なら、空行段落 <p><br></p> を挿入
+          const emptyP = document.createElement('p');
+          emptyP.appendChild(document.createElement('br'));
+          parent.insertBefore(emptyP, p);
+        }
+      } else {
+        // チェックスパンは再構築されるため除外
+        if (node.classList && node.classList.contains('para-checkbox')) {
+          return;
+        }
+        currentNewP.appendChild(node.cloneNode(true));
+      }
+    });
+
+    // 最後に残ったPタグを挿入
+    if (currentNewP.childNodes.length > 0) {
+      parent.insertBefore(currentNewP, p);
+    } else {
+      const emptyP = document.createElement('p');
+      emptyP.appendChild(document.createElement('br'));
+      parent.insertBefore(emptyP, p);
+    }
+
+    p.remove();
+    hasSplit = true;
+  });
+
+  let needNormalize = false;
+  // 直接の子要素をチェック
+  for (let child of editor.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== '') {
+      needNormalize = true;
+      break;
+    }
+    if (child.nodeType === Node.ELEMENT_NODE && child.tagName !== 'P' && !child.classList.contains('youtube-container')) {
+      needNormalize = true;
+      break;
+    }
+  }
+
+  if (needNormalize || hasSplit) {
+    const tempDiv = document.createElement('div');
+    let currentP = null;
+
+    // 子ノードを走査し、すべてPタグまたは特別に許可したDIVコンテナにする
+    Array.from(editor.childNodes).forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent;
+        if (text.replace(/\s+/g, '') === '') {
+          return;
+        }
+        if (!currentP) {
+          currentP = document.createElement('p');
+          tempDiv.appendChild(currentP);
+        }
+        currentP.appendChild(document.createTextNode(text));
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const tagName = node.tagName;
+        if (tagName === 'P') {
+          currentP = node.cloneNode(true);
+          tempDiv.appendChild(currentP);
+        } else if (tagName === 'BR') {
+          currentP = document.createElement('p');
+          currentP.appendChild(document.createElement('br'));
+          tempDiv.appendChild(currentP);
+          currentP = null;
+        } else if (tagName === 'IMG') {
+          currentP = document.createElement('p');
+          const clonedImg = node.cloneNode(true);
+          clonedImg.setAttribute('contenteditable', 'false');
+          currentP.appendChild(clonedImg);
+          tempDiv.appendChild(currentP);
+          currentP = null;
+        } else if (node.classList.contains('youtube-container')) {
+          // 特別なコンテナはそのまま複製して維持（末尾飛ばしバグを解消）
+          tempDiv.appendChild(node.cloneNode(true));
+          currentP = null;
+        } else {
+          // P以外の要素の中身を取り出してPにする
+          const p = document.createElement('p');
+          while (node.firstChild) {
+            p.appendChild(node.firstChild);
+          }
+          if (node.className) p.className = node.className;
+          tempDiv.appendChild(p);
+          currentP = null;
+        }
+      }
+    });
+
+    const newHTML = tempDiv.innerHTML || '<p><br></p>';
+    if (editor.innerHTML !== newHTML) {
+      editor.innerHTML = newHTML;
+    }
+  }
+}
+
+function initializeNativeParagraphActions(editor) {
+  if (!editor) return;
+
+  // IME入力中（変換中）の監視
+  editor.addEventListener('compositionstart', () => {
+    isComposing = true;
+  });
+  editor.addEventListener('compositionend', () => {
+    isComposing = false;
+    // 確定時に正規化を実行（DOMを直接変更しない。保存時にgetCleanEditorHTML内でクリーンアップする）
+    normalizeEditorHTML(editor);
+    editor.dispatchEvent(new Event('input'));
+  });
+
+  // 閲覧モード中且つペーストバッファが存在する時のタップ（挿入マーカー）制御
+  editor.addEventListener('click', (e) => {
+    if (state.editorMode !== 'view' || !window.globalCutParagraphs || window.globalCutParagraphs.length === 0) {
+      return;
+    }
+
+    const p = e.target.closest('p');
+    if (p && editor.contains(p)) {
+      e.stopPropagation();
+      e.preventDefault();
+
+      const rect = p.getBoundingClientRect();
+      const relativeY = e.clientY - rect.top;
+      const location = (relativeY < rect.height / 2) ? 'before' : 'after';
+
+      if (activePasteMarkerP === p && activePasteLocation === location) {
+        removePasteMarker();
+      } else {
+        showPasteMarker(p, location);
+      }
+    } else {
+      removePasteMarker();
+    }
+  });
+
+  // 0. 読み込み直後にエディタの段落構造を正規化する
+  normalizeEditorHTML(editor);
+
+  // 0.5. PC用画像削除ボタンのセットアップ
+  setupImageDeleteButtons(editor);
+
+  // 0.6. スマホ・PC共用 画像長押しドラッグ＆ドロップ移動のセットアップ
+  setupImageDragAndDrop(editor);
+
+  // 1. 各段落（<p>）にスワイプイベントをバインド
+  bindParagraphSwipeEvents(editor);
+
+  // 2. ハサミON（選択状態）の段落のみ、長押しドラッグで並び替え可能にする（SortableJS連携）
+  if (window.Sortable) {
+    if (paraSortable) {
+      paraSortable.destroy();
+      paraSortable = null;
+    }
+    paraSortable = Sortable.create(editor, {
+      draggable: 'p.para-selected', // ハサミマークのある選択段落のみドラッグ可能
+      delay: 150, // 長押し150msでドラッグ起動
+      delayOnTouchOnly: true, // タッチデバイスのみ遅延ドラッグ
+      animation: 150,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      onStart: () => {
+        isDragging = true;
+      },
+      onEnd: async () => {
+        isDragging = false;
+        // 並び替え完了後に正規化して保存
+        normalizeEditorHTML(editor);
+        editor.dispatchEvent(new Event('input'));
+      }
+    });
+  }
+
+  // 3. 入力や他箇所のタップによる自動解除を登録（副作用防止）
+  editor.onkeydown = (e) => {
+    cleanupAllSwipedParagraphs(editor);
+
+    // ユーザーが物理的な文字入力（1文字のキー入力、Backspace、Delete等）を行った場合のみ、ペーストバッファをクリア（キャンセル）する
+    const isCharacterKey = e.key.length === 1 && !e.ctrlKey && !e.metaKey;
+    if (isCharacterKey || e.key === 'Backspace' || e.key === 'Delete') {
+      if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
+        window.globalCutParagraphs = null;
+        updatePasteButtonState();
+      }
+    }
+
+    // 太陽マーク等の記号に関係なく発生する、Enter改行時の段落統合バグを完全解決するため、
+    // ブラウザのデフォルトのEnter改行挙動を阻止し、自前で安全に段落を分割する
+    if (e.key === 'Enter') {
+      e.preventDefault(); // デフォルトのEnter改行を阻止
+
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        let p = range.startContainer;
+
+        // エディタ直下の P タグ（段落）を特定
+        while (p && p.parentNode !== editor) {
+          p = p.parentNode;
+        }
+
+        if (p && p.tagName === 'P') {
+          // 注意: 以前は「キャレットが段落末尾にいる時に次の段落に補正する」ガード処理があったが、
+          // 正常な段落末尾でのEnter操作（空行を挿入する操作）を妨害していたため完全に削除。
+          // 根本原因（oninputでのDOM変更による段落マージ）は既に修正済み。
+          // キャレットより前のコンテンツと後ろのコンテンツを分割抽出
+          const leftRange = document.createRange();
+          leftRange.setStart(p, 0);
+          leftRange.setEnd(range.startContainer, range.startOffset);
+          const leftFragment = leftRange.cloneContents();
+
+          const rightRange = document.createRange();
+          rightRange.setStart(range.startContainer, range.startOffset);
+          rightRange.setEnd(p, p.childNodes.length);
+          const rightFragment = rightRange.cloneContents();
+
+          // 新しい段落を生成
+          const leftP = document.createElement('p');
+          leftP.appendChild(leftFragment);
+          if (p.className) {
+            leftP.className = p.className;
+          }
+
+          const rightP = document.createElement('p');
+          rightP.appendChild(rightFragment);
+          if (p.className) {
+            rightP.className = p.className;
+            rightP.classList.remove('para-selected'); // 選択状態はコピーしない
+            const chk = rightP.querySelector('.para-checkbox');
+            if (chk) chk.remove();
+            if (rightP.getAttribute('class') === '') rightP.removeAttribute('class');
+          }
+
+          // 空段落の場合はBRを補充
+          const isLeftEmpty = leftP.textContent.trim() === '' && !leftP.querySelector('img');
+          const isRightEmpty = rightP.textContent.trim() === '' && !rightP.querySelector('img');
+
+          if (isLeftEmpty) {
+            leftP.innerHTML = '<br>';
+          }
+          if (isRightEmpty) {
+            rightP.innerHTML = '<br>';
+          }
+
+          // DOMの置き換え
+          const parent = p.parentNode;
+          parent.insertBefore(leftP, p);
+          parent.insertBefore(rightP, p);
+          p.remove();
+
+          // キャレットを後半段落 (rightP) の先頭に配置
+          const newRange = document.createRange();
+          if (rightP.firstChild) {
+            if (rightP.firstChild.nodeType === Node.TEXT_NODE) {
+              newRange.setStart(rightP.firstChild, 0);
+            } else {
+              newRange.setStart(rightP, 0);
+            }
+          } else {
+            newRange.setStart(rightP, 0);
+          }
+          newRange.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+
+          // Enter直後はnormalizeEditorHTMLを呼ばない（カーソル位置が破壊されるため）
+          // scrollLockTimerが「Enter後のカーソル位置」を破壊しないよう、フラグをセット
+          window._isEnterJustPressed = true;
+          setTimeout(() => { window._isEnterJustPressed = false; }, 300);
+
+          editor.dispatchEvent(new Event('input'));
+
+          // 改行した要素が見えるようにスクロール
+          rightP.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          // → Enter後は編集モードのまま継続（閲覧モード自動切替は废止）
+        }
+      }
+    }
+  };
+
+  // フォーカスイン時にも解除 ＆ キーボード表示時のスクロールリセットタイマー（ヘッダー消失の完全防止）
+  let scrollLockTimer = null;
+  editor.addEventListener('focusin', () => {
+    cleanupAllSwipedParagraphs(editor);
+
+    // Enter直後はscrollLockを実行しない（カーソル位置が引き戻されるため）
+    if (window._isEnterJustPressed) return;
+
+    const lockScroll = () => {
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+      const app = document.getElementById('app');
+      if (app) app.scrollTop = 0;
+    };
+    
+    // 即座に実行
+    lockScroll();
+    
+    // 5回（250ms）だけリセット。長時間繰り返すとタップ位置が見えなくなる問題を防ぐ。
+    if (scrollLockTimer) clearInterval(scrollLockTimer);
+    let count = 0;
+    scrollLockTimer = setInterval(() => {
+      lockScroll();
+      count++;
+      if (count >= 5) {
+        clearInterval(scrollLockTimer);
+        scrollLockTimer = null;
+      }
+    }, 50);
+  });
+
+  // フォーカスアウト（blur）時にも正規化を走らせて保存をトリガーする
+  editor.addEventListener('blur', () => {
+    // iOS Safari等の仮想キーボード縮小時の表示領域崩れ（スクロールズレ・ヘッダー消失）バグを完全解消する
+    setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      const app = document.getElementById('app');
+      if (app) app.scrollTop = 0;
+      document.body.scrollTop = 0;
+      document.documentElement.scrollTop = 0;
+    }, 80);
+
+    normalizeEditorHTML(editor);
+    editor.dispatchEvent(new Event('input'));
+  });
+
+  // エディタ外のクリックで解除
+  const outsideClickListener = (e) => {
+    if (!editor.contains(e.target) && !e.target.closest('#btnBulkDelete') && !e.target.closest('#btnPaste') && !e.target.closest('#undo-toast')) {
+      cleanupAllSwipedParagraphs(editor);
+    }
+  };
+  document.addEventListener('click', outsideClickListener);
+  activeGlobalEditorClickCleanup = outsideClickListener;
+}
+
+// 特定の段落を選択（チェック）状態にする/解除する（☑️のトグル）
+function toggleParagraphSelect(p, editor) {
+  if (!p) return;
+
+  const hasSelected = p.classList.contains('para-selected');
+
+  if (hasSelected) {
+    // 選択解除
+    p.classList.remove('para-selected');
+    const chk = p.querySelector('.para-checkbox');
+    if (chk) chk.remove();
+  } else {
+    // 選択（チェックON）
+    p.classList.add('para-selected');
+    
+    // チェックボックススパンを左端に生成（鮮烈に目立つ赤レ点 ✔）
+    const chk = document.createElement('span');
+    chk.className = 'para-checkbox';
+    chk.contentEditable = 'false'; // 編集不可にして誤入力を防ぐ
+    chk.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    `;
+    
+    p.insertBefore(chk, p.firstChild);
+
+    // チェックマーク自体をタップしても解除できるようにイベントを紐付け
+    chk.onclick = (e) => {
+      e.stopPropagation();
+      toggleParagraphSelect(p, editor);
+    };
+  }
+
+  // 一括削除ボタンの表示状態を更新
+  updateBulkDeleteButtonState(editor);
+}
+
+// 一括削除ボタンの表示/非表示とアニメーションクラスのトグル
+function updateBulkDeleteButtonState(editor) {
+  const bulkDelBtn = document.getElementById('btnBulkDelete');
+  const bulkCopyBtn = document.getElementById('btnBulkCopy');
+  if (!editor) return;
+
+  const selectedCount = editor.querySelectorAll('p.para-selected').length;
+  if (selectedCount > 0) {
+    if (bulkDelBtn) {
+      bulkDelBtn.style.display = 'flex';
+      bulkDelBtn.style.transform = 'scale(1.15)';
+      bulkDelBtn.classList.add('pulse-delete-active');
+    }
+    if (bulkCopyBtn) {
+      bulkCopyBtn.style.display = 'flex';
+      bulkCopyBtn.style.transform = 'scale(1.15)';
+      bulkCopyBtn.classList.add('pulse-delete-active');
+    }
+  } else {
+    if (bulkDelBtn) {
+      bulkDelBtn.style.display = 'none';
+      bulkDelBtn.style.transform = 'scale(1)';
+      bulkDelBtn.classList.remove('pulse-delete-active');
+    }
+    if (bulkCopyBtn) {
+      bulkCopyBtn.style.display = 'none';
+      bulkCopyBtn.style.transform = 'scale(1)';
+      bulkCopyBtn.classList.remove('pulse-delete-active');
+    }
+  }
+}
+
+// 単一の段落の選択状態を解除してプレーンに戻す
+function cleanupSingleParagraph(p) {
+  if (!p || !p.classList.contains('para-selected')) return;
+  const chk = p.querySelector('.para-checkbox');
+  if (chk) chk.remove();
+  p.classList.remove('para-selected');
+  p.removeAttribute('class');
+}
+
+// すべての段落の選択状態をクリーンアップ
+function cleanupAllSwipedParagraphs(editor) {
+  if (!editor) return;
+  const selectedParas = Array.from(editor.querySelectorAll('.para-selected'));
+  selectedParas.forEach(p => cleanupSingleParagraph(p));
+  updateBulkDeleteButtonState(editor);
+}
+
+// エディタ全体のクリーンなHTMLを抽出（チェック用スパンを完全に排除してプレーンなHTMLを返す）
+function getCleanEditorHTML(editor) {
+  if (!editor) return '';
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = editor.innerHTML;
+  
+  // 異体字セレクタやゼロ幅スペースを保存用HTMLから除去（エディタDOMは触らない）
+  removeInvalidUnicodeFromNode(tempDiv);
+  
+  const children = Array.from(tempDiv.children);
+  children.forEach(child => {
+    const chk = child.querySelector('.para-checkbox');
+    if (chk) chk.remove();
+    child.classList.remove('para-selected');
+    // Pタグのみクラス名を除去し、YouTubeなどのDIVコンテナはクラスや属性をそのまま維持する
+    if (child.tagName === 'P') {
+      child.removeAttribute('class');
+    }
+  });
+  return tempDiv.innerHTML;
+}
+
+// 直接FirebaseにクリーンHTMLを同期保存
+function saveEditorContentDirectly(editor) {
+  if (!editor || !state.articleId || !state.categoryId || !state.uid) return;
+  const cleanHTML = getCleanEditorHTML(editor);
+  db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
+    content: cleanHTML,
+    updatedAt: Date.now()
+  }).catch(err => console.error("Native select delete save error:", err));
+}
+
+// スワイプイベントのバインド (イベントデリゲーション方式)
+function bindParagraphSwipeEvents(editor) {
+  cleanupNativeParagraphListeners(editor);
+
+  let txStart = 0, tyStart = 0;
+  const touchStartHandler = e => {
+    if (state.editorMode === 'edit') return; // 編集モード時はスワイプ無効
+    txStart = e.touches[0].clientX;
+    tyStart = e.touches[0].clientY;
+
+    // 編集状態でキーボードが開いている際、フリップしようとタッチした瞬間にフォーカスを外し（blur）、
+    // 画面スクロール位置を最上部に強制リセットして、隠れていたトップバーを即座に復活させる
+    const editorEl = document.getElementById('edContent');
+    if (editorEl && document.activeElement === editorEl) {
+      editorEl.blur();
+      setTimeout(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        const app = document.getElementById('app');
+        if (app) app.scrollTop = 0;
+        document.body.scrollTop = 0;
+        document.documentElement.scrollTop = 0;
+      }, 50);
+    }
+  };
+  const touchEndHandler = e => {
+    if (state.editorMode === 'edit') return; // 編集モード時はスワイプ無効
+    
+    // 文字選択（範囲選択）中はフリップ動作をキャンセル
+    if (window.getSelection().toString() !== '') return;
+
+    const dx = e.changedTouches[0].clientX - txStart;
+    const dy = Math.abs(e.changedTouches[0].clientY - tyStart);
+
+    if (Math.abs(dx) > 50 && dy < 40) {
+      if (dx < 0) {
+        // タップされた位置からエディタ直下のブロック要素（段落）を特定
+        let p = e.target;
+        while (p && p.parentNode !== editor) {
+          p = p.parentNode;
+        }
+        if (!p || p === editor) return;
+
+        // もし p が P タグでなかった場合、安全のために P タグでラップする（画像やむき出しテキストの安全対策）
+        if (p.tagName !== 'P') {
+          const wrapper = document.createElement('p');
+          p.parentNode.insertBefore(wrapper, p);
+          wrapper.appendChild(p);
+          p = wrapper;
+        }
+
+        toggleParagraphSelect(p, editor);
+      } else {
+        // 右フリップで前の画面に戻る
+        goBack();
+      }
+    }
+  };
+
+  editor.addEventListener('touchstart', touchStartHandler, { passive: true });
+  editor.addEventListener('touchend',   touchEndHandler,   { passive: true });
+
+  paraSwipeListeners.push({
+    element: editor,
+    start: touchStartHandler,
+    end: touchEndHandler
+  });
+}
+
+// 登録されたイベントやグローバルリスナーの解放
+function cleanupNativeParagraphListeners(editor) {
+  paraSwipeListeners.forEach(item => {
+    if (item.element) {
+      item.element.removeEventListener('touchstart', item.start);
+      item.element.removeEventListener('touchend', item.end);
+    }
+  });
+  paraSwipeListeners = [];
+
+  if (activeGlobalEditorClickCleanup) {
+    document.removeEventListener('click', activeGlobalEditorClickCleanup);
+    activeGlobalEditorClickCleanup = null;
+  }
+}
+
+// Undo（元に戻す）トーストの表示
+function showUndoToast(editor) {
+  const existing = document.getElementById('undo-toast');
+  if (existing) {
+    const oldCleanup = existing.cleanupEvents;
+    if (oldCleanup) oldCleanup();
+    existing.remove();
+  }
+
+  const toast = document.createElement('div');
+  toast.id = 'undo-toast';
+  toast.className = 'undo-toast-wrapper';
+  toast.innerHTML = `
+    <div class="undo-toast-box">
+      <span>段落を削除しました</span>
+      <button class="undo-btn" id="btnUndoAction">元に戻す</button>
+    </div>
+  `;
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add('visible');
+  });
+
+  const hideToast = () => {
+    toast.classList.remove('visible');
+    toast.classList.add('hiding');
+    setTimeout(() => {
+      if (toast.parentNode) toast.remove();
+    }, 400);
+    if (cleanupListeners) cleanupListeners();
+  };
+
+  // ユーザーの次の操作を監視して消去するイベントリスナー
+  const onNextAction = () => {
+    hideToast();
+  };
+
+  const cleanupListeners = () => {
+    editor.removeEventListener('keydown', onNextAction);
+    editor.removeEventListener('scroll', onNextAction);
+    document.removeEventListener('scroll', onNextAction);
+  };
+
+  // リスナー登録
+  editor.addEventListener('keydown', onNextAction, { passive: true });
+  editor.addEventListener('scroll', onNextAction, { passive: true });
+  document.addEventListener('scroll', onNextAction, { passive: true });
+
+  // 既存のトースト削除時にイベントを解除できるように参照を埋め込む
+  toast.cleanupEvents = cleanupListeners;
+
+  // 画面遷移時に必ず消えるよう listeners にも登録
+  listeners.push(() => {
+    cleanupListeners();
+    if (toast.parentNode) toast.remove();
+  });
+
+  document.getElementById('btnUndoAction').onclick = async (e) => {
+    e.stopPropagation();
+    if (lastDeletedContent !== null) {
+      editor.innerHTML = lastDeletedContent;
+      await saveEditorContentDirectly(editor);
+      initializeNativeParagraphActions(editor);
+      updateBulkDeleteButtonState(editor);
+      lastDeletedContent = null;
+    }
+    hideToast();
+  };
+}
+
+// カットした段落的貼り付け処理
+function pasteCutParagraphs(editor, targetP = null, location = 'after') {
+  if (!window.globalCutParagraphs || window.globalCutParagraphs.length === 0) return;
+  // ガイドメッセージ(.paste-guide-message)がFirebaseに保存・表示されるバグを防ぐ
+  removePasteMarker();
+  
+  let parentP = targetP;
+  let refLocation = location;
+  
+  if (!parentP) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      parentP = range.commonAncestorContainer;
+      if (parentP.nodeType === Node.TEXT_NODE) parentP = parentP.parentNode;
+      while (parentP && parentP.parentNode !== editor) {
+        parentP = parentP.parentNode;
+      }
+      refLocation = 'after';
+    }
+  }
+  
+  let inserted = false;
+  const insertedElements = [];
+  const parentNode = editor;
+  
+
+  if (parentP && parentP.tagName === 'P') {
+    let refNode = parentP;
+    window.globalCutParagraphs.forEach((html, idx) => {
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      const newEl = temp.firstElementChild;
+      if (!newEl) return;
+      
+      insertedElements.push(newEl);
+      
+      // 親段落のテキストが完全に空（または <br> のみ）かつ1枚目の場合、そこに直接置換する
+      if (idx === 0 && refNode === parentP && parentP.textContent.trim() === '' && !parentP.querySelector('img') && parentP.parentNode) {
+        parentP.parentNode.replaceChild(newEl, parentP);
+        refNode = newEl;
+      } else {
+        // 2枚目以降、またはコンテンツがある場合
+        const currentParent = refNode.parentNode || parentNode;
+        if (idx === 0 && refLocation === 'before') {
+          currentParent.insertBefore(newEl, refNode);
+        } else {
+          currentParent.insertBefore(newEl, refNode.nextSibling);
+        }
+        refNode = newEl;
+      }
+    });
+    inserted = true;
+  }
+  
+  if (!inserted) {
+    // ターゲットもキャレットもない場合は末尾に挿入
+    window.globalCutParagraphs.forEach(html => {
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+      const newEl = temp.firstElementChild;
+      if (newEl) {
+        editor.appendChild(newEl);
+        insertedElements.push(newEl);
+      }
+    });
+  }
+  
+  // 挿入された段落にフラッシュ効果を与える
+  insertedElements.forEach(el => {
+    el.classList.add('para-paste-animating');
+  });
+  
+  // 挿入後にエディタを正規化して保存
+  normalizeEditorHTML(editor);
+  editor.dispatchEvent(new Event('input'));
+  
+  // 1秒後にフラッシュクラスを除去
+  setTimeout(() => {
+    insertedElements.forEach(el => {
+      el.classList.remove('para-paste-animating');
+      if (el.getAttribute('class') === '') el.removeAttribute('class');
+    });
+  }, 1000);
+  
+  // ペースト完了後にメモリをクリア
+  window.globalCutParagraphs = null;
+  updatePasteButtonState();
+  
+  // 貼り付け完了後は閲覧モードに自動切替
+  if (typeof window._setEditorMode === 'function') window._setEditorMode('view');
+  
+  showToast("段落を貼り付けました");
+}
+
+// ── PCからスマホへの同期用QRコードモーダル ──────────
+function showQRCodeModal() {
+  const url = window.location.href;
+  const isLocalFile = url.startsWith('file:');
+  const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
+
+  let localWarningHTML = '';
+  if (isLocalFile) {
+    localWarningHTML = `
+      <div style="background: rgba(239, 68, 68, 0.15); border-radius: 12px; padding: 0.75rem; border: 1.5px dashed #ef4444; margin-top: 0.5rem; text-align: left; margin-bottom: 1.25rem;">
+        <span style="font-size: 0.85rem; font-weight: 800; color: #f87171; display: block; margin-bottom: 0.25rem;">💡 スマホで表示されない原因：</span>
+        <span style="font-size: 0.75rem; color: #e5e7eb; line-height: 1.55; display: block;">
+          PCでHTMLファイルを直接ダブルクリックして開いているため（file:/// 形式）、スマホからPCのファイルを読み取ることができません。<br>
+          <strong style="color: #f97316; display: block; margin-top: 0.35rem; margin-bottom: 0.15rem;">【解決策】</strong>
+          このメモアプリを Netlify や GitHub Pages などのサーバーにアップロード（デプロイ）し、その「公開されたURL（https://...）」でPCとスマホの両方からアクセスしてください。
+        </span>
+      </div>
+    `;
+  } else if (isLocalhost) {
+    localWarningHTML = `
+      <div style="background: rgba(245, 158, 11, 0.15); border-radius: 12px; padding: 0.75rem; border: 1.5px dashed #f59e0b; margin-top: 0.5rem; text-align: left; margin-bottom: 1.25rem;">
+        <span style="font-size: 0.85rem; font-weight: 800; color: #fbbf24; display: block; margin-bottom: 0.25rem;">💡 スマホで表示されない原因：</span>
+        <span style="font-size: 0.75rem; color: #e5e7eb; line-height: 1.55; display: block;">
+          PCでローカル開発サーバー（localhost）を起動しているため、スマホがPCの場所を特定できません。<br>
+          <strong style="color: #fbbf24; display: block; margin-top: 0.35rem; margin-bottom: 0.15rem;">【解決策】</strong>
+          1. PCとスマホを<strong>「同じWi-Fi」</strong>に接続します。<br>
+          2. PCのIPアドレス（例: 192.168.X.X）を調べ、ブラウザで <code>http://[PCのIPアドレス]:[ポート番号]</code> で開いた状態でQRコードを表示させてください。
+        </span>
+      </div>
+    `;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'qrModalOverlay';
+  overlay.innerHTML = `
+    <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+      <div class="modal-box" style="border: 2px solid #ef4444; max-width: 360px; text-align: center; background: #1c2230; padding: 1.5rem; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+        <div style="background: rgba(239, 68, 68, 0.1); border-radius: 12px; padding: 0.75rem; border: 1px solid rgba(239, 68, 68, 0.3); margin-bottom: 1.25rem;">
+          <span style="font-size: 1.25rem; display: block; margin-bottom: 0.35rem; font-weight: 800; color: #f87171;">⚠️【厳重注意】</span>
+          <span style="font-size: 0.8rem; font-weight: 700; color: #fca5a5; line-height: 1.55; display: block;">
+            このQRコードはあなた専用のFirebase同期URLです。<br>
+            他人に読み取られないよう十分に注意してください！
+          </span>
+        </div>
+        <div style="background: #fff; padding: 1rem; border-radius: 16px; display: inline-block; box-shadow: 0 4px 16px rgba(0,0,0,0.3); margin-bottom: 1.25rem;">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}" alt="スマホ連動用QRコード" style="display: block; width: 200px; height: 200px; image-rendering: pixelated;"/>
+        </div>
+        ${localWarningHTML}
+        <button class="btn-secondary" id="qrCloseBtn" style="width: 100%; border-radius: 12px; padding: 0.75rem; font-weight: 700;">閉じる</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#qrCloseBtn').onclick = close;
+  overlay.onclick = e => { if (e.target === overlay || e.target.id === 'qrModalOverlay') close(); };
+}
+
+// ── SCREEN: ログイン画面（メール・パスワード認証） ──────────
+function renderLogin(container) {
+  container.innerHTML = `
+    <div class="screen-login">
+      <div class="login-glass-bg"></div>
+      <div class="login-card">
+        <div class="login-logo">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+        </div>
+        <h1 class="login-title">PCスマホ連動メモ</h1>
+        <p class="login-desc">
+          このアプリを使用するにはログインが必要です
+        </p>
+        <div class="login-error" id="loginError" style="display:none;"></div>
+        <input type="email" class="login-input" id="loginEmail" placeholder="メールアドレス" autocomplete="email" />
+        <input type="password" class="login-input" id="loginPassword" placeholder="パスワード" autocomplete="current-password" />
+        <button class="login-btn btn-login-primary" id="btnLogin">ログイン</button>
+        <button class="login-btn btn-login-secondary" id="btnRegister">新規登録</button>
+        <div class="login-divider"><span>または</span></div>
+        <button class="login-btn btn-google" id="btnGoogleLogin">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="display: block;">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
+          </svg>
+          Google でログイン
+        </button>
+      </div>
+    </div>
+  `;
+
+  const emailInput = document.getElementById('loginEmail');
+  const passInput = document.getElementById('loginPassword');
+  const errorDiv = document.getElementById('loginError');
+
+  function showLoginError(msg) {
+    errorDiv.textContent = msg;
+    errorDiv.style.display = 'block';
+  }
+
+  function getFirebaseAuthErrorMessage(code) {
+    const messages = {
+      'auth/invalid-email': 'メールアドレスの形式が正しくありません。',
+      'auth/user-disabled': 'このアカウントは無効化されています。',
+      'auth/user-not-found': 'アカウントが見つかりません。新規登録してください。',
+      'auth/wrong-password': 'パスワードが間違っています。',
+      'auth/invalid-credential': 'メールアドレスまたはパスワードが間違っています。',
+      'auth/email-already-in-use': 'このメールアドレスは既に登録されています。',
+      'auth/weak-password': 'パスワードは6文字以上にしてください。',
+      'auth/too-many-requests': 'ログイン試行回数が多すぎます。しばらく待ってから再試行してください。',
+      'auth/network-request-failed': 'ネットワークエラーです。接続を確認してください。',
+      'auth/operation-not-allowed': '\n\n💡 Firebaseコンソールで該当の認証方式が有効になっていません。\n\n【解決方法】\nFirebaseコンソール ➤ Authentication ➤ Sign-in method で有効にしてください。',
+    };
+    return messages[code] || 'エラーが発生しました。もう一度お試しください。';
+  }
+
+  // ログインボタン
+  document.getElementById('btnLogin').onclick = async () => {
+    errorDiv.style.display = 'none';
+    const email = emailInput.value.trim();
+    const pass = passInput.value;
+    if (!email || !pass) {
+      showLoginError('メールアドレスとパスワードを入力してください。');
+      return;
+    }
+    try {
+      await firebase.auth().signInWithEmailAndPassword(email, pass);
+    } catch (err) {
+      console.error('Login Error:', err);
+      showLoginError(getFirebaseAuthErrorMessage(err.code));
+    }
+  };
+
+  // 新規登録ボタン
+  document.getElementById('btnRegister').onclick = async () => {
+    errorDiv.style.display = 'none';
+    const email = emailInput.value.trim();
+    const pass = passInput.value;
+    if (!email || !pass) {
+      showLoginError('メールアドレスとパスワードを入力してください。');
+      return;
+    }
+    if (pass.length < 6) {
+      showLoginError('パスワードは6文字以上にしてください。');
+      return;
+    }
+    try {
+      await firebase.auth().createUserWithEmailAndPassword(email, pass);
+    } catch (err) {
+      console.error('Register Error:', err);
+      showLoginError(getFirebaseAuthErrorMessage(err.code));
+    }
+  };
+
+  // Googleログインボタン
+  document.getElementById('btnGoogleLogin').onclick = async () => {
+    errorDiv.style.display = 'none';
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await firebase.auth().signInWithPopup(provider);
+    } catch (err) {
+      console.error("Google Sign-In Error:", err);
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+        try {
+          await firebase.auth().signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+        } catch (redirErr) {
+          showLoginError("ログイン画面の起動に失敗しました: " + redirErr.message);
+        }
+      } else {
+        showLoginError(getFirebaseAuthErrorMessage(err.code));
+      }
+    }
+  };
+
+  // Enterキーでログイン
+  passInput.onkeydown = (e) => {
+    if (e.key === 'Enter') document.getElementById('btnLogin').click();
+  };
+}
+
+// 購入促進ダイアログ（無料ユーザーがパネル4個目を作ろうとした時）
+function showPurchasePrompt() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="purchaseModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+      <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+        <div style="font-size:2.5rem;margin-bottom:0.75rem;">🔒</div>
+        <h2 style="color:#fff;font-size:1.1rem;margin-bottom:0.5rem;font-weight:800;">全機能を使うには¥100が必要です</h2>
+        <p style="color:rgba(255,255,255,0.6);font-size:0.82rem;line-height:1.5;margin-bottom:1.5rem;">無料プランではパネルを3個まで作成できます。<br>購入するとパネル無制限で全機能が使えます。</p>
+        <button id="btnPurchase" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);transition:transform 0.15s;">¥100で購入する</button>
+        <button id="btnPurchaseClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-size:0.85rem;cursor:pointer;font-family:var(--font);">閉じる</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('btnPurchaseClose').onclick = () => { root.innerHTML = ''; };
+  document.getElementById('purchaseModal').onclick = (e) => { if (e.target.id === 'purchaseModal') root.innerHTML = ''; };
+  document.getElementById('btnPurchase').onclick = () => {
+    // Stripe Payment Link へ遷移（後で実際のURLに差し替え）
+    const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID';
+    window.open(paymentUrl, '_blank');
+    root.innerHTML = '';
+    showToast('決済ページを開きました。購入完了後、アプリを再読み込みしてください。');
+  };
+}
+
+// ── 起動と認証の監視 ────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // 🔍 貼られた画像をタップした際の拡大表示（ライトボックス）イベント
+  document.body.addEventListener('click', e => {
+    if (e.target.tagName === 'IMG' && (e.target.classList.contains('inserted-img') || e.target.closest('.editor-content') || e.target.closest('.article-body'))) {
+      showLightbox(e.target.src);
+    }
+  });
+
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="screen-login"><div class="loading-spinner">認証状態を確認中…</div></div>';
+  app.classList.add('visible');
+
+  firebase.auth().onAuthStateChanged(async (user) => {
+    if (user) {
+      // ログイン済み — 購入状態を読み取り
+      state.uid = user.uid;
+      try {
+        const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
+        state.isPremium = premSnap.val() === true;
+      } catch (e) {
+        state.isPremium = false;
+      }
+      goTo('home');
+    } else {
+      // 未ログイン
+      state.uid = null;
+      state.isPremium = false;
+      goTo('login');
+    }
+  });
+});
+
+// ── 添付ファイル（写真・書類）関連の補助関数 ────────────────
+
+// 写真の自動縮小・圧縮・挿入
+async function handleAttachedImage(file, editor) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const base64Src = evt.target.result;
+      const tempImg = new Image();
+      tempImg.onload = function() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const MAX_SIZE = 800;
+        let width = tempImg.width;
+        let height = tempImg.height;
+        
+        if (width > MAX_SIZE || height > MAX_SIZE) {
+          if (width > height) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          } else {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(tempImg, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
+        
+        const img = document.createElement('img');
+        img.src = compressedBase64;
+        img.className = 'inserted-img inserted-img-highlight';
+        img.contentEditable = 'false';
+        
+        const pImg = document.createElement('p');
+        pImg.appendChild(img);
+        
+        insertNodeAtCursor(pImg, editor);
+        // 3秒後に黄色枚を除去
+        setTimeout(() => { img.classList.remove('inserted-img-highlight'); }, 3000);
+        resolve();
+      };
+      tempImg.src = base64Src;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ドキュメント（PDF等）の添付カード挿入
+async function handleAttachedDocument(file, editor) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const base64Data = evt.target.result;
+      
+      const docCard = document.createElement('div');
+      docCard.className = 'attached-file-card';
+      docCard.contentEditable = 'false';
+      
+      const sizeKB = (file.size / 1024).toFixed(1);
+      
+      docCard.innerHTML = `
+        <div class="file-card-inner" onclick="downloadBase64File('${base64Data}', '${file.name}')">
+          <div class="file-card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </div>
+          <div class="file-card-info">
+            <div class="file-card-name">${esc(file.name)}</div>
+            <div class="file-card-size">${sizeKB} KB (タップで保存)</div>
+          </div>
+        </div>
+      `;
+      
+      const pDoc = document.createElement('p');
+      pDoc.appendChild(docCard);
+      
+      insertNodeAtCursor(pDoc, editor);
+      resolve();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// 添付ファイルのダウンロード処理（グローバル関数化）
+function downloadBase64File(base64Data, fileName) {
+  const a = document.createElement('a');
+  a.href = base64Data;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+window.downloadBase64File = downloadBase64File;
+
+// カーソル（キャレット）位置にノードを綺麗に挿入する共通関数（余分な空段落バグを完全に修正！）
+function insertNodeAtCursor(node, editor) {
+  const sel = window.getSelection();
+  let inserted = false;
+  
+  if (sel && sel.rangeCount > 0) {
+    const range = sel.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) {
+      range.deleteContents();
+      
+      // カーソル位置の親段落を特定
+      let parentP = range.commonAncestorContainer;
+      if (parentP.nodeType === Node.TEXT_NODE) {
+        parentP = parentP.parentNode;
+      }
+      while (parentP && parentP.parentNode !== editor) {
+        parentP = parentP.parentNode;
+      }
+      
+      if (parentP && parentP.tagName === 'P') {
+        // 親段落のテキストが完全に空（または <br> のみ）の場合
+        if (parentP.textContent.trim() === '' && !parentP.querySelector('img')) {
+          parentP.innerHTML = '';
+          parentP.appendChild(node.firstChild); // 空段落に中身を直接入れ替える
+          inserted = true;
+          
+          // その直後に空段落がなければ追加
+          if (!parentP.nextSibling) {
+            const nextP = document.createElement('p');
+            nextP.appendChild(document.createElement('br'));
+            parentP.parentNode.insertBefore(nextP, parentP.nextSibling);
+          }
+        } else {
+          // コンテンツがある場合は、その親段落の直後に挿入
+          parentP.parentNode.insertBefore(node, parentP.nextSibling);
+          inserted = true;
+          
+          // 新しく空段落を1つ追加し、そこにカーソルを合わせる（すでに下に空行がある場合はそれを利用して2重改行を防ぐ）
+          let nextP = node.nextSibling;
+          if (!nextP || nextP.tagName !== 'P' || nextP.textContent.trim() !== '' || nextP.querySelector('img')) {
+            nextP = document.createElement('p');
+            nextP.appendChild(document.createElement('br'));
+            node.parentNode.insertBefore(nextP, node.nextSibling);
+          }
+          
+          const newRange = document.createRange();
+          newRange.setStart(nextP, 0);
+          newRange.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        }
+      }
+    }
+  }
+  
+  if (!inserted) {
+    editor.appendChild(node);
+    const nextP = document.createElement('p');
+    nextP.appendChild(document.createElement('br'));
+    editor.appendChild(nextP);
+  }
+}
+
+
+
+// クリップボードのペーストボタンの表示制御
+function updatePasteButtonState() {
+  const pasteBtn = document.getElementById('btnPaste');
+  const cancelBtn = document.getElementById('btnPasteCancel');
+  if (!pasteBtn) return;
+  if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
+    pasteBtn.style.display = 'flex';
+    pasteBtn.classList.add('pulse-delete-active');
+    if (cancelBtn) cancelBtn.style.display = 'flex';
+  } else {
+    pasteBtn.style.display = 'none';
+    pasteBtn.classList.remove('pulse-delete-active');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+  }
+}
+
+// 🔍 貼られた画像をタップした際の拡大表示（ライトボックス）
+function showLightbox(src) {
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox-overlay';
+  overlay.innerHTML = `
+    <div class="lightbox-content">
+      <img src="${src}" class="lightbox-img" />
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  
+  overlay.onclick = () => {
+    overlay.classList.add('fade-out');
+    setTimeout(() => overlay.remove(), 250);
+  };
+}
+
+// トーストメッセージをキュー管理で順次表示する関数
+function showToast(msg) {
+  toastQueue.push(msg);
+  processToastQueue();
+}
+
+function processToastQueue() {
+  if (isToastShowing || toastQueue.length === 0) return;
+  
+  isToastShowing = true;
+  const msg = toastQueue.shift();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast-msg';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.classList.add('visible');
+  }, 50);
+  
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    setTimeout(() => {
+      toast.remove();
+      isToastShowing = false;
+      processToastQueue();
+    }, 300);
+  }, 2200);
+}
+
+// スマホ・PC共用 画像長押しドラッグ＆ドロップ移動の制御
+function setupImageDragAndDrop(editor) {
+  if (!editor) return;
+
+  let dragTarget = null; // ドラッグ対象の画像 (IMG)
+  let activeP = null;    // 画像が含まれている親段落 (P)
+  let ghostEl = null;    // ポップアップ（クローンプレビュー）要素
+  let insertLine = null; // 挿入箇所を示すライン
+  let insertPosition = null; // { targetP: HTMLElement, location: 'before' | 'after' }
+  let pressTimer = null;
+  let isDraggingImg = false;
+  let startX = 0, startY = 0;
+
+  // 挿入ラインインジケーターの生成
+  const showInsertLine = (targetP, location) => {
+    if (!insertLine) {
+      insertLine = document.createElement('div');
+      insertLine.style.height = '4px';
+      insertLine.style.background = '#f97316'; // 鮮やかなオレンジ
+      insertLine.style.boxShadow = '0 0 8px #f97316';
+      insertLine.style.borderRadius = '2px';
+      insertLine.style.position = 'absolute';
+      insertLine.style.left = '1.25rem';
+      insertLine.style.right = '1.25rem';
+      insertLine.style.zIndex = '1000';
+      insertLine.style.pointerEvents = 'none';
+      insertLine.style.transition = 'top-offset 0.1s ease';
+    }
+
+    const rect = targetP.getBoundingClientRect();
+    const editorRect = editor.getBoundingClientRect();
+    const scrollTop = editor.scrollTop;
+
+    // editorの相対位置を計算
+    let top = 0;
+    if (location === 'before') {
+      top = rect.top - editorRect.top + scrollTop - 2;
+    } else {
+      top = rect.bottom - editorRect.top + scrollTop - 2;
+    }
+
+    insertLine.style.top = `${top}px`;
+    if (!insertLine.parentNode) {
+      editor.appendChild(insertLine);
+    }
+
+    insertPosition = { targetP, location };
+  };
+
+  const removeInsertLine = () => {
+    if (insertLine && insertLine.parentNode) {
+      insertLine.remove();
+    }
+    insertPosition = null;
+  };
+
+  // タッチ・マウス操作 of 共有ハンドラ
+  const onStart = (e, clientX, clientY, target) => {
+    if (target.tagName !== 'IMG' || !target.classList.contains('inserted-img')) return;
+
+    // 長押し保存メニューや標準ドラッグをキャンセルして競合を防止
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    e.stopPropagation();
+
+    dragTarget = target;
+    activeP = target.closest('p');
+    if (!activeP) return;
+
+    startX = clientX;
+    startY = clientY;
+
+    if (pressTimer) clearTimeout(pressTimer);
+    
+    // 350msの長押しでポップアップ起動
+    pressTimer = setTimeout(() => {
+      isDraggingImg = true;
+      
+      // キーボードを閉じる
+      if (document.activeElement === editor) {
+        editor.blur();
+      }
+
+      // クローン（ポップアッププレビュー）の生成
+      ghostEl = dragTarget.cloneNode(true);
+      ghostEl.style.position = 'fixed';
+      ghostEl.style.width = `${dragTarget.offsetWidth}px`;
+      ghostEl.style.height = `${dragTarget.offsetHeight}px`;
+      ghostEl.style.opacity = '0.85';
+      ghostEl.style.zIndex = '99999';
+      ghostEl.style.pointerEvents = 'none';
+      ghostEl.style.transform = 'scale(1.05)'; // 少し浮かび上がる効果
+      ghostEl.style.boxShadow = '0 15px 30px rgba(0,0,0,0.5)';
+      ghostEl.style.transition = 'transform 0.1s ease, box-shadow 0.1s ease';
+      document.body.appendChild(ghostEl);
+
+      // 元画像を半透明化
+      dragTarget.style.opacity = '0.35';
+
+      updateGhostPosition(clientX, clientY);
+    }, 350);
+  };
+
+  const updateGhostPosition = (clientX, clientY) => {
+    if (!ghostEl) return;
+    ghostEl.style.left = `${clientX - ghostEl.offsetWidth / 2}px`;
+    ghostEl.style.top = `${clientY - ghostEl.offsetHeight / 2}px`;
+  };
+
+  const onMove = (e, clientX, clientY) => {
+    // 指やマウスが動いた場合、長押し前ならキャンセル
+    if (!isDraggingImg) {
+      if (Math.abs(clientX - startX) > 10 || Math.abs(clientY - startY) > 10) {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+      }
+      return;
+    }
+
+    e.preventDefault();
+    updateGhostPosition(clientX, clientY);
+
+    // 指の直下にある段落を検知
+    const elements = document.elementsFromPoint(clientX, clientY);
+    let targetP = null;
+    for (let el of elements) {
+      if (el.tagName === 'P' && editor.contains(el)) {
+        targetP = el;
+        break;
+      }
+    }
+
+    if (targetP) {
+      const rect = targetP.getBoundingClientRect();
+      const relativeY = clientY - rect.top;
+      // 段落の真ん中より上なら前に、下なら後ろに挿入ラインを表示
+      const location = relativeY < rect.height / 2 ? 'before' : 'after';
+      showInsertLine(targetP, location);
+    } else {
+      removeInsertLine();
+    }
+  };
+
+  const onEnd = () => {
+    if (!isDraggingImg) {
+      // pressTimer が残っている（＝移動距離が小さく、350ms以内に指が離れた）場合のみタップとみなす
+      if (pressTimer && dragTarget) {
+        showLightbox(dragTarget.src);
+      }
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+      dragTarget = null;
+      activeP = null;
+      return;
+    }
+
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+
+    isDraggingImg = false;
+    
+    // 元画像の不透明度を復元
+    if (dragTarget) {
+      dragTarget.style.opacity = '';
+    }
+
+    // クローンとインジケーターの消去
+    if (ghostEl) {
+      ghostEl.remove();
+      ghostEl = null;
+    }
+
+    if (insertPosition && dragTarget && activeP) {
+      const { targetP, location } = insertPosition;
+      
+      // 画像段落ごと移動させる
+      if (activeP !== targetP) {
+        const parent = editor;
+        if (location === 'before') {
+          parent.insertBefore(activeP, targetP);
+        } else {
+          parent.insertBefore(activeP, targetP.nextSibling);
+        }
+        
+        // 保存と正規化
+        normalizeEditorHTML(editor);
+        editor.dispatchEvent(new Event('input'));
+        
+        showToast("画像を移動しました");
+      }
+    }
+
+    removeInsertLine();
+    dragTarget = null;
+    activeP = null;
+  };
+
+  // タッチイベントのバインド
+  editor.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      onStart(e, e.touches[0].clientX, e.touches[0].clientY, e.target);
+    }
+  }, { passive: false });
+
+  editor.addEventListener('touchmove', e => {
+    if (isDraggingImg && e.touches.length === 1) {
+      onMove(e, e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: false });
+
+  editor.addEventListener('touchend', onEnd);
+  editor.addEventListener('touchcancel', onEnd);
+
+  // マウスイベントのバインド
+  editor.addEventListener('mousedown', e => {
+    if (e.button === 0) { // 左クリックのみ
+      onStart(e, e.clientX, e.clientY, e.target);
+    }
+  });
+
+  const mouseMoveHandler = e => {
+    if (isDraggingImg) {
+      onMove(e, e.clientX, e.clientY);
+    }
+  };
+
+  const mouseUpHandler = () => {
+    onEnd();
+  };
+
+  document.addEventListener('mousemove', mouseMoveHandler);
+  document.addEventListener('mouseup', mouseUpHandler);
+
+  // エディタアンロード時のイベント解放用（listenersへ登録）
+  listeners.push(() => {
+    document.removeEventListener('mousemove', mouseMoveHandler);
+    document.removeEventListener('mouseup', mouseUpHandler);
+  });
+}
+
+// PC用の画像削除ボタン（ゴミ箱アイコン）の表示・制御
+function setupImageDeleteButtons(editor) {
+  if (!editor) return;
+  let activeDeleteBtn = null;
+  let activeImg = null;
+
+  const removeDeleteBtn = () => {
+    if (activeDeleteBtn) {
+      activeDeleteBtn.remove();
+      activeDeleteBtn = null;
+      activeImg = null;
+    }
+  };
+
+  // 画像の上にホバーしたときに削除ボタンを表示
+  editor.addEventListener('mouseover', e => {
+    const img = e.target;
+    if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
+      if (activeImg === img) return;
+      removeDeleteBtn();
+      activeImg = img;
+
+      const screenEditor = editor.closest('.screen-editor');
+      if (!screenEditor) return;
+
+      const btn = document.createElement('button');
+      btn.className = 'img-delete-btn';
+      btn.innerHTML = '✖';
+      btn.title = '画像を削除';
+      btn.contentEditable = 'false';
+      btn.style.position = 'absolute';
+
+      // screenEditor を基準とした相対座標を計算して配置を安定させる
+      const rect = img.getBoundingClientRect();
+      const parentRect = screenEditor.getBoundingClientRect();
+      const top = rect.top - parentRect.top;
+      const left = rect.left - parentRect.left;
+
+      btn.style.top = `${top + 8}px`;
+      btn.style.left = `${left + 8}px`;
+      btn.style.zIndex = '150';
+
+      // mousedownでフォーカスがエディタから移動するのを防ぎ、blurイベントによるボタン消滅を防ぐ
+      btn.onmousedown = (event) => {
+        event.preventDefault();
+      };
+
+      btn.onclick = (event) => {
+        event.stopPropagation();
+        event.preventDefault();
+        if (confirm('この画像を削除しますか？')) {
+          img.remove(); // 親段落ごとではなく画像タグのみを安全に削除
+          removeDeleteBtn();
+          normalizeEditorHTML(editor);
+          editor.dispatchEvent(new Event('input'));
+        }
+      };
+
+      screenEditor.appendChild(btn);
+      activeDeleteBtn = btn;
+    } else {
+      // ホバー対象が画像以外で、ボタン自体でもない場合
+      if (activeDeleteBtn && (e.target === activeDeleteBtn || activeDeleteBtn.contains(e.target))) {
+        return;
+      }
+      removeDeleteBtn();
+    }
+  });
+
+  // エディタからマウスが外れたら削除ボタンを消す
+  editor.addEventListener('mouseleave', e => {
+    setTimeout(() => {
+      if (activeDeleteBtn) {
+        const isHoverBtn = activeDeleteBtn.matches(':hover');
+        const isHoverImg = activeImg && activeImg.matches(':hover');
+        if (!isHoverBtn && !isHoverImg) {
+          removeDeleteBtn();
+        }
+      }
+    }, 150);
+  });
+
+  // スクロールや入力、フォーカスが外れたら位置がズレるので消去
+  editor.addEventListener('scroll', removeDeleteBtn, { passive: true });
+  editor.addEventListener('input', removeDeleteBtn);
+  editor.addEventListener('blur', () => setTimeout(removeDeleteBtn, 200));
+}
+
