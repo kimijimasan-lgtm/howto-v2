@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TipTap 基本動作テスト</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 1.25rem;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+    }
+    h1 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+    .note {
+      font-size: 0.85rem;
+      color: #8b949e;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+    .status {
+      font-size: 0.8rem;
+      color: #3fb950;
+      margin-bottom: 0.75rem;
+      min-height: 1.2em;
+    }
+    .editor-shell {
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      min-height: 240px;
+      background: #161b22;
+    }
+    /* TipTap(ProseMirror)の出力する.ProseMirrorに対するスタイル */
+    .ProseMirror {
+      outline: none;
+      line-height: 1.85;
+      font-size: 1rem;
+    }
+    .ProseMirror p { margin: 0 0 0.6em; }
+    .ProseMirror p:last-child { margin-bottom: 0; }
+    .log {
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      color: #8b949e;
+      white-space: pre-wrap;
+      word-break: break-all;
+      border-top: 1px solid #30363d;
+      padding-top: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 TipTap 基本セットアップ テストページ</h1>
+  <p class="note">
+    これは本番アプリ（index.html）とは完全に独立したテスト用ページです。<br>
+    現段階では「テキスト入力・改行」だけを確認します（最優先項目）。<br>
+    iPhoneでこのページを開き、日本語入力 → 変換確定 → Enter改行の挙動を試してください。
+  </p>
+  <div class="status" id="status">読み込み中…</div>
+  <div class="editor-shell">
+    <div id="editor"></div>
+  </div>
+  <div class="log" id="log"></div>
+
+  <script type="module">
+    import { Editor } from 'https://esm.sh/@tiptap/core@2.x';
+    import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.x';
+
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+
+    try {
+      const editor = new Editor({
+        element: document.querySelector('#editor'),
+        extensions: [StarterKit],
+        content: '<p>ここに日本語を入力して、変換確定とEnter改行の挙動を確認してください。</p><p>2行目はこちら。</p>',
+        autofocus: 'end',
+        onUpdate: ({ editor }) => {
+          logEl.textContent = 'HTML出力:\n' + editor.getHTML();
+        },
+      });
+
+      statusEl.textContent = '✅ TipTapエディターの初期化に成功しました（StarterKit使用）';
+      logEl.textContent = 'HTML出力:\n' + editor.getHTML();
+    } catch (err) {
+      statusEl.style.color = '#f85149';
+      statusEl.textContent = '❌ TipTapの初期化に失敗しました: ' + err.message;
+      console.error(err);
+    }
+  </script>
+</body>
+</html>
