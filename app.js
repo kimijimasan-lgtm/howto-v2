@@ -1235,7 +1235,7 @@ function createArticle(noTransition = false) {
     listeners = [];
     if (saveTimer) clearTimeout(saveTimer);
     navHistory.push({ screen: state.screen, categoryId: state.categoryId, articleId: state.articleId });
-    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true };
+    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true, _isNewCard: true };
     
     const appEl = document.getElementById('app');
     appEl.classList.remove('visible');
@@ -1369,9 +1369,6 @@ function renderEditor(container) {
     if (state.pendingAutoEditMode) {
       state.pendingAutoEditMode = false;
       setEditorMode('edit');
-      // プレースホルダーはFirebaseデータ読み込み後に挙動
-      // (isNewCardフラグをセットしておく)
-      state._isNewCard = true;
     } else {
       setEditorMode('view');
     }
@@ -1719,77 +1716,79 @@ function renderEditor(container) {
 
     let raw = snap.val()?.content || '';
 
-    // 過去のバージョンの不具合により、新規カードのプレースホルダー文言が
-    // 実テキストとしてそのまま保存されてしまったカードを自動修復する
-    // （本来は空のカードとして扱い、CSSのプレースホルダー表示に戻す）
-    const legacyPlaceholderHTML = '<p>1行目がタイトルになります</p><p>2行目から本文を書いてください…</p>';
-    if (raw.trim() === legacyPlaceholderHTML) {
-      raw = '';
-      db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
-        .update({ content: '', updatedAt: Date.now() })
-        .catch(() => {});
-    }
-
-    // ── コンテンツをクリーンなHTMLに変換 ──────────────────
-    let displayHTML;
-    const isHTML = raw.trimStart().startsWith('<');
-
-    if (!isHTML) {
-      // プレーンテキスト or 破損（HTMLタグが文字として混入）
-      const decoded = raw
-        .replace(/<br\s*\/?>/gi,          '\n')   // <br>→改行
-        .replace(/<\/?(div|p|h\d|li)[^>]*>/gi, '\n') // ブロックタグ→改行
-        .replace(/<[^>]*>/g,              '')     // 残タグ除去
-        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); // エンティティ復元
-
-      const lines = decoded.split('\n')
-        .map(l => stripMarkdown(l.trim()))
-        .filter(l => l.length > 0);
-
-      displayHTML = lines.map(l => `<p>${esc(l)}</p>`).join('') || '<p><br></p>';
-      editor.innerHTML = displayHTML;
-
-      // 変換内容をFirebaseに保存（次回からHTMLとして正常ロード）
-      db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
-        .update({ content: displayHTML, updatedAt: Date.now() })
-        .catch(() => {});
-
-    } else {
-      // 正常なHTML：テキストノードのMarkdownだけ除去
-      editor.innerHTML = raw;
-      const before = editor.innerHTML;
-      stripMarkdownFromDOM(editor);
-      const after = editor.innerHTML;
-      displayHTML = after;
-
-      if (after !== before) {
-        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
-          .update({ content: after, updatedAt: Date.now() })
-          .catch(() => {});
-      }
-    }
-
-    if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
-    
-    // 新規カード作成時はカーソルを先頭に配置してフォーカス（本文には何も書き込まず、完全に空のまま開く）
     if (state._isNewCard) {
+      // 新規カードは「完全に空の<p></p>1つだけ」から開始するシンプルな実装。
+      // 既存カードの読み込みパイプライン（プレーンテキスト判定／HTML判定／
+      // Markdown除去／旧データの自己修復チェック等）には一切触れず、
+      // 確実に空の編集領域とカーソル位置だけを用意する。
       state._isNewCard = false;
-      // 1行目の先頭にカーソルを配置
+      editor.innerHTML = '<p><br></p>';
+
       const firstP = editor.querySelector('p');
       if (firstP) {
         const range = document.createRange();
         const sel = window.getSelection();
-        if (firstP.firstChild && firstP.firstChild.nodeType === Node.TEXT_NODE) {
-          range.setStart(firstP.firstChild, 0);
-        } else {
-          range.setStart(firstP, 0);
-        }
+        range.setStart(firstP, 0);
         range.collapse(true);
         sel.removeAllRanges();
         sel.addRange(range);
       }
+
+      if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
       editor.focus();
     } else {
+      // 過去のバージョンの不具合により、新規カードのプレースホルダー文言が
+      // 実テキストとしてそのまま保存されてしまったカードを自動修復する
+      // （本来は空のカードとして扱う）
+      const looksLikeLegacyPlaceholder = raw.includes('1行目がタイトルになります')
+        && raw.includes('2行目から本文を書いてください');
+      if (looksLikeLegacyPlaceholder) {
+        raw = '';
+        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+          .update({ content: '', updatedAt: Date.now() })
+          .catch(() => {});
+      }
+
+      // ── コンテンツをクリーンなHTMLに変換 ──────────────────
+      let displayHTML;
+      const isHTML = raw.trimStart().startsWith('<');
+
+      if (!isHTML) {
+        // プレーンテキスト or 破損（HTMLタグが文字として混入）
+        const decoded = raw
+          .replace(/<br\s*\/?>/gi,          '\n')   // <br>→改行
+          .replace(/<\/?(div|p|h\d|li)[^>]*>/gi, '\n') // ブロックタグ→改行
+          .replace(/<[^>]*>/g,              '')     // 残タグ除去
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); // エンティティ復元
+
+        const lines = decoded.split('\n')
+          .map(l => stripMarkdown(l.trim()))
+          .filter(l => l.length > 0);
+
+        displayHTML = lines.map(l => `<p>${esc(l)}</p>`).join('') || '<p><br></p>';
+        editor.innerHTML = displayHTML;
+
+        // 変換内容をFirebaseに保存（次回からHTMLとして正常ロード）
+        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+          .update({ content: displayHTML, updatedAt: Date.now() })
+          .catch(() => {});
+
+      } else {
+        // 正常なHTML：テキストノードのMarkdownだけ除去
+        editor.innerHTML = raw;
+        const before = editor.innerHTML;
+        stripMarkdownFromDOM(editor);
+        const after = editor.innerHTML;
+        displayHTML = after;
+
+        if (after !== before) {
+          db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+            .update({ content: after, updatedAt: Date.now() })
+            .catch(() => {});
+        }
+      }
+
+      if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
       editor.focus();
     }
     initializeNativeParagraphActions(editor);
@@ -2142,13 +2141,6 @@ function normalizeEditorHTML(editor) {
   if (needNormalize || hasSplit) {
     const tempDiv = document.createElement('div');
     let currentP = null;
-    // currentPが既存の<p>タグの複製である場合はtrue。
-    // iPhoneのIME確定時に、変換確定したテキストが<p>の外側へ
-    // 直接のテキストノードとして漏れ出すことがあり、これを複製済みの
-    // currentP（＝直前の段落）にそのまま追記すると段落同士が連結されて
-    // しまうバグの原因になっていた。漏れ出したテキストは直前の段落に
-    // 混ぜず、必ず新しい段落として独立させる。
-    let currentPIsClone = false;
 
     // 子ノードを走査し、すべてPタグまたは特別に許可したDIVコンテナにする
     Array.from(editor.childNodes).forEach(node => {
@@ -2157,17 +2149,15 @@ function normalizeEditorHTML(editor) {
         if (text.replace(/\s+/g, '') === '') {
           return;
         }
-        if (!currentP || currentPIsClone) {
+        if (!currentP) {
           currentP = document.createElement('p');
           tempDiv.appendChild(currentP);
-          currentPIsClone = false;
         }
         currentP.appendChild(document.createTextNode(text));
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const tagName = node.tagName;
         if (tagName === 'P') {
           currentP = node.cloneNode(true);
-          currentPIsClone = true;
           tempDiv.appendChild(currentP);
         } else if (tagName === 'BR') {
           currentP = document.createElement('p');
@@ -2219,6 +2209,33 @@ function initializeNativeParagraphActions(editor) {
     // compositionend直後の短い猶予期間は「改行リクエスト」として扱わないようにする
     compositionJustEnded = true;
     setTimeout(() => { compositionJustEnded = false; }, 80);
+
+    // iPhoneのIME確定時、変換確定したテキストが<p>タグの外側へ
+    // エディタ直下の生のテキストノードとして漏れ出すことがある。
+    // これをnormalizeEditorHTMLの汎用ロジックに任せると、
+    //   ・直前の段落が空のとき　　→ 本来その段落に入るべき文字が別行に飛ぶ
+    //   ・直前の段落に文字があるとき → 行同士が連結されてしまう
+    // という相反する不具合が起きるため、ここで段落への入れ直しを行う。
+    // 直前の<p>が空（未入力）なら「その段落への入力が漏れた」とみなし中へ戻す。
+    // 直前の<p>に文字がある場合は連結を避けるため独立した新しい段落として包む。
+    Array.from(editor.childNodes).forEach(node => {
+      if (node.nodeType !== Node.TEXT_NODE || node.textContent.trim() === '') return;
+
+      const prev = node.previousElementSibling;
+      const prevIsEmptyP = prev && prev.tagName === 'P'
+        && prev.textContent.trim() === '' && !prev.querySelector('img');
+
+      if (prevIsEmptyP) {
+        const br = prev.querySelector('br');
+        if (br) br.remove();
+        prev.appendChild(document.createTextNode(node.textContent));
+        node.remove();
+      } else {
+        const wrapperP = document.createElement('p');
+        node.parentNode.insertBefore(wrapperP, node);
+        wrapperP.appendChild(node);
+      }
+    });
 
     // 確定時に正規化を実行（DOMを直接変更しない。保存時にgetCleanEditorHTML内でクリーンアップする）
     normalizeEditorHTML(editor);
