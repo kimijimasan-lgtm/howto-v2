@@ -2,259 +2,430 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
+  <!-- キャッシュ無効化 — 古い内容が出る場合は URL に ?v=10 などを付けてリロード -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>TipTap 基本動作テスト</title>
+  <title>TipTap Step 5 v8a</title>
   <style>
     * { box-sizing: border-box; }
     body {
-      margin: 0;
-      padding: 1.25rem;
+      margin: 0; padding: 1.25rem;
       font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
-      background: #0d1117;
-      color: #e6edf3;
+      background: #0d1117; color: #e6edf3;
     }
-    h1 { font-size: 1.05rem; margin: 0 0 0.5rem; }
-    .note {
-      font-size: 0.85rem;
-      color: #8b949e;
-      line-height: 1.6;
-      margin-bottom: 1rem;
-    }
+    h1 { font-size: 1.05rem; margin: 0 0 0.2rem; }
+    .version-tag { font-size: 0.72rem; color: #484f58; margin-bottom: 0.6rem; }
+    .note { font-size: 0.82rem; color: #8b949e; line-height: 1.6; margin-bottom: 0.9rem; }
+    .note code { background: #161b22; padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.9em; }
     .status {
-      font-size: 0.8rem;
-      color: #3fb950;
-      margin-bottom: 0.75rem;
-      min-height: 1.2em;
+      font-size: 0.82rem; margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem; background: #161b22;
+      border-radius: 8px; border: 1px solid #30363d;
+    }
+    .row-btns { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .btn {
+      font-size: 0.78rem; padding: 0.35rem 0.75rem;
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      border-radius: 6px; cursor: pointer; user-select: none;
+    }
+    .btn:active { background: #30363d; }
+    .section-label {
+      font-size: 0.72rem; font-weight: 700; color: #8b949e;
+      text-transform: uppercase; letter-spacing: 0.05em; margin: 1rem 0 0.3rem;
     }
     .editor-shell {
-      border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 1rem 1.1rem;
-      min-height: 240px;
-      background: #161b22;
+      border: 1px solid #30363d; border-radius: 10px;
+      padding: 0.9rem 1rem; min-height: 130px; background: #161b22;
     }
-    /* TipTap(ProseMirror)の出力する.ProseMirrorに対するスタイル */
-    .ProseMirror {
-      outline: none;
-      line-height: 1.85;
-      font-size: 1rem;
-    }
-    .ProseMirror p { margin: 0 0 0.6em; }
+    .ProseMirror { outline: none; line-height: 1.85; font-size: 0.95rem; }
+    .ProseMirror p { margin: 0 0 0.5em; }
     .ProseMirror p:last-child { margin-bottom: 0; }
-    .ProseMirror img {
-      max-width: 100%;
-      border-radius: 8px;
-      display: block;
-      margin: 0.5em 0;
-    }
-    .ProseMirror div[data-youtube-video] {
-      margin: 0.5em 0;
-    }
+    .ProseMirror img { max-width: 100%; border-radius: 6px; display: block; margin: 0.4em 0; }
+    .ProseMirror div[data-youtube-video] { margin: 0.5em 0; }
     .ProseMirror div[data-youtube-video] iframe {
-      max-width: 100%;
-      border-radius: 8px;
-      aspect-ratio: 16 / 9;
-      width: 100%;
+      max-width: 100%; border-radius: 8px; aspect-ratio: 16/9; width: 100%;
     }
-    .ProseMirror ul[data-type="taskList"] {
-      list-style: none;
-      padding-left: 0;
-      margin: 0.4em 0;
+    .check-list {
+      background: #161b22; border: 1px solid #30363d;
+      border-radius: 8px; padding: 0.6rem 0.9rem; margin-top: 0.3rem;
     }
-    .ProseMirror ul[data-type="taskList"] li {
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5em;
+    .check-row {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+      font-size: 0.8rem; padding: 0.3rem 0;
+      border-bottom: 1px solid #21262d;
     }
-    .ProseMirror ul[data-type="taskList"] li > label {
-      flex-shrink: 0;
-      margin-top: 0.2em;
+    .check-row:last-child { border-bottom: none; }
+    .badge {
+      font-size: 0.68rem; font-weight: 700;
+      padding: 0.15rem 0.4rem; border-radius: 4px;
+      white-space: nowrap; flex-shrink: 0; margin-top: 2px;
     }
-    .ProseMirror ul[data-type="taskList"] li > div {
-      flex: 1;
+    .badge.pass { background: #238636; color: #fff; }
+    .badge.fail { background: #da3633; color: #fff; }
+    .badge.skip { background: #30363d; color: #8b949e; }
+    .result-box {
+      background: #0d1117; border: 1px solid #21262d; border-radius: 6px;
+      padding: 0.5rem 0.65rem; font-size: 0.68rem; font-family: monospace;
+      white-space: pre-wrap; word-break: break-all; color: #8b949e;
+      max-height: 160px; overflow-y: auto;
     }
-    .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
-      text-decoration: line-through;
-      color: #8b949e;
-    }
-    .btn-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 0.75rem;
-    }
-    .btn-attach {
-      display: inline-block;
-      padding: 0.6rem 1rem;
-      font-size: 0.9rem;
-      color: #e6edf3;
-      background: #21262d;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    .btn-attach:active { background: #30363d; }
-    .log {
-      margin-top: 1rem;
-      font-size: 0.75rem;
-      color: #8b949e;
-      white-space: pre-wrap;
-      word-break: break-all;
-      border-top: 1px solid #30363d;
-      padding-top: 0.75rem;
-    }
+    .diag-section { background: #0d1117; border: 1px solid #21262d; border-radius: 10px; padding: 0.75rem 1rem; margin-top: 0.75rem; }
+    .diag-title { font-size: 0.7rem; font-weight: 700; color: #6e7681; margin: 0.5rem 0 0.25rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .diag-title:first-child { margin-top: 0; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+    @media(max-width:600px) { .grid2 { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <h1>🧪 TipTap 基本セットアップ テストページ（Step 4: チェックボックス）</h1>
+  <h1>🧪 TipTap Step 5 v8: 既存HTML読み込み検証</h1>
+  <div class="version-tag" id="versionTag">build: loading…</div>
   <p class="note">
-    これは本番アプリ（index.html）とは完全に独立したテスト用ページです。<br>
-    Step 1（テキスト入力・改行）・Step 2（画像インライン挿入）・Step 3（YouTube埋め込み）に続き、今回は「チェックボックス（タスクリスト）」を確認します。<br>
-    画像は現行アプリと同じ方式（最大800px・JPEG圧縮・base64データURL化）で取り込み、チェックボックスはボタンでカーソル位置にタスクリストを挿入・タップでチェックのON/OFFができます。
+    <strong>v8 の修正（③ 復元方式を抜本的に変更）:</strong><br>
+    Safari は <code>data-original-src</code> などの追加属性を TipTap スキーマ経由で保持しない。<br>
+    そのため TipTap の内部構造に一切依存せず、<strong>元の HTML から抽出した <code>data:</code> URL を
+    <code>getHTML()</code> 後の <code>blob:</code> URL と順番に差し替える</strong>方式に変更。<br>
+    CustomImage 拡張も不要になり、標準 ImageExtension をそのまま使用。
   </p>
-  <div class="status" id="status">読み込み中…</div>
-  <div class="btn-row">
-    <button class="btn-attach" id="btnAttach" type="button">📎 画像を挿入（カーソル位置に追加）</button>
-    <button class="btn-attach" id="btnYoutube" type="button">▶️ YouTube動画を埋め込む</button>
-    <button class="btn-attach" id="btnCheckbox" type="button">☑️ チェックボックスを挿入</button>
+
+  <div class="status" id="status">初期化中…</div>
+
+  <div class="row-btns">
+    <button class="btn" id="rerunBtn" onclick="rerunTest()" disabled>🔄 強制再テスト</button>
   </div>
-  <input type="file" id="fileInput" accept="image/*" style="display:none" />
+
+  <div class="section-label">▶ TipTap エディター</div>
   <div class="editor-shell">
     <div id="editor"></div>
   </div>
-  <div class="log" id="log"></div>
+
+  <div class="section-label">▶ 検証チェックリスト</div>
+  <div class="check-list" id="checkList">初期化後に更新されます</div>
+
+  <details>
+    <summary style="font-size:0.8rem;color:#8b949e;cursor:pointer;margin-top:0.9rem;user-select:none;">
+      🔍 診断パネル（クリックで展開）
+    </summary>
+    <div class="diag-section">
+      <div class="grid2">
+        <div>
+          <div class="diag-title" style="color:#79c0ff;">元の HTML（EXISTING_HTML）</div>
+          <div class="result-box" id="boxRaw"></div>
+        </div>
+        <div>
+          <div class="diag-title" style="color:#a5d6ff;">前処理後 HTML（TipTap に渡す）</div>
+          <div class="result-box" id="boxPre"></div>
+        </div>
+      </div>
+      <div class="diag-title" style="color:#56d364;">getHTML() 生出力（復元前）</div>
+      <div class="result-box" id="boxRawOut"></div>
+      <div class="diag-title" style="color:#3fb950;">getHTML() 復元後（チェックに使用）</div>
+      <div class="result-box" id="boxOut"></div>
+      <div class="diag-title" style="color:#f0883e;">前処理ログ</div>
+      <div class="result-box" id="boxLog"></div>
+    </div>
+  </details>
 
   <script type="module">
-    const statusEl = document.getElementById('status');
-    const logEl = document.getElementById('log');
-    const btnAttach = document.getElementById('btnAttach');
-    const fileInput = document.getElementById('fileInput');
-    const btnYoutube = document.getElementById('btnYoutube');
-    const btnCheckbox = document.getElementById('btnCheckbox');
+    const BUILD = '2025-06-09 v8a';
+    document.getElementById('versionTag').textContent = 'build: ' + BUILD;
 
-    // 「読み込み中…」のまま固まる問題（iPhoneからesm.sh CDNに到達できない）への対策として、
-    // CDNには一切依存せず、事前にローカルでビルドした単一ファイル
-    // tiptap-bundle.js（TipTap core + StarterKit + Image拡張を1ファイルに同梱）を
-    // 同じプロジェクトフォルダから読み込む方式に変更。
-    // （tiptap-bundle.js は .tiptap-build/entry.js を esbuild でバンドルして生成済み。
-    //   通常の動作にビルド作業は不要で、このファイルを置くだけで動く。
-    //   Step 3でYoutubeExtensionも同梱するように再ビルド済み。）
+    const statusEl  = document.getElementById('status');
+    const checkList = document.getElementById('checkList');
+    const boxRaw    = document.getElementById('boxRaw');
+    const boxPre    = document.getElementById('boxPre');
+    const boxRawOut = document.getElementById('boxRawOut');
+    const boxOut    = document.getElementById('boxOut');
+    const boxLog    = document.getElementById('boxLog');
+    const rerunBtn  = document.getElementById('rerunBtn');
+
+    // ─────────────────────────────────────────────────────────────────────
+    // テストデータ
+    // ─────────────────────────────────────────────────────────────────────
+    const EXISTING_HTML = [
+      '<p>1行目：これが最初の段落です。</p>',
+      '<p>2行目：日本語テキストの入力テスト。</p>',
+      '<p class="para-selected">3行目：para-selected クラスが混入した段落（閲覧モード残留）。</p>',
+      '<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFklEQVR42mNk+A9QTwMBAAIQAQDkAFEAhlaL0AAAAABJRU5ErkJggg==" class="inserted-img" contenteditable="false"></p>',
+      '<p><div class="youtube-container" contenteditable="false"><iframe width="100%" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div></p>',
+      '<p>5行目：YouTube の下の通常段落。</p>',
+    ].join('\n');
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ③ 修正: 元 HTML から data: URL を抽出し、順番差し替えで復元
+    //
+    // Safari の TipTap 内部処理が data: src を blob: に変換する。
+    // 属性経由の保持は Safari で機能しないため、
+    // 元 HTML に含まれる data: URL を配列で保持しておき、
+    // getHTML() 出力に現れた blob: URL を出現順に差し替える。
+    //
+    // 前提: 入力と出力で img の順番が保たれる（TipTap の通常動作）
+    // ─────────────────────────────────────────────────────────────────────
+    function extractDataUrls(html) {
+      const urls = [];
+      html.replace(/<img\b[^>]*\bsrc="(data:[^"]+)"/gi, (_, src) => urls.push(src));
+      return urls;
+    }
+
+    // getHTML() 後処理: blob: src を元の data: URL に置換
+    function restoreOriginalSrcs(rawOut, origDataUrls) {
+      let idx = 0;
+      const blobMatches = rawOut.match(/\bsrc="blob:[^"]+"/gi) || [];
+      const result = rawOut.replace(/\bsrc="(blob:[^"]+)"/gi, (match) => {
+        const orig = origDataUrls[idx++];
+        return orig ? 'src="' + orig + '"' : match;
+      });
+
+      const restored = Math.min(idx, origDataUrls.length);
+      const logLine = blobMatches.length === 0
+        ? '[restore] blob: URL なし（data: のまま、または img なし）'
+        : '[restore] blob: ' + blobMatches.length + ' 件 → ' + restored + ' 件を data: に復元 ' +
+          (restored === blobMatches.length ? '✓' : '！要確認（元 URL 数: ' + origDataUrls.length + '）');
+      boxLog.textContent += '\n' + logLine;
+      return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // 前処理（完全文字列処理 — DOM 不使用）
+    // ─────────────────────────────────────────────────────────────────────
+    function preprocessHTMLForTipTap(html) {
+      const logs = [];
+      let result = html;
+
+      // Step 1: img — contenteditable / class を除去（src はそのまま base64 を渡す）
+      // ★ data-original-src は不要。復元は JS 配列で行う。
+      let imgCount = 0;
+      result = result.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+        imgCount++;
+        attrs = attrs.replace(/\s+contenteditable="[^"]*"/gi, '');
+        attrs = attrs.replace(/\s+class="[^"]*"/gi, '');
+        return '<img' + attrs + '>';
+      });
+      if (imgCount) logs.push('[img] ' + imgCount + ' 件: contenteditable / class 除去');
+
+      // Step 2: <p class="..."> の class を除去
+      result = result.replace(/<p(\s[^>]*)>/gi, (match, attrs) => {
+        if (!attrs.includes('class=')) return match;
+        const cls = (attrs.match(/class="([^"]*)"/) || [])[1] || '';
+        logs.push('[p] class 除去: "' + cls + '"');
+        return '<p' + attrs.replace(/\s*class="[^"]*"/, '') + '>';
+      });
+
+      // Step 3: YouTube を TipTap 形式に変換（DOM 不使用 → 重複なし）
+      const ytRe =
+        /<p>\s*<div[^>]*class="youtube-container"[^>]*>[\s\S]*?src="[^"]*youtube\.com\/embed\/([^?"&#\s]+)[^"]*"[\s\S]*?<\/div>\s*<\/p>/gi;
+      let ytCount = 0;
+      result = result.replace(ytRe, (match, videoId) => {
+        ytCount++;
+        logs.push('[YouTube #' + ytCount + '] videoId: ' + videoId);
+        return '<div data-youtube-video><iframe src="https://www.youtube.com/embed/' + videoId + '"></iframe></div>';
+      });
+      if (!ytCount) logs.push('[YouTube] マッチなし（元 HTML を要確認）');
+
+      return { html: result, logs };
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // チェック（①②⑤ は固定テキスト比較なし）
+    // ─────────────────────────────────────────────────────────────────────
+    function runChecks(out) {
+      // ⑤ の条件判定: 入力（processedHTML）に YouTube 後テキストがある場合のみ検証
+      const ytInInput = processedHTML.indexOf('data-youtube-video');
+      const hasPostYtInInput = ytInInput !== -1 &&
+        /<p[^>]*>[^<]/.test(processedHTML.slice(ytInInput + 'data-youtube-video'.length));
+
+      const ytIdx = out.indexOf('data-youtube-video');
+      const checks = [
+        {
+          label: '① テキスト段落が存在する',
+          pass: /<p[^>]*>[^<]/.test(out),
+          skip: false,
+          note: '<p> 内にテキストが含まれているか（内容は問わない）',
+        },
+        {
+          label: '② class="para-selected" が除去されている',
+          pass: !out.includes('class="para-selected"'),
+          skip: false,
+          note: '<p class="para-selected"> が出力に残っていないか',
+        },
+        {
+          label: '③ 画像が data: URL で保持されている',
+          pass: out.includes('<img') && out.includes('data:image/') && !out.includes('blob:'),
+          skip: false,
+          note: 'blob: URL が data: URL に正しく復元されているか',
+        },
+        {
+          label: '④ YouTube 埋め込みが存在する',
+          pass: out.includes('youtube') || out.includes('youtu'),
+          skip: false,
+          note: 'YouTube URL が出力に含まれるか',
+        },
+        {
+          label: '④-detail: TipTap YouTube ノード形式',
+          pass: out.includes('data-youtube-video'),
+          skip: false,
+          note: '<div data-youtube-video> で出力されているか',
+        },
+        {
+          label: '⑤ YouTube の後にコンテンツがある',
+          // 入力に YouTube 後テキストがない場合は SKIP（不適用）
+          pass: hasPostYtInInput
+            ? ytIdx !== -1 && /<p[^>]*>[^<]/.test(out.slice(ytIdx))
+            : true,
+          skip: !hasPostYtInInput,
+          note: hasPostYtInInput
+            ? 'YouTube ノード以降にテキスト段落が存在するか'
+            : '入力に YouTube 後テキストなし → スキップ',
+        },
+      ];
+
+      const activeChecks = checks.filter(c => !c.skip);
+      const allPass = activeChecks.every(c => c.pass);
+      checkList.innerHTML = checks.map(c => `
+        <div class="check-row">
+          <span class="badge ${c.skip ? 'skip' : c.pass ? 'pass' : 'fail'}">
+            ${c.skip ? 'SKIP' : c.pass ? 'OK' : 'NG'}
+          </span>
+          <span>
+            <strong>${c.label}</strong><br>
+            <span style="color:#6e7681;font-size:0.74rem">${c.note}</span>
+          </span>
+        </div>`).join('');
+
+      if (allPass) {
+        statusEl.style.color = '#3fb950';
+        statusEl.textContent = '✅ 全チェック通過！既存 HTML は TipTap で正常に読み込めます。';
+      } else {
+        const ng = activeChecks.filter(c => !c.pass).map(c => c.label).join('、');
+        statusEl.style.color = '#d29922';
+        statusEl.textContent = '⚠️ NG: ' + ng;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // タイムアウト監視
+    // ─────────────────────────────────────────────────────────────────────
     let settled = false;
-    const watchdog = setTimeout(() => {
+    let watchdog = setTimeout(() => {
       if (settled) return;
       settled = true;
       statusEl.style.color = '#f85149';
-      statusEl.textContent = '⏱️ タイムアウト: tiptap-bundle.js の読み込みが10秒以上応答していません。同じフォルダにファイルが存在するか確認してください。';
+      statusEl.textContent = '⏱️ タイムアウト（10秒）: tiptap-bundle.js が応答しません';
     }, 10000);
+    function markSettled() { settled = true; clearTimeout(watchdog); }
 
-    function markSettled() {
-      settled = true;
-      clearTimeout(watchdog);
+    // ─────────────────────────────────────────────────────────────────────
+    // メイン
+    // ─────────────────────────────────────────────────────────────────────
+    let editor = null;
+    let processedHTML = '';
+    let origDataUrls  = [];   // EXISTING_HTML から抽出した data: URL 群
+    let TipTapClasses = null;
+
+    try {
+      statusEl.textContent = '⏳ tiptap-bundle.js を読み込み中…';
+      TipTapClasses = await import('./tiptap-bundle.js');
+      await initEditor();
+      rerunBtn.disabled = false;
+    } catch (err) {
+      markSettled();
+      statusEl.style.color = '#f85149';
+      statusEl.textContent = '❌ 初期化失敗: ' + (err && err.message ? err.message : String(err));
+      console.error(err);
     }
 
-    let editor;
-    try {
-      statusEl.textContent = '⏳ ローカルのTipTapバンドル（tiptap-bundle.js）を読み込み中…';
-      const { Editor, StarterKit, ImageExtension: Image, YoutubeExtension, TaskList, TaskItem } = await import('./tiptap-bundle.js');
+    async function initEditor() {
+      const { Editor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem } = TipTapClasses;
 
-      statusEl.textContent = '⏳ エディターを初期化しています…';
+      if (editor) { editor.destroy(); editor = null; }
+
+      const editorEl = document.querySelector('#editor');
+      editorEl.innerHTML = '';
+
+      statusEl.style.color = '';
+      statusEl.textContent = '⏳ 前処理中…';
+
+      boxRaw.textContent    = EXISTING_HTML;
+      boxRawOut.textContent = '';
+      boxOut.textContent    = '';
+
+      // 元 HTML の data: URL を抽出（復元用）
+      origDataUrls = extractDataUrls(EXISTING_HTML);
+
+      const result = preprocessHTMLForTipTap(EXISTING_HTML);
+      processedHTML = result.html;
+      boxPre.textContent = processedHTML;
+      boxLog.textContent = result.logs.join('\n') +
+        '\n[origDataUrls] ' + origDataUrls.length + ' 件抽出' ||
+        '（ログなし）';
+
+      statusEl.textContent = '⏳ TipTap 初期化中…';
+
+      // CustomImage 拡張は不要: 標準 ImageExtension で OK
+      // blob: → data: の復元は origDataUrls による順番差し替えで行う
       editor = new Editor({
-        element: document.querySelector('#editor'),
+        element: editorEl,
         extensions: [
           StarterKit,
-          Image.configure({ inline: true, allowBase64: true }),
+          ImageExtension.configure({ inline: true, allowBase64: true }),
           YoutubeExtension.configure({ inline: false, controls: true, nocookie: false }),
           TaskList,
           TaskItem.configure({ nested: true }),
         ],
-        content: '<p>ここに日本語を入力してテストできます。</p><p>下のボタンから画像・YouTube動画・チェックボックスを挿入すると、この段落の間に差し込まれます。</p>',
-        autofocus: 'end',
-        onUpdate: ({ editor }) => {
-          logEl.textContent = 'HTML出力:\n' + editor.getHTML();
+        content: processedHTML,
+        editorProps: {
+          attributes: { autocomplete: 'off', autocorrect: 'off', autocapitalize: 'off' },
         },
       });
 
+      const reapply = () => { if (editor) editor.commands.setContent(processedHTML, false); };
+      setTimeout(reapply, 100);
+      setTimeout(reapply, 300);
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      refreshOutput();
       markSettled();
-      statusEl.style.color = '#3fb950';
-      statusEl.textContent = '✅ TipTapエディターの初期化に成功しました（StarterKit + Image + YouTube + チェックボックス拡張）';
-      logEl.textContent = 'HTML出力:\n' + editor.getHTML();
-    } catch (err) {
-      markSettled();
-      statusEl.style.color = '#f85149';
-      statusEl.textContent = '❌ TipTapの読み込み/初期化に失敗しました: ' + (err && err.message ? err.message : err);
-      console.error(err);
+
+      editor.on('update', refreshOutput);
     }
 
-    // 現行アプリと同じ方式：最大800px・JPEG 0.75品質に圧縮してbase64データURL化
-    function compressImageToDataURL(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          const tempImg = new window.Image();
-          tempImg.onload = () => {
-            const MAX_SIZE = 800;
-            let width = tempImg.width;
-            let height = tempImg.height;
-            if (width > MAX_SIZE || height > MAX_SIZE) {
-              if (width > height) {
-                height = Math.round((height * MAX_SIZE) / width);
-                width = MAX_SIZE;
-              } else {
-                width = Math.round((width * MAX_SIZE) / height);
-                height = MAX_SIZE;
-              }
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            canvas.getContext('2d').drawImage(tempImg, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.75));
-          };
-          tempImg.onerror = reject;
-          tempImg.src = evt.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+    function refreshOutput() {
+      if (!editor) return;
+      const rawOut = editor.getHTML();
+      boxRawOut.textContent = rawOut;
+      boxLog.textContent = boxLog.textContent.split('\n[restore]')[0];
+      const restored = restoreOriginalSrcs(rawOut, origDataUrls);
+      boxOut.textContent = restored;
+      runChecks(restored);
     }
 
-    btnYoutube.onclick = () => {
-      if (!editor) return;
-      const url = window.prompt('YouTubeの動画URLを貼り付けてください\n例: https://www.youtube.com/watch?v=XXXXXXXXXXX');
-      if (!url) return;
-      const inserted = editor.commands.setYoutubeVideo({ src: url.trim() });
-      if (inserted) {
-        statusEl.style.color = '#3fb950';
-        statusEl.textContent = '✅ YouTube動画をカーソル位置に埋め込みました';
-      } else {
+    window.rerunTest = async function () {
+      rerunBtn.disabled = true;
+      settled = false;
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         statusEl.style.color = '#f85149';
-        statusEl.textContent = '❌ YouTube動画の埋め込みに失敗しました（URLの形式を確認してください）';
-      }
-    };
-
-    btnCheckbox.onclick = () => {
-      if (!editor) return;
-      editor.chain().focus().toggleTaskList().run();
-    };
-
-    btnAttach.onclick = () => fileInput.click();
-
-    fileInput.onchange = async () => {
-      const file = fileInput.files && fileInput.files[0];
-      fileInput.value = '';
-      if (!file || !editor) return;
-
-      statusEl.textContent = '⏳ 画像を圧縮・挿入しています…';
-      try {
-        const dataURL = await compressImageToDataURL(file);
-        editor.chain().focus().setImage({ src: dataURL }).run();
-        statusEl.textContent = '✅ 画像をカーソル位置に挿入しました（インライン表示を確認してください）';
-      } catch (err) {
+        statusEl.textContent = '⏱️ タイムアウト（10秒）';
+      }, 10000);
+      try { await initEditor(); }
+      catch (err) {
+        markSettled();
         statusEl.style.color = '#f85149';
-        statusEl.textContent = '❌ 画像の挿入に失敗しました: ' + err.message;
-        console.error(err);
+        statusEl.textContent = '❌ 再テスト失敗: ' + (err.message || String(err));
       }
+      rerunBtn.disabled = false;
     };
+
+    window.addEventListener('pageshow', e => {
+      if (e.persisted && editor) {
+        editor.commands.setContent(processedHTML, false);
+        setTimeout(refreshOutput, 200);
+      }
+    });
   </script>
 </body>
 </html>
