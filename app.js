@@ -2457,12 +2457,13 @@ function bindParagraphSwipeEvents(editor) {
   };
   const touchEndHandler = e => {
     if (state.editorMode === 'edit') return; // 編集モード時はスワイプ無効
-    
+
     // 文字選択（範囲選択）中はフリップ動作をキャンセル
     if (window.getSelection().toString() !== '') return;
 
-    const dx = e.changedTouches[0].clientX - txStart;
-    const dy = Math.abs(e.changedTouches[0].clientY - tyStart);
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - txStart;
+    const dy = Math.abs(touch.clientY - tyStart);
 
     if (Math.abs(dx) > 50 && dy < 40) {
       if (dx < 0) {
@@ -2484,11 +2485,32 @@ function bindParagraphSwipeEvents(editor) {
         // 右フリップで前の画面に戻る
         goBack();
       }
+    } else if (Math.abs(dx) <= 15 && dy <= 15 && window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
+      // 短タップ＋カットバッファあり → 貼り付けマーカーを設定
+      // e.preventDefault() により合成 click イベントの二重発火を防ぐ
+      e.preventDefault();
+      let targetEl = e.target;
+      while (targetEl && targetEl.parentNode !== editor) {
+        targetEl = targetEl.parentNode;
+      }
+      if (!targetEl || targetEl.classList.contains('paste-insert-line')) {
+        targetEl = findNearestEditorChild(editor, touch.clientY);
+      }
+      if (targetEl) {
+        const rect = targetEl.getBoundingClientRect();
+        const relativeY = touch.clientY - rect.top;
+        const location = (relativeY < rect.height / 2) ? 'before' : 'after';
+        if (activePasteMarkerP === targetEl && activePasteLocation === location) {
+          removePasteMarker();
+        } else {
+          showPasteMarker(targetEl, location);
+        }
+      }
     }
   };
 
   editor.addEventListener('touchstart', touchStartHandler, { passive: true });
-  editor.addEventListener('touchend',   touchEndHandler,   { passive: true });
+  editor.addEventListener('touchend',   touchEndHandler,   { passive: false }); // 貼り付けマーカー用に preventDefault が必要
 
   paraSwipeListeners.push({
     element: editor,
