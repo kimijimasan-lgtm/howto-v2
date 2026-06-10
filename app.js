@@ -163,25 +163,36 @@ let paraSortable = null;
 let paraSwipeListeners = [];
 let justEditedArticleId = null;  // 直前に編集したカードのID（フラッシュ明滅用）
 let lastDeletedContent = null;   // 削除直前のエディタHTML（Undo用）
+let tiptapEditor = null;         // TipTapエディターインスタンス
 
 // ── エディター内容の即時強制保存 ─────────────────
 function forceSaveEditorContent() {
   if (state.screen !== 'editor' || !state.articleId || !state.categoryId || !state.uid) return;
-  const editor = document.getElementById('edContent');
-  if (!editor) return;
-  
+
   if (saveTimer) clearTimeout(saveTimer);
-  
-  // 保存時は確実にスワイプなどの付帯タグを取り除いたクリーンなHTMLを保存する
-  const cleanHTML = getCleanEditorHTML(editor);
-  
+
+  let cleanHTML = '';
+  if (tiptapEditor) {
+    cleanHTML = tiptapEditor.getHTML();
+  } else {
+    const editor = document.getElementById('edContent');
+    if (editor) cleanHTML = getCleanEditorHTML(editor);
+  }
+
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
     content: cleanHTML,
     updatedAt: Date.now()
   }).catch(err => console.error("Force save error:", err));
 
+  // TipTapインスタンスを破棄
+  if (tiptapEditor) {
+    tiptapEditor.destroy();
+    tiptapEditor = null;
+  }
+
   // リスナー解放
-  cleanupNativeParagraphListeners(editor);
+  const editor = document.getElementById('edContent');
+  if (editor) cleanupNativeParagraphListeners(editor);
 }
 
 // ── 画面遷移 ─────────────────────────────────
@@ -203,6 +214,7 @@ function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
   listeners.forEach(fn => fn());
   listeners = [];
   if (saveTimer) clearTimeout(saveTimer);
+  if (tiptapEditor) { tiptapEditor.destroy(); tiptapEditor = null; }
 
   state = { screen, categoryId, articleId, uid: state.uid };
 
@@ -239,6 +251,7 @@ function goBack(skipSave = false) {
   listeners.forEach(fn => fn());
   listeners = [];
   if (saveTimer) clearTimeout(saveTimer);
+  if (tiptapEditor) { tiptapEditor.destroy(); tiptapEditor = null; }
 
   state = { screen: prev.screen, categoryId: prev.categoryId, articleId: prev.articleId, uid: state.uid };
 
@@ -1302,7 +1315,7 @@ function renderEditor(container) {
           </button>
         </div>
       </header>
-      <div id="edContent" class="editor-content" contenteditable="false"></div>
+      <div id="edContent" class="editor-content"></div>
       <div class="mode-toggle-bar mode-view" id="btnModeToggle"><span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span></div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
@@ -1312,24 +1325,27 @@ function renderEditor(container) {
   // 閲覧／編集モード切り替えの制御
   function setEditorMode(mode) {
     state.editorMode = mode;
-    const editor = document.getElementById('edContent');
     const toggleBar = document.getElementById('btnModeToggle');
-    if (!editor || !toggleBar) return;
+    if (!toggleBar) return;
+    const proseMirrorEl = tiptapEditor ? tiptapEditor.view.dom : null;
 
     if (mode === 'edit') {
       toggleBar.className = 'mode-toggle-bar mode-edit';
       toggleBar.innerHTML = '<span class="toggle-line1">【編集モード】文字入力、範囲指定、コピペが使えます。</span><span class="toggle-line2">一部のアイコンが使えません。</span>';
-      editor.setAttribute('contenteditable', 'true');
-      cleanupAllSwipedParagraphs(editor);
+      if (tiptapEditor) tiptapEditor.setEditable(true);
+      if (proseMirrorEl) cleanupAllSwipedParagraphs(proseMirrorEl);
     } else {
       toggleBar.className = 'mode-toggle-bar mode-view';
       toggleBar.innerHTML = '<span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span>';
-      editor.setAttribute('contenteditable', 'false');
-      editor.blur();
-      const marker = editor.querySelector('.paste-insert-line');
-      if (marker) marker.remove();
-      normalizeEditorHTML(editor);
-      editor.dispatchEvent(new Event('input'));
+      if (tiptapEditor) {
+        tiptapEditor.setEditable(false);
+        tiptapEditor.commands.blur();
+      }
+      const edContent = document.getElementById('edContent');
+      if (edContent) {
+        const marker = edContent.querySelector('.paste-insert-line');
+        if (marker) marker.remove();
+      }
     }
   }
   // initializeNativeParagraphActions等の外部関数から呼べるように登録
@@ -1360,7 +1376,7 @@ function renderEditor(container) {
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
       setEditorMode('edit');
-      editorEl.focus();
+      if (tiptapEditor) tiptapEditor.commands.focus();
     });
   }
 
@@ -1404,45 +1420,33 @@ function renderEditor(container) {
     fileInput.onchange = async (e) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
-      
-      const editor = document.getElementById('edContent');
-      if (!editor) return;
-      
+      if (!tiptapEditor) return;
+
       // 挿入前のHTMLを退避 (Undo用)
-      lastDeletedContent = getCleanEditorHTML(editor);
-      
-      // 保存した選択範囲を復元
-      if (state.savedRange) {
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(state.savedRange);
-      }
-      
+      lastDeletedContent = tiptapEditor.getHTML();
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (file.type.indexOf('image') !== -1) {
-          await handleAttachedImage(file, editor);
+          await handleImageForTipTap(file);
         }
       }
-      
+
       state.savedRange = null;
       fileInput.value = '';
-      
-      normalizeEditorHTML(editor);
-      editor.dispatchEvent(new Event('input'));
     };
   }
 
   const pasteBtn = document.getElementById('btnPaste');
   if (pasteBtn) {
     pasteBtn.onclick = () => {
-      const editor = document.getElementById('edContent');
-      if (editor) {
+      const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
+      if (pm) {
         if (activePasteMarkerP) {
-          pasteCutParagraphs(editor, activePasteMarkerP, activePasteLocation);
+          pasteCutParagraphs(pm, activePasteMarkerP, activePasteLocation);
           removePasteMarker();
         } else {
-          pasteCutParagraphs(editor);
+          pasteCutParagraphs(pm);
         }
       }
     };
@@ -1452,13 +1456,12 @@ function renderEditor(container) {
   const bulkCopyBtn = document.getElementById('btnBulkCopy');
   if (bulkCopyBtn) {
     bulkCopyBtn.onclick = () => {
-      const editor = document.getElementById('edContent');
-      if (!editor) return;
+      const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
+      if (!pm) return;
 
-      const selectedParas = editor.querySelectorAll('p.para-selected');
+      const selectedParas = pm.querySelectorAll('p.para-selected');
       if (selectedParas.length === 0) return;
 
-      // 1. コピーする段落のクリーンなHTMLを一時配列に格納
       window.globalCutParagraphs = Array.from(selectedParas).map(p => {
         const clone = p.cloneNode(true);
         const chk = clone.querySelector('.para-checkbox');
@@ -1468,18 +1471,11 @@ function renderEditor(container) {
         return clone.outerHTML;
       });
 
-      // コピー元の段落にフラッシュ効果を与える
-      selectedParas.forEach(p => {
-        p.classList.add('para-copy-animating');
-      });
+      selectedParas.forEach(p => p.classList.add('para-copy-animating'));
 
-      // 0.5秒後に選択を解除し、保存してトーストを表示
       setTimeout(() => {
-        selectedParas.forEach(p => {
-          p.classList.remove('para-copy-animating');
-        });
-        cleanupAllSwipedParagraphs(editor);
-        saveEditorContentDirectly(editor);
+        selectedParas.forEach(p => p.classList.remove('para-copy-animating'));
+        cleanupAllSwipedParagraphs(pm);
         updatePasteButtonState();
         showToast("段落をコピーしました");
       }, 500);
@@ -1489,13 +1485,12 @@ function renderEditor(container) {
   const bulkDelBtn = document.getElementById('btnBulkDelete');
   if (bulkDelBtn) {
     bulkDelBtn.onclick = () => {
-      const editor = document.getElementById('edContent');
-      if (!editor) return;
+      const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
+      if (!pm) return;
 
-      const selectedParas = editor.querySelectorAll('p.para-selected');
+      const selectedParas = pm.querySelectorAll('p.para-selected');
       if (selectedParas.length === 0) return;
 
-      // 1. カットする段落のクリーンなHTMLを一時配列に格納
       window.globalCutParagraphs = Array.from(selectedParas).map(p => {
         const clone = p.cloneNode(true);
         const chk = clone.querySelector('.para-checkbox');
@@ -1505,28 +1500,25 @@ function renderEditor(container) {
         return clone.outerHTML;
       });
 
-      // 削除前のHTMLを退避 (Undo用)
-      lastDeletedContent = getCleanEditorHTML(editor);
+      lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
 
-      // カットアニメーションの適用
-      selectedParas.forEach(p => {
-        p.classList.add('para-cut-animating');
-      });
+      selectedParas.forEach(p => p.classList.add('para-cut-animating'));
 
-      // 0.5秒後に実際の削除、保存、トースト表示を行う
       setTimeout(() => {
         selectedParas.forEach(p => p.remove());
 
-        // 完全に空なら自動カード削除
-        if (isEditorEmpty(editor)) {
+        if (isEditorEmpty()) {
           deleteArticleSilently();
           return;
         }
 
-        saveEditorContentDirectly(editor);
-        updateBulkDeleteButtonState(editor);
-        updatePasteButtonState();
+        // DOMの変更をTipTapの内部状態に同期
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(pm.innerHTML || '<p></p>');
+        }
 
+        updateBulkDeleteButtonState(pm);
+        updatePasteButtonState();
         showToast("段落をカットしました");
       }, 500);
     };
@@ -1553,257 +1545,64 @@ function renderEditor(container) {
     return t;
   }
 
-  document.getElementById('edContent').addEventListener('paste', e => {
-    try {
-      // クリップボードのアイテムを確認（画像貼り付けの復元）
-      const clipboardData = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
-      if (!clipboardData) return;
-      const items = clipboardData.items;
-      let hasImage = false;
+  // ── TipTap エディター初期化 ──────────────────────────
+  const edEl = document.getElementById('edContent');
+  const status = document.getElementById('saveStatus');
 
-      // 非同期の画像読み込み時にカーソル位置が失われないよう、同期コンテキストで Range を保存
-      const sel = window.getSelection();
-      let savedRange = null;
-      if (sel && sel.rangeCount > 0) {
-        savedRange = sel.getRangeAt(0).cloneRange();
-      }
+  const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem } = window.TipTapBundle;
 
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          e.preventDefault(); // デフォルト処理を阻止
-          hasImage = true;
-          
-          const file = items[i].getAsFile();
-          const reader = new FileReader();
-          
-          reader.onload = function(evt) {
-            try {
-              const base64Src = evt.target.result;
-              
-              // ── 画像自動圧縮・リサイズ処理（フリーズ＆Firebase容量オーバー根絶） ──
-              const tempImg = new Image();
-              tempImg.onload = function() {
-                try {
-                  const canvas = document.createElement('canvas');
-                  const ctx = canvas.getContext('2d');
-                  
-                  // 最大寸法（横幅または高さを 800px に制限）
-                  const MAX_SIZE = 800;
-                  let width = tempImg.width;
-                  let height = tempImg.height;
-                  
-                  if (width > MAX_SIZE || height > MAX_SIZE) {
-                    if (width > height) {
-                      height = Math.round((height * MAX_SIZE) / width);
-                      width = MAX_SIZE;
-                    } else {
-                      width = Math.round((width * MAX_SIZE) / height);
-                      height = MAX_SIZE;
-                    }
-                  }
-                  
-                  canvas.width = width;
-                  canvas.height = height;
-                  
-                  // キャンバスに描画
-                  ctx.drawImage(tempImg, 0, 0, width, height);
-                  
-                  // 軽量なJPEGに圧縮 (品質0.75)
-                  const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
-                  
-                  // 貼り付け用画像タグの生成（非編集属性を付与して変形ハンドルを完全消去！）
-                  const img = document.createElement('img');
-                  img.src = compressedBase64;
-                  img.className = 'inserted-img';
-                  img.contentEditable = 'false';
+  tiptapEditor = new TiptapEditor({
+    element: edEl,
+    extensions: [
+      StarterKit,
+      ImageExtension.configure({ allowBase64: true, inline: true, HTMLAttributes: { class: 'inserted-img' } }),
+      YoutubeExtension.configure({ controls: true, nocookie: true }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+    ],
+    editable: false,
+    content: '<p></p>',
+    editorProps: {
+      handlePaste(view, event) {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
 
-                  // 画像を段落要素 <p> で囲って「段落扱い」にする
-                  const pImg = document.createElement('p');
-                  pImg.appendChild(img);
-
-                  const editor = document.getElementById('edContent');
-                  if (editor) {
-                    // 選択範囲を復元して正しい位置に挿入
-                    if (savedRange) {
-                      const sel = window.getSelection();
-                      sel.removeAllRanges();
-                      sel.addRange(savedRange);
-                    }
-                    insertNodeAtCursor(pImg, editor);
-                  }
-                  
-                  // 正規化処理を呼んでHTML構造をクリーンアップし、Firebaseに保存
-                  if (editor) {
-                    normalizeEditorHTML(editor);
-                    editor.dispatchEvent(new Event('input'));
-                  }
-                } catch (canvasErr) {
-                  console.error("Canvas compression failed:", canvasErr);
-                }
-              };
-              
-              tempImg.onerror = function() {
-                console.error("Failed to load image element for canvas compression.");
-              };
-              
-              tempImg.src = base64Src;
-            } catch (loadErr) {
-              console.error("Image loading processing failed:", loadErr);
-            }
-          };
-          
-          reader.readAsDataURL(file);
-          break; // 1枚のみ処理
-        }
-      }
-
-      if (hasImage) return; // 画像処理を行った場合はここで終了
-
-      e.preventDefault(); // デフォルトの貼り付けを阻止（テキスト処理へ移行）
-
-      // テキスト：プレーンテキストとしてデータを取得（スタイルを完全除去）
-      let text = e.clipboardData.getData('text/plain');
-      if (!text) {
-        const html = e.clipboardData.getData('text/html');
-        if (html) {
-          const tmp = document.createElement('div');
-          tmp.innerHTML = html;
-          text = tmp.textContent || tmp.innerText || '';
-        }
-      }
-
-      if (text) {
-        // 1. 純粋なテーブル罫線記号（|, │ 等）が複数（3つ以上）含まれ、かつ改行が存在する場合のみテーブル整形を実行する
-        const borderMatches = text.match(/[\|│┃┼├┤┌┐└┘｜┆┇┊┋┬┴]/g);
-        const hasTableBorders = borderMatches && borderMatches.length >= 3 && text.includes('\n');
-        const cleanedText = hasTableBorders ? cleanAndFormatBorderLines(text) : text;
-
-        // execCommand を使用してプレーンテキストをカーソル位置に綺麗に流し込む
-        // これにより、余計な HTML ネストや不要なインデントが一切入らなくなります
-        const inserted = document.execCommand('insertText', false, cleanedText);
-        
-        // 万が一 execCommand が失敗した場合のフォールバック
-        if (!inserted) {
-          const sel = window.getSelection();
-          if (sel && sel.rangeCount > 0) {
-            sel.deleteFromDocument();
-            const range = sel.getRangeAt(0);
-            const textNode = document.createTextNode(cleanedText);
-            range.insertNode(textNode);
-            range.collapse(false);
-            sel.removeAllRanges();
-            sel.addRange(range);
+        // 画像貼り付けを横取りして圧縮・挿入
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            event.preventDefault();
+            const file = items[i].getAsFile();
+            if (file) handleImageForTipTap(file);
+            return true;
           }
         }
 
-        // 正規化処理を実行してHTML構造を整える
-        const editor = document.getElementById('edContent');
-        if (editor) {
-          normalizeEditorHTML(editor);
-          editor.dispatchEvent(new Event('input'));
+        // 罫線文字があるテキストのみ自前整形
+        const text = event.clipboardData?.getData('text/plain') || '';
+        const borderMatches = text.match(/[\|│┃┼├┤┌┐└┘｜┆┇┊┋┬┴]/g);
+        const hasTableBorders = borderMatches && borderMatches.length >= 3 && text.includes('\n');
+        if (hasTableBorders) {
+          event.preventDefault();
+          const cleaned = cleanAndFormatBorderLines(text);
+          // 改行ごとに段落に分けて挿入
+          const lines = cleaned.split('\n').filter(l => l.length > 0);
+          const html = lines.map(l => `<p>${esc(l)}</p>`).join('');
+          tiptapEditor.commands.insertContent(html);
+          return true;
         }
+
+        return false; // TipTapのデフォルト処理に委ねる
       }
-    } catch (pasteErr) {
-      console.error("Paste event listener error:", pasteErr);
-    }
-  });
-
-  // 初期コンテンツ読み込み
-  db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
-    const editor = document.getElementById('edContent');
-    const status = document.getElementById('saveStatus');
-    if (!editor) return;
-
-    let raw = snap.val()?.content || '';
-
-    if (state._isNewCard) {
-      // 新規カードは「完全に空の<p></p>1つだけ」から開始するシンプルな実装。
-      // 既存カードの読み込みパイプライン（プレーンテキスト判定／HTML判定／
-      // Markdown除去／旧データの自己修復チェック等）には一切触れず、
-      // 確実に空の編集領域とカーソル位置だけを用意する。
-      state._isNewCard = false;
-      editor.innerHTML = '<p><br></p>';
-
-      const firstP = editor.querySelector('p');
-      if (firstP) {
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.setStart(firstP, 0);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
-
-      if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
-      editor.focus();
-    } else {
-      // 過去のバージョンの不具合により、新規カードのプレースホルダー文言が
-      // 実テキストとしてそのまま保存されてしまったカードを自動修復する
-      // （本来は空のカードとして扱う）
-      const looksLikeLegacyPlaceholder = raw.includes('1行目がタイトルになります')
-        && raw.includes('2行目から本文を書いてください');
-      if (looksLikeLegacyPlaceholder) {
-        raw = '';
-        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
-          .update({ content: '', updatedAt: Date.now() })
-          .catch(() => {});
-      }
-
-      // ── コンテンツをクリーンなHTMLに変換 ──────────────────
-      let displayHTML;
-      const isHTML = raw.trimStart().startsWith('<');
-
-      if (!isHTML) {
-        // プレーンテキスト or 破損（HTMLタグが文字として混入）
-        const decoded = raw
-          .replace(/<br\s*\/?>/gi,          '\n')   // <br>→改行
-          .replace(/<\/?(div|p|h\d|li)[^>]*>/gi, '\n') // ブロックタグ→改行
-          .replace(/<[^>]*>/g,              '')     // 残タグ除去
-          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); // エンティティ復元
-
-        const lines = decoded.split('\n')
-          .map(l => stripMarkdown(l.trim()))
-          .filter(l => l.length > 0);
-
-        displayHTML = lines.map(l => `<p>${esc(l)}</p>`).join('') || '<p><br></p>';
-        editor.innerHTML = displayHTML;
-
-        // 変換内容をFirebaseに保存（次回からHTMLとして正常ロード）
-        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
-          .update({ content: displayHTML, updatedAt: Date.now() })
-          .catch(() => {});
-
-      } else {
-        // 正常なHTML：テキストノードのMarkdownだけ除去
-        editor.innerHTML = raw;
-        const before = editor.innerHTML;
-        stripMarkdownFromDOM(editor);
-        const after = editor.innerHTML;
-        displayHTML = after;
-
-        if (after !== before) {
-          db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
-            .update({ content: after, updatedAt: Date.now() })
-            .catch(() => {});
-        }
-      }
-
-      if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
-      editor.focus();
-    }
-    initializeNativeParagraphActions(editor);
-
-    // 自動保存（1秒デバウンス）
-    editor.oninput = () => {
+    },
+    onUpdate: ({ editor }) => {
       if (isComposing) return;
-
       if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         try {
-          const cleanHTML = getCleanEditorHTML(editor);
+          const content = editor.getHTML();
           await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
-            content: cleanHTML, updatedAt: Date.now()
+            content, updatedAt: Date.now()
           });
           const s = document.getElementById('saveStatus');
           if (s) { s.textContent = '保存済み ✓'; s.className = 'save-status saved'; }
@@ -1812,9 +1611,103 @@ function renderEditor(container) {
           if (s) { s.textContent = '保存失敗 ✗'; s.className = 'save-status error'; }
         }
       }, 1000);
-    };
+    },
+    onCreate: ({ editor }) => {
+      // IMEフラグ管理
+      const pm = editor.view.dom;
+      pm.addEventListener('compositionstart', () => { isComposing = true; });
+      pm.addEventListener('compositionend', () => {
+        isComposing = false;
+        compositionJustEnded = true;
+        setTimeout(() => { compositionJustEnded = false; }, 80);
+      });
+    },
+  });
+
+  // ── Firebase からコンテンツを読み込む ─────────────
+  db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
+    if (!tiptapEditor) return;
+
+    let raw = snap.val()?.content || '';
+
+    if (state._isNewCard) {
+      state._isNewCard = false;
+      tiptapEditor.commands.setContent('<p></p>', false);
+      if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
+      // 編集モードで開くため setEditorMode('edit') が後から呼ばれる
+    } else {
+      // レガシープレースホルダーの自動修復
+      const looksLikeLegacyPlaceholder = raw.includes('1行目がタイトルになります')
+        && raw.includes('2行目から本文を書いてください');
+      if (looksLikeLegacyPlaceholder) {
+        raw = '';
+        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+          .update({ content: '', updatedAt: Date.now() }).catch(() => {});
+      }
+
+      let displayHTML;
+      const isHTML = raw.trimStart().startsWith('<');
+
+      if (!isHTML) {
+        const decoded = raw
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/?(div|p|h\d|li)[^>]*>/gi, '\n')
+          .replace(/<[^>]*>/g, '')
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        const lines = decoded.split('\n').map(l => stripMarkdown(l.trim())).filter(l => l.length > 0);
+        displayHTML = lines.map(l => `<p>${esc(l)}</p>`).join('') || '<p></p>';
+        db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+          .update({ content: displayHTML, updatedAt: Date.now() }).catch(() => {});
+      } else {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = raw;
+        stripMarkdownFromDOM(tmp);
+        displayHTML = tmp.innerHTML || '<p></p>';
+        if (displayHTML !== raw) {
+          db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
+            .update({ content: displayHTML, updatedAt: Date.now() }).catch(() => {});
+        }
+      }
+
+      tiptapEditor.commands.setContent(displayHTML, false);
+      if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
+    }
+
+    // 段落スワイプなどのネイティブアクションを初期化
+    const proseMirrorEl = tiptapEditor.view.dom;
+    initializeNativeParagraphActions(proseMirrorEl);
   });
 }
+
+// ── TipTap用画像圧縮・挿入ヘルパー ─────────────────
+function handleImageForTipTap(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = evt => {
+      const tempImg = new Image();
+      tempImg.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const MAX_SIZE = 800;
+        let w = tempImg.width, h = tempImg.height;
+        if (w > MAX_SIZE || h > MAX_SIZE) {
+          if (w > h) { h = Math.round(h * MAX_SIZE / w); w = MAX_SIZE; }
+          else { w = Math.round(w * MAX_SIZE / h); h = MAX_SIZE; }
+        }
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(tempImg, 0, 0, w, h);
+        const src = canvas.toDataURL('image/jpeg', 0.75);
+        if (tiptapEditor) {
+          tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
+        }
+        resolve();
+      };
+      tempImg.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 
 async function deleteArticle() {
   if (!confirm("このメモを完全に削除します。よろしいですか？")) return;
@@ -1887,13 +1780,11 @@ async function duplicateArticle(artId, categoryId) {
 
 
 // エディタのプレーンなコンテンツが完全に空であるかを判定
-function isEditorEmpty(editor) {
-  const cleanHTML = getCleanEditorHTML(editor).trim();
-  const temp = document.createElement('div');
-  temp.innerHTML = cleanHTML;
-  const text = temp.textContent || temp.innerText || '';
-  const hasImage = temp.querySelector('img') !== null;
-  return text.trim() === '' && !hasImage;
+function isEditorEmpty() {
+  if (tiptapEditor) {
+    return tiptapEditor.isEmpty;
+  }
+  return true;
 }
 
 // ── ユーティリティ ───────────────────────────
@@ -2198,70 +2089,18 @@ function normalizeEditorHTML(editor) {
 function initializeNativeParagraphActions(editor) {
   if (!editor) return;
 
-  // IME入力中（変換中）の監視
-  editor.addEventListener('compositionstart', () => {
-    isComposing = true;
-  });
-  editor.addEventListener('compositionend', () => {
-    isComposing = false;
-
-    // IME確定のEnterキーが、isComposing=falseの状態でkeydownを発火させる端末（iPhone等）に対応するため、
-    // compositionend直後の短い猶予期間は「改行リクエスト」として扱わないようにする
-    compositionJustEnded = true;
-    setTimeout(() => { compositionJustEnded = false; }, 80);
-
-    // iPhoneのIME確定時、変換確定したテキストが<p>タグの外側へ
-    // エディタ直下の生のテキストノードとして漏れ出すことがある。
-    // これをnormalizeEditorHTMLの汎用ロジックに任せると、
-    //   ・直前の段落が空のとき　　→ 本来その段落に入るべき文字が別行に飛ぶ
-    //   ・直前の段落に文字があるとき → 行同士が連結されてしまう
-    // という相反する不具合が起きるため、ここで段落への入れ直しを行う。
-    // 直前の<p>が空（未入力）なら「その段落への入力が漏れた」とみなし中へ戻す。
-    // 直前の<p>に文字がある場合は連結を避けるため独立した新しい段落として包む。
-    Array.from(editor.childNodes).forEach(node => {
-      if (node.nodeType !== Node.TEXT_NODE || node.textContent.trim() === '') return;
-
-      const prev = node.previousElementSibling;
-      const prevIsEmptyP = prev && prev.tagName === 'P'
-        && prev.textContent.trim() === '' && !prev.querySelector('img');
-
-      if (prevIsEmptyP) {
-        const br = prev.querySelector('br');
-        if (br) br.remove();
-        prev.appendChild(document.createTextNode(node.textContent));
-        node.remove();
-      } else {
-        const wrapperP = document.createElement('p');
-        node.parentNode.insertBefore(wrapperP, node);
-        wrapperP.appendChild(node);
-      }
-    });
-
-    // iPhoneのIME確定時、ゼロ幅スペース(U+200B)や異体字セレクタ(U+FE0E/F)など
-    // 目に見えない特殊文字が紛れ込むことがあり、これが段落構造の混乱や
-    // 見た目上の「インデント」の原因になりうるため、確定直後に除去する
-    cleanupInvalidUnicodeCharacters(editor);
-
-    // 確定時に正規化を実行（DOMを直接変更しない。保存時にgetCleanEditorHTML内でクリーンアップする）
-    normalizeEditorHTML(editor);
-    editor.dispatchEvent(new Event('input'));
-  });
-
   // 閲覧モード中且つペーストバッファが存在する時のタップ（挿入マーカー）制御
   editor.addEventListener('click', (e) => {
     if (state.editorMode !== 'view' || !window.globalCutParagraphs || window.globalCutParagraphs.length === 0) {
       return;
     }
-
     const p = e.target.closest('p');
     if (p && editor.contains(p)) {
       e.stopPropagation();
       e.preventDefault();
-
       const rect = p.getBoundingClientRect();
       const relativeY = e.clientY - rect.top;
       const location = (relativeY < rect.height / 2) ? 'before' : 'after';
-
       if (activePasteMarkerP === p && activePasteLocation === location) {
         removePasteMarker();
       } else {
@@ -2272,48 +2111,42 @@ function initializeNativeParagraphActions(editor) {
     }
   });
 
-  // 0. 読み込み直後にエディタの段落構造を正規化する
-  normalizeEditorHTML(editor);
-
-  // 0.5. PC用画像削除ボタンのセットアップ
+  // PC用画像削除ボタンのセットアップ
   setupImageDeleteButtons(editor);
 
-  // 0.6. スマホ・PC共用 画像長押しドラッグ＆ドロップ移動のセットアップ
+  // スマホ・PC共用 画像長押しドラッグ＆ドロップ移動のセットアップ
   setupImageDragAndDrop(editor);
 
-  // 1. 各段落（<p>）にスワイプイベントをバインド
+  // 各段落（<p>）にスワイプイベントをバインド
   bindParagraphSwipeEvents(editor);
 
-  // 2. ハサミON（選択状態）の段落のみ、長押しドラッグで並び替え可能にする（SortableJS連携）
+  // 選択段落の長押しドラッグ並び替え（SortableJS連携）
   if (window.Sortable) {
     if (paraSortable) {
       paraSortable.destroy();
       paraSortable = null;
     }
     paraSortable = Sortable.create(editor, {
-      draggable: 'p.para-selected', // ハサミマークのある選択段落のみドラッグ可能
-      delay: 150, // 長押し150msでドラッグ起動
-      delayOnTouchOnly: true, // タッチデバイスのみ遅延ドラッグ
+      draggable: 'p.para-selected',
+      delay: 150,
+      delayOnTouchOnly: true,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
-      onStart: () => {
-        isDragging = true;
-      },
+      onStart: () => { isDragging = true; },
       onEnd: async () => {
         isDragging = false;
-        // 並び替え完了後に正規化して保存
-        normalizeEditorHTML(editor);
-        editor.dispatchEvent(new Event('input'));
+        // 並び替え後にTipTapの内部状態を同期して保存
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(editor.innerHTML || '<p></p>');
+        }
       }
     });
   }
 
-  // 3. 入力や他箇所のタップによる自動解除を登録（副作用防止）
+  // キー入力でスワイプ選択・ペーストバッファをクリア
   editor.onkeydown = (e) => {
     cleanupAllSwipedParagraphs(editor);
-
-    // ユーザーが物理的な文字入力（1文字のキー入力、Backspace、Delete等）を行った場合のみ、ペーストバッファをクリア（キャンセル）する
     const isCharacterKey = e.key.length === 1 && !e.ctrlKey && !e.metaKey;
     if (isCharacterKey || e.key === 'Backspace' || e.key === 'Delete') {
       if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
@@ -2321,124 +2154,13 @@ function initializeNativeParagraphActions(editor) {
         updatePasteButtonState();
       }
     }
-
-    // 太陽マーク等の記号に関係なく発生する、Enter改行時の段落統合バグを完全解決するため、
-    // ブラウザのデフォルトのEnter改行挙動を阻止し、自前で安全に段落を分割する
-    if (e.key === 'Enter') {
-      // IME変換確定のためのEnterは素通りさせる（ここで段落分割を行うと確定処理と競合し、
-      // 複数行の連結や入力の中断が起きる）。
-      // iPhoneの日本語キーボードは「変換確定」と「改行」が同じEnterキーに割り当てられており、
-      // 確定操作のEnterでも isComposing が既に false になってkeydownが発火するケースがあるため、
-      // isComposing単体では判定しきれない。そこで compositionend 直後の短い猶予期間も
-      // 「確定のためのEnter」とみなしてスキップする（compositionJustEnded）。
-      if (isComposing || e.isComposing || e.keyCode === 229 || compositionJustEnded) {
-        return;
-      }
-
-      e.preventDefault(); // デフォルトのEnter改行を阻止
-
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        let p = range.startContainer;
-
-        // エディタ直下の P タグ（段落）を特定
-        while (p && p.parentNode !== editor) {
-          p = p.parentNode;
-        }
-
-        if (p && p.tagName === 'P') {
-          // 注意: 以前は「キャレットが段落末尾にいる時に次の段落に補正する」ガード処理があったが、
-          // 正常な段落末尾でのEnter操作（空行を挿入する操作）を妨害していたため完全に削除。
-          // 根本原因（oninputでのDOM変更による段落マージ）は既に修正済み。
-          // キャレットより前のコンテンツと後ろのコンテンツを分割抽出
-          const leftRange = document.createRange();
-          leftRange.setStart(p, 0);
-          leftRange.setEnd(range.startContainer, range.startOffset);
-          const leftFragment = leftRange.cloneContents();
-
-          const rightRange = document.createRange();
-          rightRange.setStart(range.startContainer, range.startOffset);
-          rightRange.setEnd(p, p.childNodes.length);
-          const rightFragment = rightRange.cloneContents();
-
-          // 新しい段落を生成
-          const leftP = document.createElement('p');
-          leftP.appendChild(leftFragment);
-          if (p.className) {
-            leftP.className = p.className;
-          }
-
-          const rightP = document.createElement('p');
-          rightP.appendChild(rightFragment);
-          if (p.className) {
-            rightP.className = p.className;
-            rightP.classList.remove('para-selected'); // 選択状態はコピーしない
-            const chk = rightP.querySelector('.para-checkbox');
-            if (chk) chk.remove();
-            if (rightP.getAttribute('class') === '') rightP.removeAttribute('class');
-          }
-
-          // 空段落の場合はBRを補充
-          const isLeftEmpty = leftP.textContent.trim() === '' && !leftP.querySelector('img');
-          const isRightEmpty = rightP.textContent.trim() === '' && !rightP.querySelector('img');
-
-          if (isLeftEmpty) {
-            leftP.innerHTML = '<br>';
-          }
-          if (isRightEmpty) {
-            rightP.innerHTML = '<br>';
-          }
-
-          // DOMの置き換え
-          const parent = p.parentNode;
-          parent.insertBefore(leftP, p);
-          parent.insertBefore(rightP, p);
-          p.remove();
-
-          // キャレットを後半段落 (rightP) の先頭に配置
-          const newRange = document.createRange();
-          if (rightP.firstChild) {
-            if (rightP.firstChild.nodeType === Node.TEXT_NODE) {
-              newRange.setStart(rightP.firstChild, 0);
-            } else {
-              newRange.setStart(rightP, 0);
-            }
-          } else {
-            newRange.setStart(rightP, 0);
-          }
-          newRange.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(newRange);
-
-          // 元のPタグを置き換えるDOM操作でフォーカスが外れることがあるため、
-          // 編集モードのまま維持されるよう明示的にフォーカスを戻す
-          // （フォーカスが外れるとキーボードが閉じ、見た目上「閲覧モードに切り替わった」ように見えてしまう）
-          editor.focus();
-
-          // Enter直後はnormalizeEditorHTMLを呼ばない（カーソル位置が破壊されるため）
-          // scrollLockTimerが「Enter後のカーソル位置」を破壊しないよう、フラグをセット
-          window._isEnterJustPressed = true;
-          setTimeout(() => { window._isEnterJustPressed = false; }, 300);
-
-          editor.dispatchEvent(new Event('input'));
-
-          // 改行した要素が見えるようにスクロール
-          rightP.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          // → Enter後は編集モードのまま継続（閲覧モード自動切替は廃止）
-        }
-      }
-    }
+    // Enter・段落分割はTipTap（ProseMirror）が処理するため自前ハンドリングは不要
   };
 
-  // フォーカスイン時にも解除 ＆ キーボード表示時のスクロールリセットタイマー（ヘッダー消失の完全防止）
+  // フォーカスイン時のスクロールリセット（iOS仮想キーボード表示時のヘッダー消失防止）
   let scrollLockTimer = null;
   editor.addEventListener('focusin', () => {
     cleanupAllSwipedParagraphs(editor);
-
-    // Enter直後はscrollLockを実行しない（カーソル位置が引き戻されるため）
-    if (window._isEnterJustPressed) return;
-
     const lockScroll = () => {
       window.scrollTo(0, 0);
       document.body.scrollTop = 0;
@@ -2446,26 +2168,17 @@ function initializeNativeParagraphActions(editor) {
       const app = document.getElementById('app');
       if (app) app.scrollTop = 0;
     };
-    
-    // 即座に実行
     lockScroll();
-    
-    // 5回（250ms）だけリセット。長時間繰り返すとタップ位置が見えなくなる問題を防ぐ。
     if (scrollLockTimer) clearInterval(scrollLockTimer);
     let count = 0;
     scrollLockTimer = setInterval(() => {
       lockScroll();
-      count++;
-      if (count >= 5) {
-        clearInterval(scrollLockTimer);
-        scrollLockTimer = null;
-      }
+      if (++count >= 5) { clearInterval(scrollLockTimer); scrollLockTimer = null; }
     }, 50);
   });
 
-  // フォーカスアウト（blur）時にも正規化を走らせて保存をトリガーする
+  // フォーカスアウト時のスクロールリセット（iOS仮想キーボード縮小時のズレ防止）
   editor.addEventListener('blur', () => {
-    // iOS Safari等の仮想キーボード縮小時の表示領域崩れ（スクロールズレ・ヘッダー消失）バグを完全解消する
     setTimeout(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       const app = document.getElementById('app');
@@ -2473,12 +2186,9 @@ function initializeNativeParagraphActions(editor) {
       document.body.scrollTop = 0;
       document.documentElement.scrollTop = 0;
     }, 80);
-
-    normalizeEditorHTML(editor);
-    editor.dispatchEvent(new Event('input'));
   });
 
-  // エディタ外のクリックで解除
+  // エディタ外のクリックで選択解除
   const outsideClickListener = (e) => {
     if (!editor.contains(e.target) && !e.target.closest('#btnBulkDelete') && !e.target.closest('#btnPaste') && !e.target.closest('#undo-toast')) {
       cleanupAllSwipedParagraphs(editor);
@@ -2575,36 +2285,30 @@ function cleanupAllSwipedParagraphs(editor) {
   updateBulkDeleteButtonState(editor);
 }
 
-// エディタ全体のクリーンなHTMLを抽出（チェック用スパンを完全に排除してプレーンなHTMLを返す）
+// エディタ全体のクリーンなHTMLを抽出
 function getCleanEditorHTML(editor) {
+  if (tiptapEditor) return tiptapEditor.getHTML();
   if (!editor) return '';
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = editor.innerHTML;
-  
-  // 異体字セレクタやゼロ幅スペースを保存用HTMLから除去（エディタDOMは触らない）
   removeInvalidUnicodeFromNode(tempDiv);
-  
-  const children = Array.from(tempDiv.children);
-  children.forEach(child => {
+  Array.from(tempDiv.children).forEach(child => {
     const chk = child.querySelector('.para-checkbox');
     if (chk) chk.remove();
     child.classList.remove('para-selected');
-    // Pタグのみクラス名を除去し、YouTubeなどのDIVコンテナはクラスや属性をそのまま維持する
-    if (child.tagName === 'P') {
-      child.removeAttribute('class');
-    }
+    if (child.tagName === 'P') child.removeAttribute('class');
   });
   return tempDiv.innerHTML;
 }
 
 // 直接FirebaseにクリーンHTMLを同期保存
-function saveEditorContentDirectly(editor) {
-  if (!editor || !state.articleId || !state.categoryId || !state.uid) return;
-  const cleanHTML = getCleanEditorHTML(editor);
+function saveEditorContentDirectly() {
+  if (!state.articleId || !state.categoryId || !state.uid) return;
+  const content = getCleanEditorHTML();
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
-    content: cleanHTML,
+    content,
     updatedAt: Date.now()
-  }).catch(err => console.error("Native select delete save error:", err));
+  }).catch(err => console.error("Save error:", err));
 }
 
 // スワイプイベントのバインド (イベントデリゲーション方式)
@@ -2620,8 +2324,9 @@ function bindParagraphSwipeEvents(editor) {
     // 編集状態でキーボードが開いている際、フリップしようとタッチした瞬間にフォーカスを外し（blur）、
     // 画面スクロール位置を最上部に強制リセットして、隠れていたトップバーを即座に復活させる
     const editorEl = document.getElementById('edContent');
-    if (editorEl && document.activeElement === editorEl) {
-      editorEl.blur();
+    const proseMirrorEl = tiptapEditor ? tiptapEditor.view.dom : null;
+    if (editorEl && (document.activeElement === editorEl || document.activeElement === proseMirrorEl)) {
+      if (proseMirrorEl) proseMirrorEl.blur(); else editorEl.blur();
       setTimeout(() => {
         window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
         const app = document.getElementById('app');
@@ -2751,11 +2456,11 @@ function showUndoToast(editor) {
 
   document.getElementById('btnUndoAction').onclick = async (e) => {
     e.stopPropagation();
-    if (lastDeletedContent !== null) {
-      editor.innerHTML = lastDeletedContent;
-      await saveEditorContentDirectly(editor);
-      initializeNativeParagraphActions(editor);
-      updateBulkDeleteButtonState(editor);
+    if (lastDeletedContent !== null && tiptapEditor) {
+      tiptapEditor.commands.setContent(lastDeletedContent);
+      const pm = tiptapEditor.view.dom;
+      initializeNativeParagraphActions(pm);
+      updateBulkDeleteButtonState(pm);
       lastDeletedContent = null;
     }
     hideToast();
@@ -2835,9 +2540,10 @@ function pasteCutParagraphs(editor, targetP = null, location = 'after') {
     el.classList.add('para-paste-animating');
   });
   
-  // 挿入後にエディタを正規化して保存
-  normalizeEditorHTML(editor);
-  editor.dispatchEvent(new Event('input'));
+  // 挿入後にTipTapの内部状態を同期して保存
+  if (tiptapEditor) {
+    tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+  }
   
   // 1秒後にフラッシュクラスを除去
   setTimeout(() => {
@@ -3517,10 +3223,10 @@ function setupImageDragAndDrop(editor) {
           parent.insertBefore(activeP, targetP.nextSibling);
         }
         
-        // 保存と正規化
-        normalizeEditorHTML(editor);
-        editor.dispatchEvent(new Event('input'));
-        
+        // TipTap内部状態を同期して保存
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+        }
         showToast("画像を移動しました");
       }
     }
@@ -3624,10 +3330,11 @@ function setupImageDeleteButtons(editor) {
         event.stopPropagation();
         event.preventDefault();
         if (confirm('この画像を削除しますか？')) {
-          img.remove(); // 親段落ごとではなく画像タグのみを安全に削除
+          img.remove();
           removeDeleteBtn();
-          normalizeEditorHTML(editor);
-          editor.dispatchEvent(new Event('input'));
+          if (tiptapEditor) {
+            tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+          }
         }
       };
 

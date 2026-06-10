@@ -489,14 +489,26 @@ body {
   font-family: var(--font);
   font-size: 1rem;
   line-height: 1.85;
-  padding: 1.25rem; /* ヘッダーがstickyになったため上部パディングを通常に戻す */
+  padding: 0;
   outline: none;
   scrollbar-width: thin;
   scrollbar-color: var(--text-muted) transparent;
   word-break: break-word;
   -webkit-overflow-scrolling: touch;
 }
-.editor-content p {
+
+/* TipTap ProseMirror コンテナ */
+.editor-content .ProseMirror {
+  padding: 1.25rem;
+  min-height: 100%;
+  outline: none;
+  caret-color: var(--accent);
+}
+.editor-content .ProseMirror:focus {
+  outline: none;
+}
+.editor-content p,
+.editor-content .ProseMirror p {
   position: relative;
   transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
   margin: 0;
@@ -507,7 +519,8 @@ body {
 }
 
 /* チェック選択された段落のプレミアムなハイライト表示 */
-.editor-content p.para-selected {
+.editor-content p.para-selected,
+.editor-content .ProseMirror p.para-selected {
   background: rgba(249, 115, 22, 0.08) !important;
   border: 1px dashed rgba(249, 115, 22, 0.3) !important;
   color: #fff;
@@ -567,6 +580,7 @@ body {
 
 /* 插入画像 */
 .editor-content img,
+.editor-content .ProseMirror img,
 .inserted-img {
   display: block;
   max-width: 100%;
