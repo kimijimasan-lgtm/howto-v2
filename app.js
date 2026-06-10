@@ -2701,10 +2701,8 @@ function refreshParaSortable(mode) {
   const editor = tiptapEditor.view.dom;
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
+      handle: '.para-drag-handle',
       draggable: 'p, [data-youtube-video]',
-      delay: 400,
-      delayOnTouchOnly: true,
-      touchStartThreshold: 5,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
@@ -2736,13 +2734,14 @@ function refreshParaSortable(mode) {
   }
 }
 
-// YouTube削除ボタンをDOMに直接inject（閲覧モード時）
+// YouTube削除ボタン＆ドラッグハンドルをDOMに直接inject（閲覧モード時）
 function refreshYoutubeDeleteButtons(mode) {
   if (!tiptapEditor) return;
   const pm = tiptapEditor.view.dom;
 
-  // 既存ボタンとイベントをクリーンアップ
+  // 既存のオーバーレイをすべてクリーンアップ
   pm.querySelectorAll('.yt-del-btn').forEach(b => b.remove());
+  pm.querySelectorAll('.para-drag-handle').forEach(h => h.remove());
   pm.querySelectorAll('[data-youtube-video]').forEach(yt => {
     if (yt._ytEnter) yt.removeEventListener('mouseenter', yt._ytEnter);
     if (yt._ytLeave) yt.removeEventListener('mouseleave', yt._ytLeave);
@@ -2779,6 +2778,15 @@ function refreshYoutubeDeleteButtons(mode) {
     };
 
     ytDiv.appendChild(btn);
+  });
+
+  // ドラッグハンドルを全段落・YouTube要素に inject
+  pm.querySelectorAll('p, [data-youtube-video]').forEach(el => {
+    const handle = document.createElement('span');
+    handle.className = 'para-drag-handle';
+    handle.contentEditable = 'false';
+    handle.innerHTML = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><rect x="0" y="0" width="3" height="3" rx="0.5"/><rect x="7" y="0" width="3" height="3" rx="0.5"/><rect x="0" y="5.5" width="3" height="3" rx="0.5"/><rect x="7" y="5.5" width="3" height="3" rx="0.5"/><rect x="0" y="11" width="3" height="3" rx="0.5"/><rect x="7" y="11" width="3" height="3" rx="0.5"/></svg>`;
+    el.insertBefore(handle, el.firstChild);
   });
 }
 
