@@ -1687,6 +1687,10 @@ function renderEditor(container) {
     // 段落スワイプなどのネイティブアクションを初期化
     const proseMirrorEl = tiptapEditor.view.dom;
     initializeNativeParagraphActions(proseMirrorEl);
+    // Firebase コンテンツロード後に YouTube削除ボタンを再inject（setEditorMode時点では要素がまだ無い）
+    if (proseMirrorEl.classList.contains('mode-view')) {
+      refreshYoutubeDeleteButtons('view');
+    }
   });
 }
 
@@ -2581,6 +2585,7 @@ function showUndoToast(editor) {
       tiptapEditor.commands.setContent(lastDeletedContent);
       const pm = tiptapEditor.view.dom;
       initializeNativeParagraphActions(pm);
+      if (pm.classList.contains('mode-view')) refreshYoutubeDeleteButtons('view');
       updateBulkDeleteButtonState(pm);
       lastDeletedContent = null;
     }
@@ -2697,8 +2702,10 @@ function refreshParaSortable(mode) {
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
       draggable: 'p, [data-youtube-video]',
-      delay: 500,
-      delayOnTouchOnly: false,
+      delay: 300,
+      delayOnTouchOnly: true,
+      forceFallback: true,
+      fallbackTolerance: 5,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',

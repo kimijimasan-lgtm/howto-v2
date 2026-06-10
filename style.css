@@ -693,6 +693,8 @@ body {
 .sortable-chosen {
   opacity: 0.55 !important;
   z-index: 999;
+  -webkit-touch-callout: none; /* iOS長押しメニューを抑制 */
+  user-select: none;
 }
 
 /* カテゴリパネルのドラッグ時3Dガタつき防止（元の位置を崩さない） */
