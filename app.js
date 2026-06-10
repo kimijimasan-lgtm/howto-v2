@@ -1693,8 +1693,7 @@ function renderEditor(container) {
     }
   });
 
-  // タップ時にカーソル位置を画面内にスクロール（iOSキーボード表示後対策）
-  // フォーカス後 400ms 待ってキーボードアニメーション完了を待ってから scrollIntoView
+  // ① タップ後のフォーカス時: 最小スクロール（nearest）でカーソルを画面内に収める
   tiptapEditor.on('focus', () => {
     setTimeout(() => {
       if (!tiptapEditor || tiptapEditor.view.dom.classList.contains('mode-view')) return;
@@ -1703,10 +1702,44 @@ function renderEditor(container) {
       try { domNode = tiptapEditor.view.domAtPos(from).node; } catch (_) { return; }
       const el = domNode.nodeType === Node.TEXT_NODE ? domNode.parentElement : domNode;
       if (el && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
     }, 400);
   });
+
+  // ② visualViewport resize: iOS が window.scrollY を強制変更した場合にリセットし
+  //    edContent.scrollTop でカーソルをキーボード上に収める
+  if (window.visualViewport) {
+    let vvTimer = null;
+    const onVVResize = () => {
+      if (vvTimer) clearTimeout(vvTimer);
+      vvTimer = setTimeout(() => {
+        vvTimer = null;
+        if (!tiptapEditor || tiptapEditor.view.dom.classList.contains('mode-view')) return;
+        const edContent = document.getElementById('edContent');
+        if (!edContent) return;
+        // iOS の強制 window スクロールをキャンセル
+        if (window.scrollY !== 0) window.scrollTo(0, 0);
+        // scrollTo 反映後に座標を再計算して edContent を補正
+        requestAnimationFrame(() => {
+          if (!tiptapEditor) return;
+          const vv = window.visualViewport;
+          const { from } = tiptapEditor.state.selection;
+          let coords;
+          try { coords = tiptapEditor.view.coordsAtPos(from); } catch (_) { return; }
+          const pad = 40;
+          if (coords.bottom > vv.height - pad) {
+            edContent.scrollTop += coords.bottom - (vv.height - pad);
+          }
+        });
+      }, 150);
+    };
+    window.visualViewport.addEventListener('resize', onVVResize);
+    listeners.push(() => {
+      window.visualViewport.removeEventListener('resize', onVVResize);
+      if (vvTimer) clearTimeout(vvTimer);
+    });
+  }
 }
 
 // ── TipTap用画像圧縮・挿入ヘルパー ─────────────────
