@@ -693,6 +693,7 @@ body {
 .editor-content .ProseMirror.mode-view p,
 .editor-content .ProseMirror.mode-view [data-youtube-video] {
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -1283,6 +1284,7 @@ body {
   justify-content: center;
   color: rgba(255, 255, 255, 0.2);
   z-index: 3;
+  -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
