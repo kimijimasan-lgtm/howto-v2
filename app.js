@@ -3009,8 +3009,11 @@ function showPurchasePrompt() {
 // ── 起動と認証の監視 ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   // 🔍 貼られた画像をタップした際の拡大表示（ライトボックス）イベント
+  // 編集モード中はライトボックスを開かない
   document.body.addEventListener('click', e => {
-    if (e.target.tagName === 'IMG' && (e.target.classList.contains('inserted-img') || e.target.closest('.editor-content') || e.target.closest('.article-body'))) {
+    if (e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
+      const pm = e.target.closest('.ProseMirror');
+      if (pm && !pm.classList.contains('mode-view')) return;
       showLightbox(e.target.src);
     }
   });
@@ -3325,6 +3328,8 @@ function setupImageDragAndDrop(editor) {
   // タッチ・マウス操作 of 共有ハンドラ
   const onStart = (e, clientX, clientY, target) => {
     if (target.tagName !== 'IMG' || !target.classList.contains('inserted-img')) return;
+    // 編集モード中は画像タッチをTipTapに委ねる（カーソル配置・選択を妨げない）
+    if (!editor.classList.contains('mode-view')) return;
 
     // 長押し保存メニューや標準ドラッグをキャンセルして競合を防止
     // ※ stopPropagation は呼ばない — touchstart を bindParagraphSwipeEvents に伝えてスワイプ遷移を有効にする
