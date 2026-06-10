@@ -1225,6 +1225,31 @@ body {
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12), 0 4px 16px rgba(0, 0, 0, 0.35);
 }
 
+/* PC向けYouTube削除ボタン（ホバー表示） */
+.yt-hover-delete-btn {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(239, 68, 68, 0.88);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition: background 0.15s, transform 0.15s;
+  pointer-events: auto;
+}
+.yt-hover-delete-btn:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
+}
+
 /* 🔍 画像拡大ライトボックスモーダル */
 .lightbox-overlay {
   position: fixed;
