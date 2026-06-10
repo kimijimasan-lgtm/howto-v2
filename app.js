@@ -2706,6 +2706,10 @@ function refreshParaSortable(mode) {
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
+      scroll: true,
+      scrollSensitivity: 80,
+      scrollSpeed: 10,
+      forceAutoScrollFallback: true,
       onStart: () => { isDragging = true; },
       onEnd: () => {
         isDragging = false;
@@ -2782,6 +2786,7 @@ function refreshYoutubeDeleteButtons(mode) {
 
   // ドラッグハンドルを全段落・YouTube要素に inject
   pm.querySelectorAll('p, [data-youtube-video]').forEach(el => {
+    el.style.position = 'relative'; // absolute 位置の基準を各要素に固定（必須）
     const handle = document.createElement('span');
     handle.className = 'para-drag-handle';
     handle.contentEditable = 'false';
