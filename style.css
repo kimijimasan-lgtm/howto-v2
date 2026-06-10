@@ -1218,6 +1218,10 @@ body {
   bottom: 0;
   z-index: 5;
 }
+/* 閲覧モード: iframe 自体の pointer-events を無効化してマウスイベントを親に届ける */
+.editor-content .ProseMirror.mode-view [data-youtube-video] iframe {
+  pointer-events: none;
+}
 
 /* 選択中の YouTube ノードのビジュアル */
 .editor-content [data-youtube-video].para-selected {

@@ -2730,7 +2730,6 @@ function refreshParaSortable(mode) {
 
 // PC向けYouTube削除ボタン（ホバーで表示）
 function setupYoutubeHoverDelete(state) {
-  if (!window.matchMedia('(hover: hover)').matches) return null;
   if (!tiptapEditor) return null;
 
   const pm = tiptapEditor.view.dom;
