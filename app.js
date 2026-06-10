@@ -2701,8 +2701,10 @@ function refreshParaSortable(mode) {
   const editor = tiptapEditor.view.dom;
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
-      handle: '.para-drag-handle',
       draggable: 'p, [data-youtube-video]',
+      delay: 300,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 5,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
