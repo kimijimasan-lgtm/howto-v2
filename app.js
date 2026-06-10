@@ -1353,6 +1353,7 @@ function renderEditor(container) {
       }
     }
     refreshParaSortable(mode);
+    refreshYoutubeDeleteButtons(mode);
   }
   // initializeNativeParagraphActions等の外部関数から呼べるように登録
   window._setEditorMode = setEditorMode;
@@ -1394,8 +1395,7 @@ function renderEditor(container) {
     } else {
       setEditorMode('view');
     }
-    const ytCleanup = setupYoutubeHoverDelete(state);
-    if (ytCleanup) listeners.push(ytCleanup);
+    // refreshYoutubeDeleteButtons は setEditorMode 内で呼ばれる
   }, 50);
   document.getElementById('btnDel').onclick    = deleteArticle;
 
@@ -1523,6 +1523,7 @@ function renderEditor(container) {
         // DOMの変更をTipTapの内部状態に同期
         if (tiptapEditor) {
           tiptapEditor.commands.setContent(pm.innerHTML || '<p></p>');
+          refreshYoutubeDeleteButtons('view');
         }
 
         updateBulkDeleteButtonState(pm);
@@ -2706,6 +2707,7 @@ function refreshParaSortable(mode) {
         isDragging = false;
         if (tiptapEditor) {
           tiptapEditor.commands.setContent(editor.innerHTML || '<p></p>');
+          refreshYoutubeDeleteButtons('view');
         }
       }
     });
@@ -2728,65 +2730,50 @@ function refreshParaSortable(mode) {
   }
 }
 
-// PC向けYouTube削除ボタン（ホバーで表示）
-function setupYoutubeHoverDelete(state) {
-  if (!tiptapEditor) return null;
-
+// YouTube削除ボタンをDOMに直接inject（閲覧モード時）
+function refreshYoutubeDeleteButtons(mode) {
+  if (!tiptapEditor) return;
   const pm = tiptapEditor.view.dom;
-  const btn = document.createElement('button');
-  btn.className = 'yt-hover-delete-btn';
-  btn.title = 'YouTube動画を削除';
-  btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
-  document.body.appendChild(btn);
 
-  let currentYt = null;
-  let hideTimer = null;
+  // 既存ボタンとイベントをクリーンアップ
+  pm.querySelectorAll('.yt-del-btn').forEach(b => b.remove());
+  pm.querySelectorAll('[data-youtube-video]').forEach(yt => {
+    if (yt._ytEnter) yt.removeEventListener('mouseenter', yt._ytEnter);
+    if (yt._ytLeave) yt.removeEventListener('mouseleave', yt._ytLeave);
+    yt.classList.remove('yt-hovered');
+    delete yt._ytEnter;
+    delete yt._ytLeave;
+  });
 
-  const showBtn = (ytDiv) => {
-    clearTimeout(hideTimer);
-    currentYt = ytDiv;
-    const rect = ytDiv.getBoundingClientRect();
-    btn.style.top = (rect.top + 8) + 'px';
-    btn.style.right = (window.innerWidth - rect.right + 8) + 'px';
-    btn.style.display = 'flex';
-  };
+  if (mode !== 'view') return;
 
-  const hideBtn = () => {
-    hideTimer = setTimeout(() => {
-      btn.style.display = 'none';
-      currentYt = null;
-    }, 200);
-  };
+  pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
+    const btn = document.createElement('button');
+    btn.className = 'yt-del-btn';
+    btn.contentEditable = 'false';
+    btn.title = 'YouTube動画を削除';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
 
-  const onMouseOver = (e) => {
-    if (state.editorMode !== 'view') { btn.style.display = 'none'; return; }
-    const ytDiv = e.target.closest('[data-youtube-video]');
-    if (ytDiv && pm.contains(ytDiv)) showBtn(ytDiv);
-  };
+    // CSS :hover が動かない環境向けのJS補完
+    ytDiv._ytEnter = () => ytDiv.classList.add('yt-hovered');
+    ytDiv._ytLeave = () => ytDiv.classList.remove('yt-hovered');
+    ytDiv.addEventListener('mouseenter', ytDiv._ytEnter);
+    ytDiv.addEventListener('mouseleave', ytDiv._ytLeave);
 
-  pm.addEventListener('mouseover', onMouseOver);
-  pm.addEventListener('mouseleave', hideBtn);
-  btn.addEventListener('mouseenter', () => clearTimeout(hideTimer));
-  btn.addEventListener('mouseleave', hideBtn);
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+      ytDiv.remove();
+      if (tiptapEditor) {
+        tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+        refreshYoutubeDeleteButtons('view');
+      }
+      showToast('YouTube動画を削除しました');
+    };
 
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    if (!currentYt) return;
-    lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-    currentYt.remove();
-    if (tiptapEditor) {
-      tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
-    }
-    btn.style.display = 'none';
-    currentYt = null;
-    showToast('YouTube動画を削除しました');
-  };
-
-  return () => {
-    pm.removeEventListener('mouseover', onMouseOver);
-    pm.removeEventListener('mouseleave', hideBtn);
-    btn.remove();
-  };
+    ytDiv.appendChild(btn);
+  });
 }
 
 // ── PCからスマホへの同期用QRコードモーダル ──────────
