@@ -1184,6 +1184,46 @@ body {
   border: 0;
 }
 
+/* TipTap YouTube ノード — レスポンシブ 16:9 */
+.editor-content [data-youtube-video],
+.editor-content .ProseMirror [data-youtube-video] {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  height: 0;
+  margin: 0.75rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.editor-content [data-youtube-video] iframe,
+.editor-content .ProseMirror [data-youtube-video] iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 0;
+}
+
+/* 閲覧モード: YouTube の上に透明オーバーレイを重ねてスワイプ・タッチを有効化 */
+.editor-content .ProseMirror.mode-view [data-youtube-video]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+}
+
+/* 選択中の YouTube ノードのビジュアル */
+.editor-content [data-youtube-video].para-selected {
+  outline: 2px dashed rgba(249, 115, 22, 0.5);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12), 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
 /* 🔍 画像拡大ライトボックスモーダル */
 .lightbox-overlay {
   position: fixed;

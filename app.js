@@ -1334,7 +1334,10 @@ function renderEditor(container) {
       toggleBar.className = 'mode-toggle-bar mode-edit';
       toggleBar.innerHTML = '<span class="toggle-line1">【編集モード】文字入力、範囲指定、コピペが使えます。</span><span class="toggle-line2">一部のアイコンが使えません。</span>';
       if (tiptapEditor) tiptapEditor.setEditable(true);
-      if (proseMirrorEl) cleanupAllSwipedParagraphs(proseMirrorEl);
+      if (proseMirrorEl) {
+        proseMirrorEl.classList.remove('mode-view');
+        cleanupAllSwipedParagraphs(proseMirrorEl);
+      }
     } else {
       toggleBar.className = 'mode-toggle-bar mode-view';
       toggleBar.innerHTML = '<span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span>';
@@ -1342,6 +1345,7 @@ function renderEditor(container) {
         tiptapEditor.setEditable(false);
         tiptapEditor.commands.blur();
       }
+      if (proseMirrorEl) proseMirrorEl.classList.add('mode-view');
       const edContent = document.getElementById('edContent');
       if (edContent) {
         const marker = edContent.querySelector('.paste-insert-line');
@@ -1460,15 +1464,15 @@ function renderEditor(container) {
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
-      const selectedParas = pm.querySelectorAll('p.para-selected');
+      const selectedParas = pm.querySelectorAll('p.para-selected, [data-youtube-video].para-selected');
       if (selectedParas.length === 0) return;
 
-      window.globalCutParagraphs = Array.from(selectedParas).map(p => {
-        const clone = p.cloneNode(true);
+      window.globalCutParagraphs = Array.from(selectedParas).map(el => {
+        const clone = el.cloneNode(true);
         const chk = clone.querySelector('.para-checkbox');
         if (chk) chk.remove();
         clone.classList.remove('para-selected');
-        clone.removeAttribute('class');
+        if (el.tagName === 'P') clone.removeAttribute('class');
         return clone.outerHTML;
       });
 
@@ -1489,15 +1493,15 @@ function renderEditor(container) {
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
-      const selectedParas = pm.querySelectorAll('p.para-selected');
+      const selectedParas = pm.querySelectorAll('p.para-selected, [data-youtube-video].para-selected');
       if (selectedParas.length === 0) return;
 
-      window.globalCutParagraphs = Array.from(selectedParas).map(p => {
-        const clone = p.cloneNode(true);
+      window.globalCutParagraphs = Array.from(selectedParas).map(el => {
+        const clone = el.cloneNode(true);
         const chk = clone.querySelector('.para-checkbox');
         if (chk) chk.remove();
         clone.classList.remove('para-selected');
-        clone.removeAttribute('class');
+        if (el.tagName === 'P') clone.removeAttribute('class');
         return clone.outerHTML;
       });
 
@@ -1601,7 +1605,7 @@ function renderEditor(container) {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         try {
-          const content = editor.getHTML();
+          const content = restoreOriginalSrcs(editor.getHTML(), origDataUrls);
           await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
             content, updatedAt: Date.now()
           });
@@ -2239,13 +2243,38 @@ function toggleParagraphSelect(p, editor) {
   updateBulkDeleteButtonState(editor);
 }
 
+// YouTube ノードの選択トグル（para-selected を付け外し）
+function toggleYoutubeSelect(ytDiv, editor) {
+  if (ytDiv.classList.contains('para-selected')) {
+    ytDiv.classList.remove('para-selected');
+    const chk = ytDiv.querySelector('.para-checkbox');
+    if (chk) chk.remove();
+  } else {
+    ytDiv.classList.add('para-selected');
+    const chk = document.createElement('span');
+    chk.className = 'para-checkbox';
+    chk.contentEditable = 'false';
+    chk.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    `;
+    chk.onclick = (e) => {
+      e.stopPropagation();
+      toggleYoutubeSelect(ytDiv, editor);
+    };
+    ytDiv.appendChild(chk);
+  }
+  updateBulkDeleteButtonState(editor);
+}
+
 // 一括削除ボタンの表示/非表示とアニメーションクラスのトグル
 function updateBulkDeleteButtonState(editor) {
   const bulkDelBtn = document.getElementById('btnBulkDelete');
   const bulkCopyBtn = document.getElementById('btnBulkCopy');
   if (!editor) return;
 
-  const selectedCount = editor.querySelectorAll('p.para-selected').length;
+  const selectedCount = editor.querySelectorAll('p.para-selected, [data-youtube-video].para-selected').length;
   if (selectedCount > 0) {
     if (bulkDelBtn) {
       bulkDelBtn.style.display = 'flex';
@@ -2403,22 +2432,20 @@ function bindParagraphSwipeEvents(editor) {
 
     if (Math.abs(dx) > 50 && dy < 40) {
       if (dx < 0) {
-        // タップされた位置からエディタ直下のブロック要素（段落）を特定
-        let p = e.target;
-        while (p && p.parentNode !== editor) {
-          p = p.parentNode;
+        // タップされた位置からエディタ直下のブロック要素を特定
+        let target = e.target;
+        while (target && target.parentNode !== editor) {
+          target = target.parentNode;
         }
-        if (!p || p === editor) return;
+        if (!target || target === editor) return;
 
-        // もし p が P タグでなかった場合、安全のために P タグでラップする（画像やむき出しテキストの安全対策）
-        if (p.tagName !== 'P') {
-          const wrapper = document.createElement('p');
-          p.parentNode.insertBefore(wrapper, p);
-          wrapper.appendChild(p);
-          p = wrapper;
+        if (target.hasAttribute('data-youtube-video')) {
+          // YouTube ノードは専用トグル（<p> でラップしない）
+          toggleYoutubeSelect(target, editor);
+        } else if (target.tagName === 'P') {
+          toggleParagraphSelect(target, editor);
         }
-
-        toggleParagraphSelect(p, editor);
+        // それ以外の TipTap 内部ブロックは無視
       } else {
         // 右フリップで前の画面に戻る
         goBack();
@@ -3149,10 +3176,10 @@ function setupImageDragAndDrop(editor) {
     if (target.tagName !== 'IMG' || !target.classList.contains('inserted-img')) return;
 
     // 長押し保存メニューや標準ドラッグをキャンセルして競合を防止
+    // ※ stopPropagation は呼ばない — touchstart を bindParagraphSwipeEvents に伝えてスワイプ遷移を有効にする
     if (e.cancelable) {
       e.preventDefault();
     }
-    e.stopPropagation();
 
     dragTarget = target;
     activeP = target.closest('p');
@@ -3234,10 +3261,23 @@ function setupImageDragAndDrop(editor) {
     }
   };
 
-  const onEnd = () => {
+  const onEnd = (e) => {
     if (!isDraggingImg) {
-      // pressTimer が残っている（＝移動距離が小さく、350ms以内に指が離れた）場合のみタップとみなす
-      if (pressTimer && dragTarget) {
+      // タップか否かをスワイプ距離で判定（右スワイプで一覧に戻るジェスチャーと区別）
+      let endX = startX, endY = startY;
+      if (e && e.changedTouches && e.changedTouches.length > 0) {
+        endX = e.changedTouches[0].clientX;
+        endY = e.changedTouches[0].clientY;
+      } else if (e && typeof e.clientX === 'number') {
+        endX = e.clientX;
+        endY = e.clientY;
+      }
+      const movedX = Math.abs(endX - startX);
+      const movedY = Math.abs(endY - startY);
+      const isSwipe = movedX > 30 && movedX > movedY;
+
+      // pressTimer が残っており、かつスワイプでない（小さな移動）場合のみタップとみなす
+      if (pressTimer && dragTarget && !isSwipe) {
         showLightbox(dragTarget.src);
       }
       if (pressTimer) {
@@ -3305,8 +3345,8 @@ function setupImageDragAndDrop(editor) {
     }
   }, { passive: false });
 
-  editor.addEventListener('touchend', onEnd);
-  editor.addEventListener('touchcancel', onEnd);
+  editor.addEventListener('touchend', e => onEnd(e));
+  editor.addEventListener('touchcancel', e => onEnd(e));
 
   // マウスイベントのバインド
   editor.addEventListener('mousedown', e => {
