@@ -1692,6 +1692,37 @@ function renderEditor(container) {
       refreshYoutubeDeleteButtons('view');
     }
   });
+
+  // iOS キーボード表示後のカーソル可視性補正
+  // キーボードが開ききった後に visualViewport.height でカーソルが隠れていたら
+  // editor-content をスクロールして表示させる
+  if (window.visualViewport) {
+    let vvResizeTimer = null;
+    const onVVResize = () => {
+      if (vvResizeTimer) clearTimeout(vvResizeTimer);
+      vvResizeTimer = setTimeout(() => {
+        vvResizeTimer = null;
+        if (!tiptapEditor || tiptapEditor.view.dom.classList.contains('mode-view')) return;
+        const edContent = document.getElementById('edContent');
+        if (!edContent) return;
+        // iOS が window をスクロールしていた場合はリセット（PWA固定レイアウト想定）
+        if (window.scrollY !== 0) window.scrollTo(0, 0);
+        const vv = window.visualViewport;
+        const { from } = tiptapEditor.state.selection;
+        let coords;
+        try { coords = tiptapEditor.view.coordsAtPos(from); } catch (_) { return; }
+        const pad = 40; // カーソルとキーボード上端の余白
+        if (coords.bottom > vv.height - pad) {
+          edContent.scrollTop += coords.bottom - (vv.height - pad);
+        }
+      }, 150);
+    };
+    window.visualViewport.addEventListener('resize', onVVResize);
+    listeners.push(() => {
+      window.visualViewport.removeEventListener('resize', onVVResize);
+      if (vvResizeTimer) clearTimeout(vvResizeTimer);
+    });
+  }
 }
 
 // ── TipTap用画像圧縮・挿入ヘルパー ─────────────────
