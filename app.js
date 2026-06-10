@@ -164,6 +164,7 @@ let paraSwipeListeners = [];
 let justEditedArticleId = null;  // 直前に編集したカードのID（フラッシュ明滅用）
 let lastDeletedContent = null;   // 削除直前のエディタHTML（Undo用）
 let tiptapEditor = null;         // TipTapエディターインスタンス
+let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列
 
 // ── エディター内容の即時強制保存 ─────────────────
 function forceSaveEditorContent() {
@@ -173,7 +174,7 @@ function forceSaveEditorContent() {
 
   let cleanHTML = '';
   if (tiptapEditor) {
-    cleanHTML = tiptapEditor.getHTML();
+    cleanHTML = restoreOriginalSrcs(tiptapEditor.getHTML(), origDataUrls);
   } else {
     const editor = document.getElementById('edContent');
     if (editor) cleanHTML = getCleanEditorHTML(editor);
@@ -1669,6 +1670,8 @@ function renderEditor(container) {
         }
       }
 
+      origDataUrls = extractDataUrls(displayHTML);
+      displayHTML = preprocessHTMLForTipTap(displayHTML).html;
       tiptapEditor.commands.setContent(displayHTML, false);
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
     }
@@ -2285,9 +2288,62 @@ function cleanupAllSwipedParagraphs(editor) {
   updateBulkDeleteButtonState(editor);
 }
 
+// ── TipTap HTML 前後処理 ──────────────────────────────────────────────────
+
+function extractDataUrls(html) {
+  const urls = [];
+  html.replace(/<img\b[^>]*\bsrc="(data:[^"]+)"/gi, (_, src) => urls.push(src));
+  return urls;
+}
+
+// setContent 前処理: 既存HTMLをTipTap互換形式に変換
+function preprocessHTMLForTipTap(html) {
+  const logs = [];
+  let result = html;
+
+  // img の contenteditable / class を除去
+  let imgCount = 0;
+  result = result.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+    imgCount++;
+    attrs = attrs.replace(/\s+contenteditable="[^"]*"/gi, '');
+    attrs = attrs.replace(/\s+class="[^"]*"/gi, '');
+    return '<img' + attrs + '>';
+  });
+  if (imgCount) logs.push('[img] ' + imgCount + ' 件: contenteditable / class 除去');
+
+  // <p class="..."> の class を除去
+  result = result.replace(/<p(\s[^>]*)>/gi, (match, attrs) => {
+    if (!attrs.includes('class=')) return match;
+    const cls = (attrs.match(/class="([^"]*)"/) || [])[1] || '';
+    logs.push('[p] class 除去: "' + cls + '"');
+    return '<p' + attrs.replace(/\s*class="[^"]*"/, '') + '>';
+  });
+
+  // YouTube コンテナを TipTap ノード形式に変換
+  const ytRe =
+    /<p>\s*<div[^>]*class="youtube-container"[^>]*>[\s\S]*?src="[^"]*youtube\.com\/embed\/([^?"&#\s]+)[^"]*"[\s\S]*?<\/div>\s*<\/p>/gi;
+  let ytCount = 0;
+  result = result.replace(ytRe, (match, videoId) => {
+    ytCount++;
+    logs.push('[YouTube #' + ytCount + '] videoId: ' + videoId);
+    return '<div data-youtube-video><iframe src="https://www.youtube.com/embed/' + videoId + '"></iframe></div>';
+  });
+
+  return { html: result, logs };
+}
+
+// getHTML() 後処理: Safari が data: を blob: に変換した場合に復元
+function restoreOriginalSrcs(rawOut, dataUrls) {
+  let idx = 0;
+  return rawOut.replace(/\bsrc="(blob:[^"]+)"/gi, (match) => {
+    const orig = dataUrls[idx++];
+    return orig ? 'src="' + orig + '"' : match;
+  });
+}
+
 // エディタ全体のクリーンなHTMLを抽出
 function getCleanEditorHTML(editor) {
-  if (tiptapEditor) return tiptapEditor.getHTML();
+  if (tiptapEditor) return restoreOriginalSrcs(tiptapEditor.getHTML(), origDataUrls);
   if (!editor) return '';
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = editor.innerHTML;

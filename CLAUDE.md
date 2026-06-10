@@ -81,14 +81,13 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=620`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=621`
+- `app.js?v=622`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 
 ## 次のステップ
-- `tiptap-test.html` の `preprocessHTMLForTipTap()` と `restoreOriginalSrcs()` を `app.js` に統合する
 - 細かいバグ修正と機能改善
 - `tiptap-bundle.js`（旧ファイル）と `tiptap-test.html` の削除検討
 - ユーザー報告の不具合をひとつずつ対処
