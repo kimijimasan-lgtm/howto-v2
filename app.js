@@ -2093,6 +2093,26 @@ function normalizeEditorHTML(editor) {
   }
 }
 
+// クリック位置 clientY に最も近い ProseMirror 直接子要素を返す
+function findNearestEditorChild(proseMirror, clientY) {
+  const children = Array.from(proseMirror.children).filter(
+    el => !el.classList.contains('paste-insert-line') && !el.classList.contains('insert-line')
+  );
+  if (children.length === 0) return null;
+  for (const child of children) {
+    const r = child.getBoundingClientRect();
+    if (clientY >= r.top && clientY <= r.bottom) return child;
+  }
+  let best = null;
+  let bestDist = Infinity;
+  for (const child of children) {
+    const r = child.getBoundingClientRect();
+    const dist = Math.abs(clientY - (r.top + r.bottom) / 2);
+    if (dist < bestDist) { bestDist = dist; best = child; }
+  }
+  return best;
+}
+
 function initializeNativeParagraphActions(editor) {
   if (!editor) return;
 
@@ -2101,20 +2121,34 @@ function initializeNativeParagraphActions(editor) {
     if (state.editorMode !== 'view' || !window.globalCutParagraphs || window.globalCutParagraphs.length === 0) {
       return;
     }
-    const p = e.target.closest('p');
-    if (p && editor.contains(p)) {
-      e.stopPropagation();
-      e.preventDefault();
-      const rect = p.getBoundingClientRect();
-      const relativeY = e.clientY - rect.top;
-      const location = (relativeY < rect.height / 2) ? 'before' : 'after';
-      if (activePasteMarkerP === p && activePasteLocation === location) {
-        removePasteMarker();
-      } else {
-        showPasteMarker(p, location);
-      }
+    // マーカー自身のクリックは無視
+    if (e.target.classList.contains('paste-insert-line') || e.target.closest('.paste-insert-line')) return;
+
+    // ProseMirror 直接子まで遡る（<p>・[data-youtube-video] どちらも対応）
+    let targetEl = null;
+    if (e.target === editor) {
+      targetEl = findNearestEditorChild(editor, e.clientY);
     } else {
+      targetEl = e.target;
+      while (targetEl && targetEl.parentNode !== editor) {
+        targetEl = targetEl.parentNode;
+      }
+      if (!targetEl || targetEl.classList.contains('paste-insert-line')) {
+        targetEl = findNearestEditorChild(editor, e.clientY);
+      }
+    }
+
+    if (!targetEl) { removePasteMarker(); return; }
+
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = targetEl.getBoundingClientRect();
+    const relativeY = e.clientY - rect.top;
+    const location = (relativeY < rect.height / 2) ? 'before' : 'after';
+    if (activePasteMarkerP === targetEl && activePasteLocation === location) {
       removePasteMarker();
+    } else {
+      showPasteMarker(targetEl, location);
     }
   });
 
@@ -2558,7 +2592,12 @@ function pasteCutParagraphs(editor, targetP = null, location = 'after') {
   
   let parentP = targetP;
   let refLocation = location;
-  
+
+  // Cross-card fix: 別カードから持ち越した参照がDOMから切り離されている場合はクリア
+  if (parentP && !editor.contains(parentP)) {
+    parentP = null;
+  }
+
   if (!parentP) {
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
@@ -2571,13 +2610,13 @@ function pasteCutParagraphs(editor, targetP = null, location = 'after') {
       refLocation = 'after';
     }
   }
-  
+
   let inserted = false;
   const insertedElements = [];
   const parentNode = editor;
-  
 
-  if (parentP && parentP.tagName === 'P') {
+  // <p> も [data-youtube-video] も挿入基準として受け付ける
+  if (parentP && editor.contains(parentP) && (parentP.tagName === 'P' || parentP.hasAttribute('data-youtube-video'))) {
     let refNode = parentP;
     window.globalCutParagraphs.forEach((html, idx) => {
       const temp = document.createElement('div');
