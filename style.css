@@ -689,12 +689,17 @@ body {
   visibility: hidden !important; /* プレースホルダーの中身（文字等）を非表示にして完全な空欄化 */
 }
 
+/* 閲覧モード: 段落のiOS長押しメニューとテキスト選択を無効化（ドラッグ前から抑制が必要） */
+.editor-content .ProseMirror.mode-view p,
+.editor-content .ProseMirror.mode-view [data-youtube-video] {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
 /* ドラッグ元のアイテム：ドラッグ中、元の位置に薄く半透明で残るように見せる */
 .sortable-chosen {
   opacity: 0.55 !important;
   z-index: 999;
-  -webkit-touch-callout: none; /* iOS長押しメニューを抑制 */
-  user-select: none;
 }
 
 /* カテゴリパネルのドラッグ時3Dガタつき防止（元の位置を崩さない） */

@@ -2702,10 +2702,9 @@ function refreshParaSortable(mode) {
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
       draggable: 'p, [data-youtube-video]',
-      delay: 300,
+      delay: 400,
       delayOnTouchOnly: true,
-      forceFallback: true,
-      fallbackTolerance: 5,
+      touchStartThreshold: 5,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
