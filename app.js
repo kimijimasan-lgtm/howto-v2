@@ -1693,36 +1693,20 @@ function renderEditor(container) {
     }
   });
 
-  // iOS キーボード表示後のカーソル可視性補正
-  // キーボードが開ききった後に visualViewport.height でカーソルが隠れていたら
-  // editor-content をスクロールして表示させる
-  if (window.visualViewport) {
-    let vvResizeTimer = null;
-    const onVVResize = () => {
-      if (vvResizeTimer) clearTimeout(vvResizeTimer);
-      vvResizeTimer = setTimeout(() => {
-        vvResizeTimer = null;
-        if (!tiptapEditor || tiptapEditor.view.dom.classList.contains('mode-view')) return;
-        const edContent = document.getElementById('edContent');
-        if (!edContent) return;
-        // iOS が window をスクロールしていた場合はリセット（PWA固定レイアウト想定）
-        if (window.scrollY !== 0) window.scrollTo(0, 0);
-        const vv = window.visualViewport;
-        const { from } = tiptapEditor.state.selection;
-        let coords;
-        try { coords = tiptapEditor.view.coordsAtPos(from); } catch (_) { return; }
-        const pad = 40; // カーソルとキーボード上端の余白
-        if (coords.bottom > vv.height - pad) {
-          edContent.scrollTop += coords.bottom - (vv.height - pad);
-        }
-      }, 150);
-    };
-    window.visualViewport.addEventListener('resize', onVVResize);
-    listeners.push(() => {
-      window.visualViewport.removeEventListener('resize', onVVResize);
-      if (vvResizeTimer) clearTimeout(vvResizeTimer);
-    });
-  }
+  // タップ時にカーソル位置を画面内にスクロール（iOSキーボード表示後対策）
+  // フォーカス後 400ms 待ってキーボードアニメーション完了を待ってから scrollIntoView
+  tiptapEditor.on('focus', () => {
+    setTimeout(() => {
+      if (!tiptapEditor || tiptapEditor.view.dom.classList.contains('mode-view')) return;
+      const { from } = tiptapEditor.state.selection;
+      let domNode;
+      try { domNode = tiptapEditor.view.domAtPos(from).node; } catch (_) { return; }
+      const el = domNode.nodeType === Node.TEXT_NODE ? domNode.parentElement : domNode;
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }, 400);
+  });
 }
 
 // ── TipTap用画像圧縮・挿入ヘルパー ─────────────────
