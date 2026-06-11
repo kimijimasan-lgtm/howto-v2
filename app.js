@@ -2255,8 +2255,8 @@ function initializeNativeParagraphActions(editor) {
         const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
         if (!el) return;
         const rect = el.getBoundingClientRect();
-        // キーボード上端から80pxの余白を確保する位置
-        const visibleBottom = window.visualViewport.height - 80;
+        // キーボード上端から130px確保（予測変換バー約50px + 余白80px）
+        const visibleBottom = window.visualViewport.height - 130;
         if (rect.bottom > visibleBottom) {
           const edContent = document.getElementById('edContent');
           if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
