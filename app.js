@@ -163,6 +163,7 @@ let paraSortable = null;
 let paraSwipeListeners = [];
 let justEditedArticleId = null;  // 直前に編集したカードのID（フラッシュ明滅用）
 let lastDeletedContent = null;   // 削除直前のエディタHTML（Undo用）
+let pasteAutoHideTimer = null;   // カット後5秒で貼り付けボタンを自動非表示
 let tiptapEditor = null;         // TipTapエディターインスタンス
 let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列
 
@@ -1429,6 +1430,7 @@ function renderEditor(container) {
   const pasteCancelBtn = document.getElementById('btnPasteCancel');
   if (pasteCancelBtn) {
     pasteCancelBtn.onclick = () => {
+      if (pasteAutoHideTimer) { clearTimeout(pasteAutoHideTimer); pasteAutoHideTimer = null; }
       if (lastDeletedContent !== null && tiptapEditor) {
         tiptapEditor.commands.setContent(lastDeletedContent);
         const pm = tiptapEditor.view.dom;
@@ -1566,6 +1568,13 @@ function renderEditor(container) {
         if (_bd) { _bd.style.display = 'none'; _bd.classList.remove('pulse-delete-active'); }
         if (_bc) { _bc.style.display = 'none'; _bc.classList.remove('pulse-delete-active'); }
         updatePasteButtonState();
+        // 5秒後に貼り付けボタンを自動非表示（貼り付けなければ削除扱い）
+        if (pasteAutoHideTimer) clearTimeout(pasteAutoHideTimer);
+        pasteAutoHideTimer = setTimeout(() => {
+          window.globalCutParagraphs = null;
+          updatePasteButtonState();
+          pasteAutoHideTimer = null;
+        }, 5000);
         showToast("段落をカットしました");
       }, 500);
     };
@@ -2783,6 +2792,7 @@ function pasteCutParagraphs(editor, targetP = null, location = 'after') {
   }, 1000);
   
   // ペースト完了後にメモリをクリア
+  if (pasteAutoHideTimer) { clearTimeout(pasteAutoHideTimer); pasteAutoHideTimer = null; }
   window.globalCutParagraphs = null;
   updatePasteButtonState();
   
