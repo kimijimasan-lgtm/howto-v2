@@ -1292,8 +1292,18 @@ body {
   -webkit-touch-callout: none;
 }
 .editor-content .ProseMirror.mode-view p .para-drag-handle,
-.editor-content .ProseMirror.mode-view [data-youtube-video] .para-drag-handle {
+.editor-content .ProseMirror.mode-view [data-youtube-video] .para-drag-handle,
+.editor-content .ProseMirror.mode-view .img-block-wrapper .para-drag-handle {
   display: flex;
+}
+
+/* inline:false 画像ブロック用ラッパー */
+.img-block-wrapper {
+  display: block;
+  position: relative;
+}
+.img-block-wrapper img.inserted-img {
+  margin: 0;
 }
 .para-drag-handle:active {
   cursor: grabbing;

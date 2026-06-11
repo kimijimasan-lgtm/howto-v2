@@ -1611,7 +1611,7 @@ function renderEditor(container) {
     element: edEl,
     extensions: [
       StarterKit,
-      ImageExtension.configure({ allowBase64: true, inline: true, HTMLAttributes: { class: 'inserted-img' } }),
+      ImageExtension.configure({ allowBase64: true, inline: false, HTMLAttributes: { class: 'inserted-img' } }),
       YoutubeExtension.configure({ controls: true, nocookie: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -2398,6 +2398,12 @@ function getCleanPMHTML() {
   clone.querySelectorAll(
     '.para-drag-handle, .yt-del-btn, .para-checkbox, .swipe-action-btn, .paste-guide-message, .paste-insert-line'
   ).forEach(el => el.remove());
+  // img-block-wrapper を img に戻す（display用ラッパーをTipTap状態に混入させない）
+  clone.querySelectorAll('.img-block-wrapper').forEach(wrapper => {
+    const img = wrapper.querySelector('img');
+    if (img && wrapper.parentNode) wrapper.parentNode.replaceChild(img.cloneNode(true), wrapper);
+    else wrapper.remove();
+  });
   return clone.innerHTML || '<p></p>';
 }
 
@@ -2806,7 +2812,7 @@ function refreshParaSortable(mode) {
   const editor = tiptapEditor.view.dom;
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
-      draggable: 'p, [data-youtube-video]',
+      draggable: 'p, [data-youtube-video], .img-block-wrapper',
       handle: '.para-drag-handle',
       animation: 150,
       ghostClass: 'sortable-ghost',
@@ -2858,8 +2864,24 @@ function refreshYoutubeDeleteButtons(mode) {
     delete yt._ytEnter;
     delete yt._ytLeave;
   });
+  // img-block-wrapper をアンラップ（img を元の位置に戻す）
+  pm.querySelectorAll('.img-block-wrapper').forEach(wrapper => {
+    const img = wrapper.querySelector('img');
+    if (img && wrapper.parentNode) wrapper.parentNode.replaceChild(img, wrapper);
+    else wrapper.remove();
+  });
 
   if (mode !== 'view') return;
+
+  // inline:false の img ブロックをラッパー div で包んでハンドルを持てるようにする
+  Array.from(pm.children).forEach(child => {
+    if (child.tagName === 'IMG' && child.classList.contains('inserted-img')) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'img-block-wrapper';
+      child.parentNode.insertBefore(wrapper, child);
+      wrapper.appendChild(child);
+    }
+  });
 
   pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
     const btn = document.createElement('button');
@@ -2889,9 +2911,9 @@ function refreshYoutubeDeleteButtons(mode) {
     ytDiv.appendChild(btn);
   });
 
-  // ドラッグハンドルを全段落・YouTube要素に inject
-  pm.querySelectorAll('p, [data-youtube-video]').forEach(el => {
-    el.style.position = 'relative'; // absolute 位置の基準を各要素に固定（必須）
+  // ドラッグハンドルを全段落・YouTube要素・画像ラッパーに inject
+  pm.querySelectorAll('p, [data-youtube-video], .img-block-wrapper').forEach(el => {
+    el.style.position = 'relative';
     const handle = document.createElement('span');
     handle.className = 'para-drag-handle';
     handle.contentEditable = 'false';
