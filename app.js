@@ -1296,7 +1296,7 @@ function renderEditor(container) {
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
             </svg>
           </button>
-          <button class="btn-icon" id="btnPasteCancel" title="貼り付けキャンセル" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--danger); transition: transform 0.2s; align-items: center; justify-content: center;">
+          <button class="btn-icon" id="btnPasteCancel" title="貼り付けキャンセル" style="display: none; background: #22c55e; border: 1px solid #22c55e; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #ffffff; transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: block;">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
