@@ -1682,9 +1682,6 @@ function renderEditor(container) {
       displayHTML = preprocessHTMLForTipTap(displayHTML).html;
       tiptapEditor.commands.setContent(displayHTML, false);
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
-      // [DIAG] Firebase読み込み後の画像DOM構造をログ
-      const fbImgs = tiptapEditor.view.dom.querySelectorAll('img');
-      fbImgs.forEach((img, i) => console.log('[DIAG Firebase img#' + i + ']', img.outerHTML.slice(0, 300)));
     }
 
     // 段落スワイプなどのネイティブアクションを初期化
@@ -1718,11 +1715,13 @@ function handleImageForTipTap(file) {
         const src = canvas.toDataURL('image/jpeg', 0.75);
         if (tiptapEditor) {
           tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
-          // [DIAG] 新規挿入後の画像DOM構造をログ
-          requestAnimationFrame(() => {
-            const newImgs = tiptapEditor.view.dom.querySelectorAll('img');
-            newImgs.forEach((img, i) => console.log('[DIAG New img#' + i + ']', img.outerHTML.slice(0, 300)));
-          });
+          // 末尾が画像で終わる場合、空段落を追加してタップ可能にする
+          const doc = tiptapEditor.state.doc;
+          const lastNode = doc.lastChild;
+          if (lastNode && lastNode.type.name === 'paragraph' &&
+              lastNode.lastChild && lastNode.lastChild.type.name === 'image') {
+            tiptapEditor.commands.insertContentAt(doc.content.size, { type: 'paragraph' });
+          }
         }
         resolve();
       };
@@ -2200,21 +2199,6 @@ function initializeNativeParagraphActions(editor) {
   if (editor._blurHandler)    editor.removeEventListener('blur',    editor._blurHandler);
   if (editor._scrollLockTimer) { clearInterval(editor._scrollLockTimer); editor._scrollLockTimer = null; }
 
-  editor._focusinHandler = () => {
-    cleanupAllSwipedParagraphs(editor);
-    const edC = document.getElementById('edContent');
-    console.log('[DIAG focusin] scrollY=' + window.scrollY + ' edTop=' + (edC ? edC.scrollTop : '?') + ' sel=' + (tiptapEditor ? tiptapEditor.state.selection.from : '?'));
-    // windowレベルのスクロールのみリセット（edContent.scrollTop は触らない）
-    window.scrollTo(0, 0);
-    document.body.scrollTop = 0;
-    document.documentElement.scrollTop = 0;
-    setTimeout(() => {
-      const edC2 = document.getElementById('edContent');
-      console.log('[DIAG focusin+50ms] scrollY=' + window.scrollY + ' edTop=' + (edC2 ? edC2.scrollTop : '?') + ' sel=' + (tiptapEditor ? tiptapEditor.state.selection.from : '?'));
-    }, 50);
-  };
-  editor.addEventListener('focusin', editor._focusinHandler);
-
   editor._blurHandler = () => {
     setTimeout(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -2386,6 +2370,12 @@ function preprocessHTMLForTipTap(html) {
     logs.push('[YouTube #' + ytCount + '] videoId: ' + videoId);
     return '<div data-youtube-video><iframe src="https://www.youtube.com/embed/' + videoId + '"></iframe></div>';
   });
+
+  // 末尾が画像で終わる段落の場合、空段落を追加（iOS末尾タップ可能にするため）
+  if (/<img\b[^>]*>\s*<\/p>\s*$/.test(result.trimEnd())) {
+    result += '<p></p>';
+    logs.push('[trailing] 末尾画像段落のため空段落を追加');
+  }
 
   return { html: result, logs };
 }
