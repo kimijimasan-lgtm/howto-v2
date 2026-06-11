@@ -1659,6 +1659,26 @@ function renderEditor(container) {
     },
   });
 
+  // focusイベント: iOSキーボード表示完了を待って（500ms）カーソルを見える位置にスクロール
+  tiptapEditor.on('focus', () => {
+    setTimeout(() => {
+      if (!tiptapEditor || tiptapEditor.isDestroyed) return;
+      try {
+        const { from } = tiptapEditor.state.selection;
+        const domPos = tiptapEditor.view.domAtPos(from);
+        const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        const visibleBottom = vvHeight - 20;
+        if (rect.bottom > visibleBottom) {
+          const edContent = document.getElementById('edContent');
+          if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
+        }
+      } catch (_) {}
+    }, 500);
+  });
+
   // ── Firebase からコンテンツを読み込む ─────────────
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
     if (!tiptapEditor) return;
@@ -1966,7 +1986,6 @@ function esc(str) {
 
 // ── 段落の常時スワイプ一括削除制御 ─────────────────
 let activeGlobalEditorClickCleanup = null;
-let activeVvResizeCleanup = null;
 
 // エディタロード時にスワイプ選択を自動バインド
 // エディタ内のHTML構造を常にPタグ（画像も含む）に平坦化・正規化する
@@ -2244,37 +2263,6 @@ function initializeNativeParagraphActions(editor) {
   document.addEventListener('click', outsideClickListener);
   activeGlobalEditorClickCleanup = outsideClickListener;
 
-  // キーボード表示後にカーソルが隠れないよう visualViewport resize で edContent.scrollTop を調整
-  if (activeVvResizeCleanup) { activeVvResizeCleanup(); activeVvResizeCleanup = null; }
-  if (window.visualViewport) {
-    const scrollCursorIntoView = () => {
-      if (!tiptapEditor || tiptapEditor.isDestroyed || !tiptapEditor.isFocused) return;
-      try {
-        const { from } = tiptapEditor.state.selection;
-        const domPos = tiptapEditor.view.domAtPos(from);
-        const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        // visualViewport.heightはキーボード＋予測変換バーを除いた実際の高さ
-        const visibleBottom = window.visualViewport.height - 20;
-        if (rect.bottom > visibleBottom) {
-          const edContent = document.getElementById('edContent');
-          if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
-        }
-      } catch (_) {}
-    };
-    // resizeイベント直後はDOMレンダリングが未完了でrect.bottomが不正確なため
-    // rAFを2回重ねてレンダリング完了後に補正を実行する
-    const vvHandler = () => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scrollCursorIntoView();
-        });
-      });
-    };
-    window.visualViewport.addEventListener('resize', vvHandler);
-    activeVvResizeCleanup = () => window.visualViewport.removeEventListener('resize', vvHandler);
-  }
 }
 
 // 特定の段落を選択（チェック）状態にする/解除する（☑️のトグル）
@@ -2617,7 +2605,6 @@ function cleanupNativeParagraphListeners(editor) {
     document.removeEventListener('click', activeGlobalEditorClickCleanup);
     activeGlobalEditorClickCleanup = null;
   }
-  if (activeVvResizeCleanup) { activeVvResizeCleanup(); activeVvResizeCleanup = null; }
 }
 
 // Undo（元に戻す）トーストの表示
