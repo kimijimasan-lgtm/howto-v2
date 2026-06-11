@@ -2278,6 +2278,13 @@ function initializeNativeParagraphActions(editor) {
 
 }
 
+// 空段落（テキストも画像も持たない <p>）かどうか判定
+function isEmptyParagraph(p) {
+  return p.tagName === 'P' &&
+    !p.querySelector('img') &&
+    p.textContent.trim() === '';
+}
+
 // 特定の段落を選択（チェック）状態にする/解除する（☑️のトグル）
 function toggleParagraphSelect(p, editor) {
   if (!p) return;
@@ -2571,12 +2578,11 @@ function bindParagraphSwipeEvents(editor) {
         if (!target || target === editor) return;
 
         if (target.hasAttribute('data-youtube-video')) {
-          // YouTube ノードは専用トグル（<p> でラップしない）
           toggleYoutubeSelect(target, editor);
-        } else if (target.tagName === 'P') {
+        } else if (target.tagName === 'P' && !isEmptyParagraph(target)) {
           toggleParagraphSelect(target, editor);
         }
-        // それ以外の TipTap 内部ブロックは無視
+        // 空段落・その他の内部ブロックは無視
       } else {
         // 右フリップで前の画面に戻る
         goBack();
@@ -2814,6 +2820,8 @@ function refreshParaSortable(mode) {
     paraSortable = Sortable.create(editor, {
       draggable: 'p, [data-youtube-video], .img-block-wrapper',
       handle: '.para-drag-handle',
+      filter: (evt, el) => el.tagName === 'P' && isEmptyParagraph(el),
+      preventOnFilter: true,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
@@ -2911,8 +2919,9 @@ function refreshYoutubeDeleteButtons(mode) {
     ytDiv.appendChild(btn);
   });
 
-  // ドラッグハンドルを全段落・YouTube要素・画像ラッパーに inject
+  // ドラッグハンドルを全段落・YouTube要素・画像ラッパーに inject（空段落は除外）
   pm.querySelectorAll('p, [data-youtube-video], .img-block-wrapper').forEach(el => {
+    if (el.tagName === 'P' && isEmptyParagraph(el)) return;
     el.style.position = 'relative';
     const handle = document.createElement('span');
     handle.className = 'para-drag-handle';
