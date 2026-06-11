@@ -1396,8 +1396,14 @@ function renderEditor(container) {
               targetPos = pos.pos + $pos.nodeAfter.nodeSize;
             }
           } catch (_) {}
-          tiptapEditor.commands.setTextSelection(targetPos);
+          // focus()を先に呼ぶ: contenteditable要素へのfocus時にブラウザがDOM selectionを
+          // リセットする。rAFで1フレーム後にsetTextSelectionを適用し上書きする。
           tiptapEditor.commands.focus();
+          requestAnimationFrame(() => {
+            if (tiptapEditor && !tiptapEditor.isDestroyed) {
+              tiptapEditor.commands.setTextSelection(targetPos);
+            }
+          });
         } else {
           tiptapEditor.commands.focus('end');
         }
