@@ -1530,7 +1530,17 @@ body {
 /* 編集モード — 赤 */
 .mode-toggle-bar.mode-edit {
   background: linear-gradient(135deg, #dc2626, #ef4444);
-  box-shadow: 0 -4px 12px rgba(239, 68, 68, 0.35);
+  /* 編集モード時は上部に移動: order=1(header=0の次), position sticky→relative */
+  order: 1;
+  position: relative;
+  bottom: auto;
+  top: auto;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+/* 編集モード時は edContent を mode-bar の後に回す */
+.screen-editor:has(.mode-toggle-bar.mode-edit) .editor-content {
+  order: 2;
 }
 
 /* エディタコンテンツの下部パディングを確保してトグルバーと重ならないようにする */

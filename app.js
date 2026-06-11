@@ -1670,9 +1670,8 @@ function renderEditor(container) {
         if (!el) return;
         const rect = el.getBoundingClientRect();
         const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        const modeBar = document.getElementById('btnModeToggle');
-        const modeBarH = modeBar ? modeBar.getBoundingClientRect().height : 0;
-        const visibleBottom = vvHeight - modeBarH - 20;
+        // 編集モード時はモードバーが上部に移動するため下端の計算には含めない
+        const visibleBottom = vvHeight - 20;
         if (rect.bottom > visibleBottom) {
           const edContent = document.getElementById('edContent');
           if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
