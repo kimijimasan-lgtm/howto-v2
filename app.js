@@ -2238,8 +2238,7 @@ function initializeNativeParagraphActions(editor) {
   // PC用画像削除ボタンのセットアップ
   setupImageDeleteButtons(editor);
 
-  // スマホ・PC共用 画像長押しドラッグ＆ドロップ移動のセットアップ
-  setupImageDragAndDrop(editor);
+  // 画像移動は段落ドラッグハンドル（⠿）でSortableJSが処理するため独自実装は不要
 
   // 各段落（<p>）にスワイプイベントをバインド
   bindParagraphSwipeEvents(editor);
@@ -2810,9 +2809,7 @@ function refreshParaSortable(mode) {
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
       draggable: 'p, [data-youtube-video]',
-      delay: 300,
-      delayOnTouchOnly: true,
-      touchStartThreshold: 5,
+      handle: '.para-drag-handle',
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
