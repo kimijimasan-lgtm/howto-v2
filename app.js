@@ -1668,7 +1668,13 @@ function renderEditor(container) {
         const domPos = tiptapEditor.view.domAtPos(from);
         const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
         if (!el) return;
-        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const rect = el.getBoundingClientRect();
+        const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        const visibleBottom = vvHeight - 20;
+        if (rect.bottom > visibleBottom) {
+          const edContent = document.getElementById('edContent');
+          if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
+        }
       } catch (_) {}
     }, 500);
   });
