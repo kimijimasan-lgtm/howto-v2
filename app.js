@@ -1382,31 +1382,33 @@ function renderEditor(container) {
       if (state.editorMode !== 'view') return;
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
-      setEditorMode('edit');
+      // posAtCoordsをsetEditorMode前に計算する（モード切替でツールバー高さが変わると
+      // 座標→ドキュメント位置の変換がずれるため、元のレイアウトで取得する）
+      let targetPos = null;
       if (tiptapEditor) {
-        // タップ座標をドキュメント位置に変換してカーソルを置く（引数なしfocus()はdoc先頭に飛ぶため）
         const pos = tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY });
         if (pos) {
-          let targetPos = pos.pos;
-          // pos直後のノードが画像の場合、画像の直後にカーソルを補正
-          // （e.targetは画像でも<p>になることがあるためdocモデルで判定）
+          targetPos = pos.pos;
           try {
             const $pos = tiptapEditor.state.doc.resolve(pos.pos);
             if ($pos.nodeAfter && $pos.nodeAfter.type.name === 'image') {
               targetPos = pos.pos + $pos.nodeAfter.nodeSize;
             }
           } catch (_) {}
-          // focus()を先に呼ぶ: contenteditable要素へのfocus時にブラウザがDOM selectionを
-          // リセットする。rAFで1フレーム後にsetTextSelectionを適用し上書きする。
-          tiptapEditor.commands.focus();
-          requestAnimationFrame(() => {
-            if (tiptapEditor && !tiptapEditor.isDestroyed) {
+        }
+      }
+      setEditorMode('edit');
+      if (tiptapEditor) {
+        // focus()を先に呼ぶ: contenteditable要素へのfocus時にブラウザがDOM selectionを
+        // リセットする。rAFで1フレーム後にsetTextSelectionを適用し上書きする。
+        tiptapEditor.commands.focus();
+        requestAnimationFrame(() => {
+          if (tiptapEditor && !tiptapEditor.isDestroyed) {
+            if (targetPos !== null) {
               tiptapEditor.commands.setTextSelection(targetPos);
             }
-          });
-        } else {
-          tiptapEditor.commands.focus('end');
-        }
+          }
+        });
       }
     });
   }
@@ -1964,6 +1966,7 @@ function esc(str) {
 
 // ── 段落の常時スワイプ一括削除制御 ─────────────────
 let activeGlobalEditorClickCleanup = null;
+let activeVvResizeCleanup = null;
 
 // エディタロード時にスワイプ選択を自動バインド
 // エディタ内のHTML構造を常にPタグ（画像も含む）に平坦化・正規化する
@@ -2240,6 +2243,22 @@ function initializeNativeParagraphActions(editor) {
   };
   document.addEventListener('click', outsideClickListener);
   activeGlobalEditorClickCleanup = outsideClickListener;
+
+  // キーボード表示後にカーソルが隠れないよう visualViewport resize でscrollIntoView
+  if (activeVvResizeCleanup) { activeVvResizeCleanup(); activeVvResizeCleanup = null; }
+  if (window.visualViewport) {
+    const vvHandler = () => {
+      if (!tiptapEditor || tiptapEditor.isDestroyed || !tiptapEditor.isFocused) return;
+      try {
+        const { from } = tiptapEditor.state.selection;
+        const domPos = tiptapEditor.view.domAtPos(from);
+        const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } catch (_) {}
+    };
+    window.visualViewport.addEventListener('resize', vvHandler);
+    activeVvResizeCleanup = () => window.visualViewport.removeEventListener('resize', vvHandler);
+  }
 }
 
 // 特定の段落を選択（チェック）状態にする/解除する（☑️のトグル）
@@ -2582,6 +2601,7 @@ function cleanupNativeParagraphListeners(editor) {
     document.removeEventListener('click', activeGlobalEditorClickCleanup);
     activeGlobalEditorClickCleanup = null;
   }
+  if (activeVvResizeCleanup) { activeVvResizeCleanup(); activeVvResizeCleanup = null; }
 }
 
 // Undo（元に戻す）トーストの表示
