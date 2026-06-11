@@ -1558,7 +1558,7 @@ function renderEditor(container) {
 
         // DOMの変更をTipTapの内部状態に同期
         if (tiptapEditor) {
-          tiptapEditor.commands.setContent(pm.innerHTML || '<p></p>');
+          tiptapEditor.commands.setContent(getCleanPMHTML());
           refreshYoutubeDeleteButtons('view');
         }
 
@@ -1782,13 +1782,6 @@ function handleImageForTipTap(file) {
         const src = canvas.toDataURL('image/jpeg', 0.75);
         if (tiptapEditor) {
           tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
-          // 末尾が画像で終わる場合、空段落を追加してタップ可能にする
-          const doc = tiptapEditor.state.doc;
-          const lastNode = doc.lastChild;
-          if (lastNode && lastNode.type.name === 'paragraph' &&
-              lastNode.lastChild && lastNode.lastChild.type.name === 'image') {
-            tiptapEditor.commands.insertContentAt(doc.content.size, { type: 'paragraph' });
-          }
         }
         resolve();
       };
@@ -2397,6 +2390,17 @@ function cleanupAllSwipedParagraphs(editor) {
   updateBulkDeleteButtonState(editor);
 }
 
+// ProseMirror DOM から注入UI要素を除いたクリーンな innerHTML を返す
+// setContent に渡す際は必ずこれを使うこと（para-drag-handle等が混入すると空段落が生成される）
+function getCleanPMHTML() {
+  if (!tiptapEditor) return '<p></p>';
+  const clone = tiptapEditor.view.dom.cloneNode(true);
+  clone.querySelectorAll(
+    '.para-drag-handle, .yt-del-btn, .para-checkbox, .swipe-action-btn, .paste-guide-message, .paste-insert-line'
+  ).forEach(el => el.remove());
+  return clone.innerHTML || '<p></p>';
+}
+
 // ── TipTap HTML 前後処理 ──────────────────────────────────────────────────
 
 function extractDataUrls(html) {
@@ -2476,12 +2480,6 @@ function preprocessHTMLForTipTap(html) {
       result = splitDiv.innerHTML;
       logs.push('[split] img混在段落を ' + splitCount + ' 件分割');
     }
-  }
-
-  // 末尾が画像で終わる段落の場合、空段落を追加（iOS末尾タップ可能にするため）
-  if (/<img\b[^>]*>\s*<\/p>\s*$/.test(result.trimEnd())) {
-    result += '<p></p>';
-    logs.push('[trailing] 末尾画像段落のため空段落を追加');
   }
 
   return { html: result, logs };
@@ -2779,7 +2777,7 @@ function pasteCutParagraphs(editor, targetP = null, location = 'after') {
   
   // 挿入後にTipTapの内部状態を同期して保存
   if (tiptapEditor) {
-    tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+    tiptapEditor.commands.setContent(getCleanPMHTML());
   }
   
   // 1秒後にフラッシュクラスを除去
@@ -2821,7 +2819,7 @@ function refreshParaSortable(mode) {
       onEnd: () => {
         isDragging = false;
         if (tiptapEditor) {
-          tiptapEditor.commands.setContent(editor.innerHTML || '<p></p>');
+          tiptapEditor.commands.setContent(getCleanPMHTML());
           refreshYoutubeDeleteButtons('view');
         }
       }
@@ -2838,7 +2836,7 @@ function refreshParaSortable(mode) {
       onEnd: () => {
         isDragging = false;
         if (tiptapEditor) {
-          tiptapEditor.commands.setContent(editor.innerHTML || '<p></p>');
+          tiptapEditor.commands.setContent(getCleanPMHTML());
         }
       }
     });
@@ -2882,7 +2880,7 @@ function refreshYoutubeDeleteButtons(mode) {
       lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
       ytDiv.remove();
       if (tiptapEditor) {
-        tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+        tiptapEditor.commands.setContent(getCleanPMHTML());
         refreshYoutubeDeleteButtons('view');
       }
       showToast('YouTube動画を削除しました');
@@ -3582,7 +3580,7 @@ function setupImageDragAndDrop(editor) {
         
         // TipTap内部状態を同期して保存
         if (tiptapEditor) {
-          tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+          tiptapEditor.commands.setContent(getCleanPMHTML());
         }
         showToast("画像を移動しました");
       }
@@ -3690,7 +3688,7 @@ function setupImageDeleteButtons(editor) {
           img.remove();
           removeDeleteBtn();
           if (tiptapEditor) {
-            tiptapEditor.commands.setContent(tiptapEditor.view.dom.innerHTML || '<p></p>');
+            tiptapEditor.commands.setContent(getCleanPMHTML());
           }
         }
       };

@@ -501,6 +501,7 @@ body {
 /* TipTap ProseMirror コンテナ */
 .editor-content .ProseMirror {
   padding: 1.25rem;
+  padding-bottom: 4rem;
   min-height: 100%;
   outline: none;
   caret-color: var(--accent);
