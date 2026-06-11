@@ -2244,7 +2244,7 @@ function initializeNativeParagraphActions(editor) {
   document.addEventListener('click', outsideClickListener);
   activeGlobalEditorClickCleanup = outsideClickListener;
 
-  // キーボード表示後にカーソルが隠れないよう visualViewport resize でscrollIntoView
+  // キーボード表示後にカーソルが隠れないよう visualViewport resize で edContent.scrollTop を調整
   if (activeVvResizeCleanup) { activeVvResizeCleanup(); activeVvResizeCleanup = null; }
   if (window.visualViewport) {
     const vvHandler = () => {
@@ -2253,7 +2253,14 @@ function initializeNativeParagraphActions(editor) {
         const { from } = tiptapEditor.state.selection;
         const domPos = tiptapEditor.view.domAtPos(from);
         const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
-        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        // キーボード上端から40pxの余白を確保する位置
+        const visibleBottom = window.visualViewport.height - 40;
+        if (rect.bottom > visibleBottom) {
+          const edContent = document.getElementById('edContent');
+          if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
+        }
       } catch (_) {}
     };
     window.visualViewport.addEventListener('resize', vvHandler);
