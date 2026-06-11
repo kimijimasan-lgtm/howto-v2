@@ -2247,7 +2247,7 @@ function initializeNativeParagraphActions(editor) {
   // キーボード表示後にカーソルが隠れないよう visualViewport resize で edContent.scrollTop を調整
   if (activeVvResizeCleanup) { activeVvResizeCleanup(); activeVvResizeCleanup = null; }
   if (window.visualViewport) {
-    const vvHandler = () => {
+    const scrollCursorIntoView = () => {
       if (!tiptapEditor || tiptapEditor.isDestroyed || !tiptapEditor.isFocused) return;
       try {
         const { from } = tiptapEditor.state.selection;
@@ -2256,13 +2256,21 @@ function initializeNativeParagraphActions(editor) {
         if (!el) return;
         const rect = el.getBoundingClientRect();
         // visualViewport.heightはキーボード＋予測変換バーを除いた実際の高さ
-        // 毎回リアルタイムで取得するので固定オフセット不要、視覚的余白20pxのみ
         const visibleBottom = window.visualViewport.height - 20;
         if (rect.bottom > visibleBottom) {
           const edContent = document.getElementById('edContent');
           if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
         }
       } catch (_) {}
+    };
+    // resizeイベント直後はDOMレンダリングが未完了でrect.bottomが不正確なため
+    // rAFを2回重ねてレンダリング完了後に補正を実行する
+    const vvHandler = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollCursorIntoView();
+        });
+      });
     };
     window.visualViewport.addEventListener('resize', vvHandler);
     activeVvResizeCleanup = () => window.visualViewport.removeEventListener('resize', vvHandler);
