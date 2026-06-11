@@ -1486,66 +1486,47 @@ body {
 }
 
 /* 🔘 画面最下部モード切り替えトグルバー（2行表示） */
+/* モード切替ボタン — 右下固定の小さな四角ボタン */
 .mode-toggle-bar {
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  width: 100%;
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1rem;
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
   z-index: 10000;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0.7rem 1rem;
   font-family: var(--font);
+  font-size: 1.2rem;
+  font-weight: 900;
   color: #ffffff;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
-  transition: background 0.25s ease, box-shadow 0.25s ease;
-  flex-shrink: 0;
-}
-.mode-toggle-bar .toggle-line1 {
-  font-size: 0.85rem;
-  font-weight: 700;
-  line-height: 1.5;
-}
-.mode-toggle-bar .toggle-line2 {
-  font-size: 0.75rem;
-  font-weight: 500;
-  opacity: 0.85;
-  line-height: 1.5;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 .mode-toggle-bar:active {
-  filter: brightness(0.85);
+  filter: brightness(0.8);
+  transform: scale(0.93);
 }
 
-/* 閲覧モード (デフォルト) — 青 */
+/* 閲覧モード — 青 */
 .mode-toggle-bar.mode-view {
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
-  box-shadow: 0 -4px 12px rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.88);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
 }
 
 /* 編集モード — 赤 */
 .mode-toggle-bar.mode-edit {
-  background: linear-gradient(135deg, #dc2626, #ef4444);
-  /* 編集モード時は上部に移動: order=1(header=0の次), position sticky→relative */
-  order: 1;
-  position: relative;
-  bottom: auto;
-  top: auto;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+  background: rgba(220, 38, 38, 0.88);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45);
 }
 
-/* 編集モード時は edContent を mode-bar の後に回す */
-.screen-editor:has(.mode-toggle-bar.mode-edit) .editor-content {
-  order: 2;
-}
-
-/* エディタコンテンツの下部パディングを確保してトグルバーと重ならないようにする */
+/* ボタンが右下に重なるためエディタ末尾に余白を確保 */
 .editor-content {
-  padding-bottom: 1rem;
+  padding-bottom: 5rem;
 }
 
 /* ペースト挿入位置インジケーター（境界マーカー）の最前面配置 */

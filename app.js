@@ -1317,7 +1317,7 @@ function renderEditor(container) {
         </div>
       </header>
       <div id="edContent" class="editor-content"></div>
-      <div class="mode-toggle-bar mode-view" id="btnModeToggle"><span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span></div>
+      <div class="mode-toggle-bar mode-view" id="btnModeToggle">閲</div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
@@ -1332,7 +1332,7 @@ function renderEditor(container) {
 
     if (mode === 'edit') {
       toggleBar.className = 'mode-toggle-bar mode-edit';
-      toggleBar.innerHTML = '<span class="toggle-line1">【編集モード】文字入力、範囲指定、コピペが使えます。</span><span class="toggle-line2">一部のアイコンが使えません。</span>';
+      toggleBar.textContent = '編';
       if (tiptapEditor) tiptapEditor.setEditable(true);
       if (proseMirrorEl) {
         proseMirrorEl.classList.remove('mode-view');
@@ -1340,7 +1340,7 @@ function renderEditor(container) {
       }
     } else {
       toggleBar.className = 'mode-toggle-bar mode-view';
-      toggleBar.innerHTML = '<span class="toggle-line1">【閲覧モード】左右フリップと各種アイコンが使えます。</span><span class="toggle-line2">文字入力、範囲指定が使えません。</span>';
+      toggleBar.textContent = '閲';
       if (tiptapEditor) {
         tiptapEditor.setEditable(false);
         tiptapEditor.commands.blur();
