@@ -1668,14 +1668,7 @@ function renderEditor(container) {
         const domPos = tiptapEditor.view.domAtPos(from);
         const el = domPos.node.nodeType === 3 ? domPos.node.parentElement : domPos.node;
         if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        // 編集モード時はモードバーが上部に移動するため下端の計算には含めない
-        const visibleBottom = vvHeight - 20;
-        if (rect.bottom > visibleBottom) {
-          const edContent = document.getElementById('edContent');
-          if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
-        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } catch (_) {}
     }, 500);
   });
