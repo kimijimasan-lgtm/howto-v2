@@ -1670,7 +1670,9 @@ function renderEditor(container) {
         if (!el) return;
         const rect = el.getBoundingClientRect();
         const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        const visibleBottom = vvHeight - 20;
+        const modeBar = document.getElementById('btnModeToggle');
+        const modeBarH = modeBar ? modeBar.getBoundingClientRect().height : 0;
+        const visibleBottom = vvHeight - modeBarH - 20;
         if (rect.bottom > visibleBottom) {
           const edContent = document.getElementById('edContent');
           if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
