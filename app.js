@@ -1383,7 +1383,16 @@ function renderEditor(container) {
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
       setEditorMode('edit');
-      if (tiptapEditor) tiptapEditor.commands.focus();
+      if (tiptapEditor) {
+        // タップ座標をドキュメント位置に変換してカーソルを置く（引数なしfocus()はdoc先頭に飛ぶため）
+        const pos = tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+        if (pos) {
+          tiptapEditor.commands.setTextSelection(pos.pos);
+          tiptapEditor.commands.focus();
+        } else {
+          tiptapEditor.commands.focus('end');
+        }
+      }
     });
   }
 
