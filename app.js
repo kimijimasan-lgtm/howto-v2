@@ -1378,63 +1378,24 @@ function renderEditor(container) {
   // 閲覧モード中にエディタ本文をタップ → 編集モードに自動切替してカーソル点滅
   const editorEl = document.getElementById('edContent');
   if (editorEl) {
-    // [DIAG] 画面上部デバッグオーバーレイ
-    const _diagShow = (lines) => {
-      let ov = document.getElementById('_diagOverlay');
-      if (!ov) {
-        ov = document.createElement('div');
-        ov.id = '_diagOverlay';
-        ov.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,0.82);color:#0f0;font:12px/1.5 monospace;padding:6px 8px;word-break:break-all;pointer-events:none;';
-        document.body.appendChild(ov);
-      }
-      ov.textContent = lines.join('\n');
-    };
-
     editorEl.addEventListener('click', (e) => {
-      // [DIAG] 編集モード中のタップも記録（2回目以降）
-      if (state.editorMode !== 'view') {
-        const pos2 = tiptapEditor ? tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY }) : null;
-        let imgPos2 = null, imgNode2 = null;
-        if (e.target && e.target.tagName === 'IMG' && tiptapEditor) {
-          try { imgPos2 = tiptapEditor.view.posAtDOM(e.target, 0); imgNode2 = tiptapEditor.state.doc.nodeAt(imgPos2); } catch (_) {}
-        }
-        _diagShow([
-          '[edit mode tap]',
-          'target=' + (e.target ? e.target.tagName : 'null'),
-          'isIMG=' + (e.target && e.target.tagName === 'IMG'),
-          'pos=' + JSON.stringify(pos2),
-          'imgPos=' + imgPos2,
-          'imgNodeType=' + (imgNode2 ? imgNode2.type.name : 'null'),
-        ]);
-        return;
-      }
+      if (state.editorMode !== 'view') return;
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
       setEditorMode('edit');
       if (tiptapEditor) {
         // タップ座標をドキュメント位置に変換してカーソルを置く（引数なしfocus()はdoc先頭に飛ぶため）
         const pos = tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY });
-        let targetPos = pos ? pos.pos : null;
-        let imgPos = null, imgNode = null;
-        if (e.target && e.target.tagName === 'IMG') {
+        if (pos) {
+          let targetPos = pos.pos;
+          // pos直後のノードが画像の場合、画像の直後にカーソルを補正
+          // （e.targetは画像でも<p>になることがあるためdocモデルで判定）
           try {
-            imgPos = tiptapEditor.view.posAtDOM(e.target, 0);
-            imgNode = tiptapEditor.state.doc.nodeAt(imgPos);
-            if (imgNode && imgNode.type.name === 'image') {
-              targetPos = imgPos + imgNode.nodeSize;
+            const $pos = tiptapEditor.state.doc.resolve(pos.pos);
+            if ($pos.nodeAfter && $pos.nodeAfter.type.name === 'image') {
+              targetPos = pos.pos + $pos.nodeAfter.nodeSize;
             }
           } catch (_) {}
-        }
-        _diagShow([
-          '[view→edit tap]',
-          'target=' + (e.target ? e.target.tagName : 'null'),
-          'isIMG=' + (e.target && e.target.tagName === 'IMG'),
-          'pos=' + JSON.stringify(pos),
-          'imgPos=' + imgPos,
-          'imgNodeType=' + (imgNode ? imgNode.type.name : 'null'),
-          'targetPos=' + targetPos,
-        ]);
-        if (targetPos !== null) {
           tiptapEditor.commands.setTextSelection(targetPos);
           tiptapEditor.commands.focus();
         } else {
