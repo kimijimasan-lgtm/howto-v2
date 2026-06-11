@@ -1387,7 +1387,15 @@ function renderEditor(container) {
         // タップ座標をドキュメント位置に変換してカーソルを置く（引数なしfocus()はdoc先頭に飛ぶため）
         const pos = tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY });
         if (pos) {
-          tiptapEditor.commands.setTextSelection(pos.pos);
+          let targetPos = pos.pos;
+          // タップが画像ノードの内側(inside)に当たる場合、画像の直後にカーソルを置く
+          if (pos.inside >= 0) {
+            const insideNode = tiptapEditor.state.doc.nodeAt(pos.inside);
+            if (insideNode && insideNode.type.name === 'image') {
+              targetPos = pos.inside + insideNode.nodeSize;
+            }
+          }
+          tiptapEditor.commands.setTextSelection(targetPos);
           tiptapEditor.commands.focus();
         } else {
           tiptapEditor.commands.focus('end');
