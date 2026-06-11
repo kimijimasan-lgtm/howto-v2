@@ -1682,6 +1682,9 @@ function renderEditor(container) {
       displayHTML = preprocessHTMLForTipTap(displayHTML).html;
       tiptapEditor.commands.setContent(displayHTML, false);
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
+      // [DIAG] Firebase読み込み後の画像DOM構造をログ
+      const fbImgs = tiptapEditor.view.dom.querySelectorAll('img');
+      fbImgs.forEach((img, i) => console.log('[DIAG Firebase img#' + i + ']', img.outerHTML.slice(0, 300)));
     }
 
     // 段落スワイプなどのネイティブアクションを初期化
@@ -1715,6 +1718,11 @@ function handleImageForTipTap(file) {
         const src = canvas.toDataURL('image/jpeg', 0.75);
         if (tiptapEditor) {
           tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
+          // [DIAG] 新規挿入後の画像DOM構造をログ
+          requestAnimationFrame(() => {
+            const newImgs = tiptapEditor.view.dom.querySelectorAll('img');
+            newImgs.forEach((img, i) => console.log('[DIAG New img#' + i + ']', img.outerHTML.slice(0, 300)));
+          });
         }
         resolve();
       };
@@ -2194,10 +2202,16 @@ function initializeNativeParagraphActions(editor) {
 
   editor._focusinHandler = () => {
     cleanupAllSwipedParagraphs(editor);
+    const edC = document.getElementById('edContent');
+    console.log('[DIAG focusin] scrollY=' + window.scrollY + ' edTop=' + (edC ? edC.scrollTop : '?') + ' sel=' + (tiptapEditor ? tiptapEditor.state.selection.from : '?'));
     // windowレベルのスクロールのみリセット（edContent.scrollTop は触らない）
     window.scrollTo(0, 0);
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
+    setTimeout(() => {
+      const edC2 = document.getElementById('edContent');
+      console.log('[DIAG focusin+50ms] scrollY=' + window.scrollY + ' edTop=' + (edC2 ? edC2.scrollTop : '?') + ' sel=' + (tiptapEditor ? tiptapEditor.state.selection.from : '?'));
+    }, 50);
   };
   editor.addEventListener('focusin', editor._focusinHandler);
 
