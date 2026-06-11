@@ -1552,7 +1552,11 @@ function renderEditor(container) {
           refreshYoutubeDeleteButtons('view');
         }
 
-        updateBulkDeleteButtonState(pm);
+        // カット後はbulk選択ボタンを消し、ペースト/キャンセルのみ表示
+        const _bd = document.getElementById('btnBulkDelete');
+        const _bc = document.getElementById('btnBulkCopy');
+        if (_bd) { _bd.style.display = 'none'; _bd.classList.remove('pulse-delete-active'); }
+        if (_bc) { _bc.style.display = 'none'; _bc.classList.remove('pulse-delete-active'); }
         updatePasteButtonState();
         showToast("段落をカットしました");
       }, 500);
