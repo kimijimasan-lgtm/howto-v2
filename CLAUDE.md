@@ -55,6 +55,24 @@ tiptapEditor = new TiptapEditor({
 ### モード切替
 - `setEditorMode('edit')` → `tiptapEditor.setEditable(true)`
 - `setEditorMode('view')` → `tiptapEditor.setEditable(false)` + `blur()`
+- モード切替UIは右下固定の小ボタン（`position: fixed; bottom: 1.5rem; right: 1rem; 50×50px`）
+  - 閲覧モード：「閲」（青）、編集モード：「編」（赤）
+  - `#btnModeToggle` の `textContent` を切り替えるだけ（span不使用）
+
+### iOSキーボード時のカーソルスクロール補正
+`tiptapEditor.on('focus')` + 500ms 後に実行：
+```js
+const rect = el.getBoundingClientRect();
+const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+const visibleBottom = vvHeight - 20;
+if (rect.bottom > visibleBottom) {
+  const edContent = document.getElementById('edContent');
+  if (edContent) edContent.scrollTop += rect.bottom - visibleBottom;
+}
+```
+- `visualViewport.height` はキーボード＋予測変換バーを除いた高さを返す
+- カーソルが隠れているときだけ差分を加算（アニメーションなし・最小限）
+- `scrollIntoView` は上下に無駄な動きが出るため不使用
 
 ### データ保存形式
 Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
@@ -66,9 +84,9 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=621, tiptap.bundle.js?v=1）
+index.html          — エントリポイント（app.js?v=660, tiptap.bundle.js?v=1）
 app.js              — アプリ全体（約3,660行）
-style.css           — スタイル（v=620）
+style.css           — スタイル（v=633）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 tiptap-bundle.js    — 旧バンドルファイル（未使用、削除検討）
 tiptap-test.html    — TipTap単体テスト用ページ（本番不要）
@@ -79,9 +97,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=628`
+- `style.css?v=633`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=630`
+- `app.js?v=660`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
