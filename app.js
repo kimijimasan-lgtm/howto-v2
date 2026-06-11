@@ -1388,12 +1388,16 @@ function renderEditor(container) {
         const pos = tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY });
         if (pos) {
           let targetPos = pos.pos;
-          // タップが画像ノードの内側(inside)に当たる場合、画像の直後にカーソルを置く
-          if (pos.inside >= 0) {
-            const insideNode = tiptapEditor.state.doc.nodeAt(pos.inside);
-            if (insideNode && insideNode.type.name === 'image') {
-              targetPos = pos.inside + insideNode.nodeSize;
-            }
+          // e.targetが<img>の場合、posAtDOMで画像の直後にカーソルを補正
+          // （pos.insideは親<p>を指すため画像検出には使えない）
+          if (e.target && e.target.tagName === 'IMG') {
+            try {
+              const imgPos = tiptapEditor.view.posAtDOM(e.target, 0);
+              const imgNode = tiptapEditor.state.doc.nodeAt(imgPos);
+              if (imgNode && imgNode.type.name === 'image') {
+                targetPos = imgPos + imgNode.nodeSize;
+              }
+            } catch (_) { /* posAtDOMがエラーの場合はpos.posを使う */ }
           }
           tiptapEditor.commands.setTextSelection(targetPos);
           tiptapEditor.commands.focus();
@@ -2387,6 +2391,46 @@ function preprocessHTMLForTipTap(html) {
     logs.push('[YouTube #' + ytCount + '] videoId: ' + videoId);
     return '<div data-youtube-video><iframe src="https://www.youtube.com/embed/' + videoId + '"></iframe></div>';
   });
+
+  // <p>内にimgとテキストが混在している場合、imgを別<p>に分割
+  // 例: <p><img>テキスト</p> → <p><img></p><p>テキスト</p>
+  {
+    const splitDiv = document.createElement('div');
+    splitDiv.innerHTML = result;
+    let splitCount = 0;
+    Array.from(splitDiv.querySelectorAll('p')).forEach(p => {
+      const childNodes = Array.from(p.childNodes);
+      const hasImg = childNodes.some(n => n.nodeType === 1 && n.tagName === 'IMG');
+      if (!hasImg) return;
+      const hasOther = childNodes.some(n =>
+        (n.nodeType === 3 && n.textContent.trim()) ||
+        (n.nodeType === 1 && n.tagName !== 'IMG')
+      );
+      if (!hasOther) return;
+      // imgと非imgを別<p>に分割
+      const newPs = [];
+      let cur = null;
+      childNodes.forEach(node => {
+        if (node.nodeType === 1 && node.tagName === 'IMG') {
+          if (cur) { newPs.push(cur); cur = null; }
+          const imgP = document.createElement('p');
+          imgP.appendChild(node.cloneNode(true));
+          newPs.push(imgP);
+        } else {
+          if (!cur) cur = document.createElement('p');
+          cur.appendChild(node.cloneNode(true));
+        }
+      });
+      if (cur) newPs.push(cur);
+      newPs.forEach(np => p.parentNode.insertBefore(np, p));
+      p.parentNode.removeChild(p);
+      splitCount++;
+    });
+    if (splitCount > 0) {
+      result = splitDiv.innerHTML;
+      logs.push('[split] img混在段落を ' + splitCount + ' 件分割');
+    }
+  }
 
   // 末尾が画像で終わる段落の場合、空段落を追加（iOS末尾タップ可能にするため）
   if (/<img\b[^>]*>\s*<\/p>\s*$/.test(result.trimEnd())) {
