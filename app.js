@@ -1425,14 +1425,22 @@ function renderEditor(container) {
   }, 50);
   document.getElementById('btnDel').onclick    = deleteArticle;
 
-  // 貼り付けキャンセルボタン
+  // 貼り付けキャンセルボタン（カットを元に戻す）
   const pasteCancelBtn = document.getElementById('btnPasteCancel');
   if (pasteCancelBtn) {
     pasteCancelBtn.onclick = () => {
+      if (lastDeletedContent !== null && tiptapEditor) {
+        tiptapEditor.commands.setContent(lastDeletedContent);
+        const pm = tiptapEditor.view.dom;
+        initializeNativeParagraphActions(pm);
+        if (pm.classList.contains('mode-view')) refreshYoutubeDeleteButtons('view');
+        saveEditorContentDirectly();
+        lastDeletedContent = null;
+      }
       window.globalCutParagraphs = null;
       removePasteMarker();
       updatePasteButtonState();
-      showToast('貼り付けをキャンセルしました');
+      showToast('カットを元に戻しました');
     };
   }
 
