@@ -2455,8 +2455,9 @@ function preprocessHTMLForTipTap(html) {
     return '<div data-youtube-video><iframe src="https://www.youtube.com/embed/' + videoId + '"></iframe></div>';
   });
 
-  // <p>内にimgとテキストが混在している場合、imgを別<p>に分割
-  // 例: <p><img>テキスト</p> → <p><img></p><p>テキスト</p>
+  // inline:false のため <p> 内の img をブロックとして取り出す
+  // ① img+テキスト混在: <p><img>テキスト</p> → <img><p>テキスト</p>
+  // ② img のみ:         <p><img></p>          → <img>
   {
     const splitDiv = document.createElement('div');
     splitDiv.innerHTML = result;
@@ -2465,33 +2466,30 @@ function preprocessHTMLForTipTap(html) {
       const childNodes = Array.from(p.childNodes);
       const hasImg = childNodes.some(n => n.nodeType === 1 && n.tagName === 'IMG');
       if (!hasImg) return;
-      const hasOther = childNodes.some(n =>
-        (n.nodeType === 3 && n.textContent.trim()) ||
-        (n.nodeType === 1 && n.tagName !== 'IMG')
-      );
-      if (!hasOther) return;
-      // imgと非imgを別<p>に分割
-      const newPs = [];
+
+      const newNodes = [];
       let cur = null;
       childNodes.forEach(node => {
         if (node.nodeType === 1 && node.tagName === 'IMG') {
-          if (cur) { newPs.push(cur); cur = null; }
-          const imgP = document.createElement('p');
-          imgP.appendChild(node.cloneNode(true));
-          newPs.push(imgP);
+          if (cur && cur.childNodes.length > 0) { newNodes.push(cur); cur = null; }
+          // img は <p> で包まず直接挿入（inline:false ブロックノード）
+          newNodes.push(node.cloneNode(true));
         } else {
+          // 空テキストノードは無視
+          if (node.nodeType === 3 && node.textContent.trim() === '') return;
           if (!cur) cur = document.createElement('p');
           cur.appendChild(node.cloneNode(true));
         }
       });
-      if (cur) newPs.push(cur);
-      newPs.forEach(np => p.parentNode.insertBefore(np, p));
+      if (cur && cur.childNodes.length > 0) newNodes.push(cur);
+
+      newNodes.forEach(n => p.parentNode.insertBefore(n, p));
       p.parentNode.removeChild(p);
       splitCount++;
     });
     if (splitCount > 0) {
       result = splitDiv.innerHTML;
-      logs.push('[split] img混在段落を ' + splitCount + ' 件分割');
+      logs.push('[split] img混在/<p>img</p>を ' + splitCount + ' 件展開');
     }
   }
 
