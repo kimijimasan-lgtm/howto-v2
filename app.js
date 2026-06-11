@@ -2186,35 +2186,29 @@ function initializeNativeParagraphActions(editor) {
   };
 
   // フォーカスイン時のスクロールリセット（iOS仮想キーボード表示時のヘッダー消失防止）
-  let scrollLockTimer = null;
-  editor.addEventListener('focusin', () => {
-    cleanupAllSwipedParagraphs(editor);
-    const lockScroll = () => {
-      window.scrollTo(0, 0);
-      document.body.scrollTop = 0;
-      document.documentElement.scrollTop = 0;
-      const app = document.getElementById('app');
-      if (app) app.scrollTop = 0;
-    };
-    lockScroll();
-    if (scrollLockTimer) clearInterval(scrollLockTimer);
-    let count = 0;
-    scrollLockTimer = setInterval(() => {
-      lockScroll();
-      if (++count >= 5) { clearInterval(scrollLockTimer); scrollLockTimer = null; }
-    }, 50);
-  });
+  // Firebase の on('value') のたびに initializeNativeParagraphActions が呼ばれるため
+  // 古いリスナーを必ず除去してからつけ直し、スタック累積を防ぐ
+  if (editor._focusinHandler) editor.removeEventListener('focusin', editor._focusinHandler);
+  if (editor._blurHandler)    editor.removeEventListener('blur',    editor._blurHandler);
+  if (editor._scrollLockTimer) { clearInterval(editor._scrollLockTimer); editor._scrollLockTimer = null; }
 
-  // フォーカスアウト時のスクロールリセット（iOS仮想キーボード縮小時のズレ防止）
-  editor.addEventListener('blur', () => {
+  editor._focusinHandler = () => {
+    cleanupAllSwipedParagraphs(editor);
+    // windowレベルのスクロールのみリセット（edContent.scrollTop は触らない）
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+  };
+  editor.addEventListener('focusin', editor._focusinHandler);
+
+  editor._blurHandler = () => {
     setTimeout(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-      const app = document.getElementById('app');
-      if (app) app.scrollTop = 0;
       document.body.scrollTop = 0;
       document.documentElement.scrollTop = 0;
     }, 80);
-  });
+  };
+  editor.addEventListener('blur', editor._blurHandler);
 
   // エディタ外のクリックで選択解除
   const outsideClickListener = (e) => {
