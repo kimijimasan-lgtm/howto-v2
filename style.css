@@ -2,20 +2,64 @@
    ハウツー解説 – Design System
    ============================================ */
 :root {
-  --bg:           #0d1117;
-  --bg-card:      rgba(255,255,255,0.05);
-  --bg-card-hover:rgba(255,255,255,0.09);
-  --bg-header:    rgba(13,17,23,0.85);
-  --border:       rgba(255,255,255,0.08);
-  --text-primary: #e6edf3;
-  --text-sub:     #8b949e;
-  --text-muted:   #484f58;
-  --accent:       #f97316;
-  --accent-dim:   rgba(249,115,22,0.15);
-  --danger:       #ef4444;
-  --success:      #22c55e;
-  --header-h:     56px;
+  --bg-outer:      #060a0f;
+  --bg:            #0d1117;
+  --bg-card:       rgba(255,255,255,0.05);
+  --bg-card-hover: rgba(255,255,255,0.09);
+  --bg-header:     rgba(13,17,23,0.85);
+  --border:        rgba(255,255,255,0.08);
+  --text-primary:  #e6edf3;
+  --text-sub:      #8b949e;
+  --text-muted:    #484f58;
+  --accent:        #f97316;
+  --accent-dim:    rgba(249,115,22,0.15);
+  --danger:        #ef4444;
+  --success:       #22c55e;
+  --header-h:      56px;
   --font: 'Noto Sans JP', sans-serif;
+}
+
+/* ── テーマ: ライト ── */
+html.theme-light {
+  --bg-outer:      #c8cdd4;
+  --bg:            #f2f4f7;
+  --bg-card:       rgba(0,0,0,0.05);
+  --bg-card-hover: rgba(0,0,0,0.09);
+  --bg-header:     rgba(242,244,247,0.92);
+  --border:        rgba(0,0,0,0.10);
+  --text-primary:  #111827;
+  --text-sub:      #4b5563;
+  --text-muted:    #9ca3af;
+}
+
+/* ── テーマ: セピア ── */
+html.theme-sepia {
+  --bg-outer:      #b8aa94;
+  --bg:            #f5edd8;
+  --bg-card:       rgba(80,50,20,0.06);
+  --bg-card-hover: rgba(80,50,20,0.11);
+  --bg-header:     rgba(245,237,216,0.92);
+  --border:        rgba(80,50,20,0.14);
+  --text-primary:  #2c1f0e;
+  --text-sub:      #7a6448;
+  --text-muted:    #b0a080;
+  --accent:        #c17f24;
+  --accent-dim:    rgba(193,127,36,0.15);
+}
+
+/* ── テーマ: ミッドナイト ── */
+html.theme-midnight {
+  --bg-outer:      #000;
+  --bg:            #080c14;
+  --bg-card:       rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.07);
+  --bg-header:     rgba(8,12,20,0.9);
+  --border:        rgba(255,255,255,0.06);
+  --text-primary:  #c0c8d8;
+  --text-sub:      #60697a;
+  --text-muted:    #38404e;
+  --accent:        #818cf8;
+  --accent-dim:    rgba(129,140,248,0.15);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -23,7 +67,7 @@
 html, body {
   height: 100%;
   font-family: var(--font);
-  background: #060a0f; /* PC側の外枠背景 */
+  background: var(--bg-outer);
   color: var(--text-primary);
   overflow: hidden;
 }
@@ -416,6 +460,70 @@ body {
 .sort-arrow {
   display: inline-block;
   width: 1em;
+}
+
+/* テーマピッカー */
+.theme-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-picker-sheet {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1.4rem 1.2rem 1.2rem;
+  width: min(300px, 88vw);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.theme-picker-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-sub);
+  text-align: center;
+  margin-bottom: 1rem;
+  letter-spacing: 0.5px;
+}
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.65rem;
+}
+.theme-swatch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.8rem 0.5rem;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.theme-swatch-btn.active {
+  border-color: var(--accent);
+}
+.theme-swatch-btn.active .theme-swatch-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+.theme-swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid rgba(128,128,128,0.25);
+  display: block;
+  flex-shrink: 0;
+}
+.theme-swatch-label {
+  font-size: 0.78rem;
+  color: var(--text-primary);
 }
 
 /* 移動先カテゴリ選択モーダル */

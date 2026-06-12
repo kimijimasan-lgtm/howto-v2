@@ -50,6 +50,54 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// ── テーマ管理 ────────────────────────────────────────────────────────
+const THEMES = [
+  { id: 'dark',     label: 'ダーク',       swatch: '#0d1117', textColor: '#e6edf3' },
+  { id: 'midnight', label: 'ミッドナイト', swatch: '#080c14', textColor: '#818cf8' },
+  { id: 'sepia',    label: 'セピア',       swatch: '#f5edd8', textColor: '#7a6448' },
+  { id: 'light',    label: 'ライト',       swatch: '#f2f4f7', textColor: '#4b5563' },
+];
+
+function applyTheme(name) {
+  const html = document.documentElement;
+  THEMES.forEach(t => html.classList.remove('theme-' + t.id));
+  if (name && name !== 'dark') html.classList.add('theme-' + name);
+  localStorage.setItem('app-theme', name || 'dark');
+}
+
+function getCurrentTheme() {
+  return localStorage.getItem('app-theme') || 'dark';
+}
+
+function showThemePicker() {
+  const current = getCurrentTheme();
+  const overlay = document.createElement('div');
+  overlay.className = 'theme-picker-overlay';
+  overlay.innerHTML = `
+    <div class="theme-picker-sheet">
+      <div class="theme-picker-title">テーマ</div>
+      <div class="theme-picker-grid">
+        ${THEMES.map(t => `
+          <button class="theme-swatch-btn${t.id === current ? ' active' : ''}" data-theme="${t.id}">
+            <span class="theme-swatch" style="background:${t.swatch}"></span>
+            <span class="theme-swatch-label">${t.label}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', e => {
+    const btn = e.target.closest('[data-theme]');
+    if (btn) {
+      applyTheme(btn.dataset.theme);
+      document.body.removeChild(overlay);
+    } else if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
 // ── カラーパレット（24色・白テキストとのコントラスト保証） ──────────
 const COLORS = [
   // ブルー系
@@ -455,6 +503,13 @@ function renderHome(container) {
           </svg>
         </button>
         <h1 class="app-title">📋 PCスマホ連動メモ</h1>
+        <button class="btn-icon" id="btnTheme" title="テーマ変更">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a10 10 0 0 1 0 20"/>
+            <circle cx="12" cy="12" r="4"/>
+          </svg>
+        </button>
         <button class="btn-icon accent" id="btnAddCat" title="カテゴリを追加">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -477,6 +532,7 @@ function renderHome(container) {
     </div>`;
 
   document.getElementById('btnAddCat').onclick = () => showCategoryModal();
+  document.getElementById('btnTheme').onclick = () => showThemePicker();
   const showQrBtn = document.getElementById('btnShowQR');
   if (showQrBtn) showQrBtn.onclick = () => showQRCodeModal();
 
@@ -3271,6 +3327,7 @@ function showPurchasePrompt() {
 
 // ── 起動と認証の監視 ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  applyTheme(getCurrentTheme());
   // 🔍 貼られた画像をタップした際の拡大表示（ライトボックス）イベント
   // 編集モード中はライトボックスを開かない
   document.body.addEventListener('click', e => {
