@@ -1790,6 +1790,9 @@ function renderEditor(container) {
         return false; // TipTapのデフォルト処理に委ねる
       },
       handleKeyDown(view, event) {
+        // IME確定直後の幽霊Enter（iPhoneで変換確定と改行が同キー）を抑止
+        if (event.key === 'Enter' && compositionJustEnded) return true;
+
         if (event.key !== 'Backspace') return false;
         const { state } = view;
         const { $from, empty } = state.selection;
@@ -1804,14 +1807,24 @@ function renderEditor(container) {
 
         const prevNode = $from.node(depth - 1).child(indexInParent - 1);
 
-        // 直前段落が画像1つだけ → joinBackward をブロックしカーソルを移動
+        // 直前段落が画像1つだけの場合の Backspace 処理
         if (
           prevNode.type.name === 'paragraph' &&
           prevNode.childCount === 1 &&
           prevNode.firstChild &&
           prevNode.firstChild.type.name === 'image'
         ) {
-          // 画像段落の末尾（画像の直後）にカーソルを移動
+          // 現在段落が空 → 空段落を削除してカーソルを画像段落末尾へ（画像は残す）
+          if ($from.parent.content.size === 0) {
+            event.preventDefault();
+            const cursorTargetPos = $from.before(depth) - 1; // 画像段落末尾の位置
+            tiptapEditor.chain()
+              .deleteCurrentNode()
+              .setTextSelection(Math.max(1, cursorTargetPos))
+              .run();
+            return true;
+          }
+          // 現在段落にテキストあり → 画像段落末尾へカーソル移動のみ（マージしない）
           const targetPos = $from.before(depth) - 1;
           setTimeout(() => {
             if (tiptapEditor) tiptapEditor.commands.setTextSelection(targetPos);
@@ -3114,6 +3127,13 @@ function refreshYoutubeDeleteButtons(mode) {
     handle.className = 'para-drag-handle';
     handle.contentEditable = 'false';
     handle.innerHTML = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><rect x="0" y="0" width="3" height="3" rx="0.5"/><rect x="7" y="0" width="3" height="3" rx="0.5"/><rect x="0" y="5.5" width="3" height="3" rx="0.5"/><rect x="7" y="5.5" width="3" height="3" rx="0.5"/><rect x="0" y="11" width="3" height="3" rx="0.5"/><rect x="7" y="11" width="3" height="3" rx="0.5"/></svg>`;
+    // 画像のみを含む段落はハンドルを上部に配置（画像中央に重なると紛らわしいため）
+    const hasImgOnly = el.tagName === 'P' && el.querySelector('img.inserted-img') &&
+      el.textContent.trim() === '';
+    if (hasImgOnly) {
+      handle.style.top = '8px';
+      handle.style.transform = 'none';
+    }
     el.insertBefore(handle, el.firstChild);
   });
 }
@@ -3531,15 +3551,21 @@ function insertNodeAtCursor(node, editor) {
 function updatePasteButtonState() {
   const pasteBtn = document.getElementById('btnPaste');
   const cancelBtn = document.getElementById('btnPasteCancel');
+  const attachBtn = document.getElementById('btnAttach');
+  const delBtn = document.getElementById('btnDel');
   if (!pasteBtn) return;
   if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
     pasteBtn.style.display = 'flex';
     pasteBtn.classList.add('pulse-delete-active');
     if (cancelBtn) cancelBtn.style.display = 'flex';
+    if (attachBtn) attachBtn.style.display = 'none';
+    if (delBtn) delBtn.style.display = 'none';
   } else {
     pasteBtn.style.display = 'none';
     pasteBtn.classList.remove('pulse-delete-active');
     if (cancelBtn) cancelBtn.style.display = 'none';
+    if (attachBtn) attachBtn.style.display = '';
+    if (delBtn) delBtn.style.display = '';
   }
 }
 
