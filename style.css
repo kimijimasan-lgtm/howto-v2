@@ -47,19 +47,19 @@ html.theme-sepia {
   --accent-dim:    rgba(193,127,36,0.15);
 }
 
-/* ── テーマ: サンセット ── */
-html.theme-sunset {
-  --bg-outer:      #0f0702;
-  --bg:            #1e0e04;
-  --bg-card:       rgba(245,158,11,0.07);
-  --bg-card-hover: rgba(245,158,11,0.13);
-  --bg-header:     rgba(30,14,4,0.93);
-  --border:        rgba(245,158,11,0.16);
-  --text-primary:  #e0b880;
-  --text-sub:      #a07840;
-  --text-muted:    #503820;
-  --accent:        #f59e0b;
-  --accent-dim:    rgba(245,158,11,0.18);
+/* ── テーマ: ミント ── */
+html.theme-mint {
+  --bg-outer:      #b8ddd0;
+  --bg:            #eaf7f2;
+  --bg-card:       rgba(16,185,129,0.07);
+  --bg-card-hover: rgba(16,185,129,0.13);
+  --bg-header:     rgba(234,247,242,0.93);
+  --border:        rgba(16,185,129,0.18);
+  --text-primary:  #1a4a38;
+  --text-sub:      #3a7a5a;
+  --text-muted:    #80b8a0;
+  --accent:        #10b981;
+  --accent-dim:    rgba(16,185,129,0.18);
 }
 
 /* ── テーマ: ローズ ── */
