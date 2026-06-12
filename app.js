@@ -2813,8 +2813,6 @@ function refreshParaSortable(mode) {
     paraSortable = Sortable.create(editor, {
       draggable: 'p, [data-youtube-video]',
       handle: '.para-drag-handle',
-      filter: (evt, el) => el.tagName === 'P' && isEmptyParagraph(el),
-      preventOnFilter: true,
       animation: 150,
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
@@ -2895,9 +2893,8 @@ function refreshYoutubeDeleteButtons(mode) {
     ytDiv.appendChild(btn);
   });
 
-  // ドラッグハンドルを全段落・YouTube要素に inject（空段落は除外）
+  // ドラッグハンドルを全段落・YouTube要素に inject
   pm.querySelectorAll('p, [data-youtube-video]').forEach(el => {
-    if (el.tagName === 'P' && isEmptyParagraph(el)) return;
     el.style.position = 'relative';
     const handle = document.createElement('span');
     handle.className = 'para-drag-handle';
