@@ -1740,19 +1740,31 @@ function renderEditor(container) {
     }, 500);
   });
 
-  // ── iOS キーボード対応: visualViewport.resize で .screen-editor 高さを更新 ──
+  // ── iOS キーボード対応: #edContent の高さを visualViewport に合わせて更新 ──
+  // .screen-editor は 100dvh のまま変えず、edContent だけを縮めることで
+  // キーボード下に黒い隙間が生じるのを防ぐ
+  const updateEditorHeight = () => {
+    const edContent = document.getElementById('edContent');
+    const header = document.querySelector('.screen-editor .editor-header');
+    if (!edContent || !header) return;
+    const vvh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const headerH = header.getBoundingClientRect().height;
+    edContent.style.height = Math.max(100, vvh - headerH) + 'px';
+    edContent.style.flex = 'none';
+  };
   if (window.visualViewport) {
-    const onVVResize = () => {
-      const vh = window.visualViewport.height;
-      document.documentElement.style.setProperty('--vvh', vh + 'px');
-    };
-    window.visualViewport.addEventListener('resize', onVVResize);
-    onVVResize(); // 初期値セット
-    listeners.push(() => {
-      window.visualViewport.removeEventListener('resize', onVVResize);
-      document.documentElement.style.removeProperty('--vvh');
-    });
+    window.visualViewport.addEventListener('resize', updateEditorHeight);
+    window.visualViewport.addEventListener('scroll', updateEditorHeight);
   }
+  updateEditorHeight(); // 初期値セット
+  listeners.push(() => {
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', updateEditorHeight);
+      window.visualViewport.removeEventListener('scroll', updateEditorHeight);
+    }
+    const edContent = document.getElementById('edContent');
+    if (edContent) { edContent.style.height = ''; edContent.style.flex = ''; }
+  });
 
   // ── Firebase からコンテンツを読み込む ─────────────
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
