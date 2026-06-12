@@ -58,6 +58,7 @@ tiptapEditor = new TiptapEditor({
 - モード切替UIは右下固定の小ボタン（`position: fixed; bottom: 1.5rem; right: 1rem; 50×50px`）
   - 閲覧モード：「閲」（青）、編集モード：「編」（赤）
   - `#btnModeToggle` の `textContent` を切り替えるだけ（span不使用）
+- **Undoボタン**（`#btnUndo`）を編集モード時のみ表示（`setEditorMode` 内で `display` 切替）
 
 ### iOSキーボード時のカーソルスクロール補正
 `tiptapEditor.on('focus')` + 500ms 後に実行：
@@ -105,7 +106,18 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 
-## 次のステップ
-- 細かいバグ修正と機能改善
+## 実装済みの変更（直近）
+- 右下の閲覧/編集切替ボタンを「閲」「編」テキストUIに変更済み
+- Undoボタンを編集モードに追加済み
+- カテゴリ画面のカード一覧から「+」ボタンを削除済み
+- 画面下半分が切れる問題を修正中
+
+## 次のステップ（優先順）
+1. コピー後キャンセルボタンを緑地白文字✕に変更
+2. カット後の不要なアイコン4つを整理
+3. 画像のドラッグハンドル移動に統一
+4. 編集モードで無駄な改行・段落が入る問題
+5. 画像と文章の間の改行を消すと画像まで削除される問題
+
+## その他保留タスク
 - `tiptap-bundle.js`（旧ファイル）と `tiptap-test.html` の削除検討
-- ユーザー報告の不具合をひとつずつ対処
