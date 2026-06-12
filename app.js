@@ -159,6 +159,7 @@ let catSortable = null;
 let artSortable = null;
 let navHistory  = [];   // 画面履歴スタック
 let isDragging  = false; // ドラッグ並び替え中ガードフラグ
+let preDragHTML = null;  // ドラッグ開始直前の TipTap HTML（DOM汚染回避用）
 let paraSortable = null;
 let paraSwipeListeners = [];
 let justEditedArticleId = null;  // 直前に編集したカードのID（フラッシュ明滅用）
@@ -2820,13 +2821,30 @@ function refreshParaSortable(mode) {
       scrollSensitivity: 80,
       scrollSpeed: 10,
       forceAutoScrollFallback: true,
-      onStart: () => { isDragging = true; },
-      onEnd: () => {
+      onStart: () => {
+        isDragging = true;
+        preDragHTML = tiptapEditor ? tiptapEditor.getHTML() : null;
+      },
+      onEnd: (evt) => {
         isDragging = false;
-        if (tiptapEditor) {
-          tiptapEditor.commands.setContent(getCleanPMHTML());
-          refreshYoutubeDeleteButtons('view');
+        if (!tiptapEditor) return;
+        if (preDragHTML && evt.oldIndex !== evt.newIndex) {
+          // ドラッグ前のクリーンなHTMLを基準に段落順を組み替え
+          // DOM読み取りを避けることで TipTap MutationObserver の誤再調整を防ぐ
+          const tempDiv = document.createElement('div');
+          const { html: cleanHTML } = preprocessHTMLForTipTap(preDragHTML);
+          tempDiv.innerHTML = cleanHTML;
+          const blocks = Array.from(tempDiv.children);
+          if (evt.oldIndex < blocks.length) {
+            const [moved] = blocks.splice(evt.oldIndex, 1);
+            blocks.splice(evt.newIndex, 0, moved);
+            const newDiv = document.createElement('div');
+            blocks.forEach(b => newDiv.appendChild(b));
+            tiptapEditor.commands.setContent(newDiv.innerHTML);
+          }
         }
+        preDragHTML = null;
+        refreshYoutubeDeleteButtons('view');
       }
     });
   } else {
