@@ -1611,7 +1611,7 @@ function renderEditor(container) {
     element: edEl,
     extensions: [
       StarterKit,
-      ImageExtension.configure({ allowBase64: true, inline: false, HTMLAttributes: { class: 'inserted-img' } }),
+      ImageExtension.configure({ allowBase64: true, inline: true, HTMLAttributes: { class: 'inserted-img' } }),
       YoutubeExtension.configure({ controls: true, nocookie: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -1781,7 +1781,7 @@ function handleImageForTipTap(file) {
         ctx.drawImage(tempImg, 0, 0, w, h);
         const src = canvas.toDataURL('image/jpeg', 0.75);
         if (tiptapEditor) {
-          tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
+          tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).splitBlock().run();
         }
         resolve();
       };
@@ -2405,12 +2405,6 @@ function getCleanPMHTML() {
   clone.querySelectorAll(
     '.para-drag-handle, .yt-del-btn, .para-checkbox, .swipe-action-btn, .paste-guide-message, .paste-insert-line'
   ).forEach(el => el.remove());
-  // img-block-wrapper を img に戻す（display用ラッパーをTipTap状態に混入させない）
-  clone.querySelectorAll('.img-block-wrapper').forEach(wrapper => {
-    const img = wrapper.querySelector('img');
-    if (img && wrapper.parentNode) wrapper.parentNode.replaceChild(img.cloneNode(true), wrapper);
-    else wrapper.remove();
-  });
   return clone.innerHTML || '<p></p>';
 }
 
@@ -2455,9 +2449,8 @@ function preprocessHTMLForTipTap(html) {
     return '<div data-youtube-video><iframe src="https://www.youtube.com/embed/' + videoId + '"></iframe></div>';
   });
 
-  // inline:false のため <p> 内の img をブロックとして取り出す
-  // ① img+テキスト混在: <p><img>テキスト</p> → <img><p>テキスト</p>
-  // ② img のみ:         <p><img></p>          → <img>
+  // <p>内にimgとテキストが混在している場合、imgを別<p>に分割
+  // 例: <p><img>テキスト</p> → <p><img></p><p>テキスト</p>
   {
     const splitDiv = document.createElement('div');
     splitDiv.innerHTML = result;
@@ -2466,30 +2459,32 @@ function preprocessHTMLForTipTap(html) {
       const childNodes = Array.from(p.childNodes);
       const hasImg = childNodes.some(n => n.nodeType === 1 && n.tagName === 'IMG');
       if (!hasImg) return;
-
-      const newNodes = [];
+      const hasOther = childNodes.some(n =>
+        (n.nodeType === 3 && n.textContent.trim()) ||
+        (n.nodeType === 1 && n.tagName !== 'IMG')
+      );
+      if (!hasOther) return;
+      const newPs = [];
       let cur = null;
       childNodes.forEach(node => {
         if (node.nodeType === 1 && node.tagName === 'IMG') {
-          if (cur && cur.childNodes.length > 0) { newNodes.push(cur); cur = null; }
-          // img は <p> で包まず直接挿入（inline:false ブロックノード）
-          newNodes.push(node.cloneNode(true));
+          if (cur) { newPs.push(cur); cur = null; }
+          const imgP = document.createElement('p');
+          imgP.appendChild(node.cloneNode(true));
+          newPs.push(imgP);
         } else {
-          // 空テキストノードは無視
-          if (node.nodeType === 3 && node.textContent.trim() === '') return;
           if (!cur) cur = document.createElement('p');
           cur.appendChild(node.cloneNode(true));
         }
       });
-      if (cur && cur.childNodes.length > 0) newNodes.push(cur);
-
-      newNodes.forEach(n => p.parentNode.insertBefore(n, p));
+      if (cur) newPs.push(cur);
+      newPs.forEach(np => p.parentNode.insertBefore(np, p));
       p.parentNode.removeChild(p);
       splitCount++;
     });
     if (splitCount > 0) {
       result = splitDiv.innerHTML;
-      logs.push('[split] img混在/<p>img</p>を ' + splitCount + ' 件展開');
+      logs.push('[split] img混在段落を ' + splitCount + ' 件分割');
     }
   }
 
@@ -2816,7 +2811,7 @@ function refreshParaSortable(mode) {
   const editor = tiptapEditor.view.dom;
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
-      draggable: 'p, [data-youtube-video], .img-block-wrapper',
+      draggable: 'p, [data-youtube-video]',
       handle: '.para-drag-handle',
       filter: (evt, el) => el.tagName === 'P' && isEmptyParagraph(el),
       preventOnFilter: true,
@@ -2870,24 +2865,7 @@ function refreshYoutubeDeleteButtons(mode) {
     delete yt._ytEnter;
     delete yt._ytLeave;
   });
-  // img-block-wrapper をアンラップ（img を元の位置に戻す）
-  pm.querySelectorAll('.img-block-wrapper').forEach(wrapper => {
-    const img = wrapper.querySelector('img');
-    if (img && wrapper.parentNode) wrapper.parentNode.replaceChild(img, wrapper);
-    else wrapper.remove();
-  });
-
   if (mode !== 'view') return;
-
-  // inline:false の img ブロックをラッパー div で包んでハンドルを持てるようにする
-  Array.from(pm.children).forEach(child => {
-    if (child.tagName === 'IMG' && child.classList.contains('inserted-img')) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'img-block-wrapper';
-      child.parentNode.insertBefore(wrapper, child);
-      wrapper.appendChild(child);
-    }
-  });
 
   pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
     const btn = document.createElement('button');
@@ -2917,8 +2895,8 @@ function refreshYoutubeDeleteButtons(mode) {
     ytDiv.appendChild(btn);
   });
 
-  // ドラッグハンドルを全段落・YouTube要素・画像ラッパーに inject（空段落は除外）
-  pm.querySelectorAll('p, [data-youtube-video], .img-block-wrapper').forEach(el => {
+  // ドラッグハンドルを全段落・YouTube要素に inject（空段落は除外）
+  pm.querySelectorAll('p, [data-youtube-video]').forEach(el => {
     if (el.tagName === 'P' && isEmptyParagraph(el)) return;
     el.style.position = 'relative';
     const handle = document.createElement('span');
