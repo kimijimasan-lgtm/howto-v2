@@ -1663,6 +1663,38 @@ function renderEditor(container) {
         }
 
         return false; // TipTapのデフォルト処理に委ねる
+      },
+      handleKeyDown(view, event) {
+        if (event.key !== 'Backspace') return false;
+        const { state } = view;
+        const { $from, empty } = state.selection;
+
+        // 段落先頭のカーソルのみ対象
+        if (!empty || $from.parentOffset !== 0) return false;
+        if ($from.parent.type.name !== 'paragraph') return false;
+
+        const depth = $from.depth;
+        const indexInParent = $from.index(depth - 1);
+        if (indexInParent === 0) return false; // 前の兄弟なし
+
+        const prevNode = $from.node(depth - 1).child(indexInParent - 1);
+
+        // 直前段落が画像1つだけ → joinBackward をブロックしカーソルを移動
+        if (
+          prevNode.type.name === 'paragraph' &&
+          prevNode.childCount === 1 &&
+          prevNode.firstChild &&
+          prevNode.firstChild.type.name === 'image'
+        ) {
+          // 画像段落の末尾（画像の直後）にカーソルを移動
+          const targetPos = $from.before(depth) - 1;
+          setTimeout(() => {
+            if (tiptapEditor) tiptapEditor.commands.setTextSelection(targetPos);
+          }, 0);
+          event.preventDefault();
+          return true;
+        }
+        return false;
       }
     },
     onUpdate: ({ editor }) => {
