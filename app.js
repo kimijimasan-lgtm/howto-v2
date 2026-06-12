@@ -2638,10 +2638,9 @@ function bindParagraphSwipeEvents(editor) {
 
         if (target.hasAttribute('data-youtube-video')) {
           toggleYoutubeSelect(target, editor);
-        } else if (target.tagName === 'P' && !isEmptyParagraph(target)) {
+        } else if (target.tagName === 'P') {
           toggleParagraphSelect(target, editor);
         }
-        // 空段落・その他の内部ブロックは無視
       } else {
         // 右フリップで前の画面に戻る
         goBack();
