@@ -343,7 +343,7 @@ body {
 .article-inner .article-preview { position: relative; z-index: 1; }
 .article-inner .article-title   { color: #fff; }
 .article-inner .article-preview { color: rgba(255,255,255,0.72); }
-.article-item.swiped .article-inner { transform: translateX(-320px); }
+.article-item.swiped .article-inner { transform: translateX(-400px); }
 
 /* 左スワイプで現れるアクションボタン */
 .swipe-actions {
@@ -371,9 +371,23 @@ body {
   font-family: var(--font);
   letter-spacing: 0.03em;
 }
+.swipe-action-pin       { background: #f59e0b; }
+.swipe-action-pin.is-pinned { background: #b45309; }
 .swipe-action-duplicate { background: #22c55e; }
-.swipe-action-move   { background: #6366f1; }
-.swipe-action-delete { background: #ef4444; }
+.swipe-action-move      { background: #6366f1; }
+.swipe-action-delete    { background: #ef4444; }
+
+/* ピン留めバッジ（カード右上） */
+.article-item { position: relative; }
+.pin-indicator {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 15px;
+  line-height: 1;
+  z-index: 3;
+  pointer-events: none;
+}
 
 /* 移動先カテゴリ選択モーダル */
 .move-modal-overlay {
