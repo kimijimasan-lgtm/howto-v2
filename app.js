@@ -1320,8 +1320,9 @@ function renderEditor(container) {
       </header>
       <div id="edContent" class="editor-content"></div>
       <div class="mode-toggle-bar mode-view" id="btnModeToggle">閲</div>
-      <div class="undo-btn" id="btnUndo" style="display:none">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
+      <div class="editor-undo-btn" id="btnUndo" style="display:none">
+        <span class="undo-icon">↩</span>
+        <span class="undo-label">取消</span>
       </div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;

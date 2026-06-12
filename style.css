@@ -1528,8 +1528,8 @@ body {
   box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45);
 }
 
-/* Undo ボタン — 編集モード時だけ表示、モードボタンの左隣 */
-.undo-btn {
+/* 編集モード Undo ボタン — モードボタンの左隣に固定 */
+.editor-undo-btn {
   position: fixed;
   bottom: 1.5rem;
   right: calc(1rem + 50px + 0.75rem);
@@ -1539,8 +1539,10 @@ body {
   background: rgba(75, 85, 99, 0.88);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1px;
   color: #fff;
   cursor: pointer;
   user-select: none;
@@ -1548,7 +1550,16 @@ body {
   z-index: 1000;
   transition: background 0.2s ease, box-shadow 0.2s ease;
 }
-.undo-btn:active {
+.editor-undo-btn .undo-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.editor-undo-btn .undo-label {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.editor-undo-btn:active {
   filter: brightness(0.8);
   transform: scale(0.93);
 }
