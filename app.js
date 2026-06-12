@@ -52,15 +52,17 @@ const db = firebase.database();
 
 // ── テーマ管理 ────────────────────────────────────────────────────────
 const THEMES = [
-  { id: 'dark',     label: 'ダーク',       swatch: '#0d1117', textColor: '#e6edf3' },
-  { id: 'midnight', label: 'ミッドナイト', swatch: '#080c14', textColor: '#818cf8' },
-  { id: 'sepia',    label: 'セピア',       swatch: '#f5edd8', textColor: '#7a6448' },
-  { id: 'light',    label: 'ライト',       swatch: '#f2f4f7', textColor: '#4b5563' },
+  { id: 'dark',    label: 'ダーク',     swatch: '#0d1117' },
+  { id: 'ocean',   label: 'オーシャン', swatch: '#071824' },
+  { id: 'forest',  label: 'フォレスト', swatch: '#0a1810' },
+  { id: 'sepia',   label: 'セピア',     swatch: '#f5edd8' },
+  { id: 'light',   label: 'ライト',     swatch: '#f2f4f7' },
+  { id: 'rose',    label: 'ローズ',     swatch: '#fdf2f5' },
 ];
 
 function applyTheme(name) {
   const html = document.documentElement;
-  THEMES.forEach(t => html.classList.remove('theme-' + t.id));
+  ['dark', 'ocean', 'forest', 'sepia', 'light', 'rose'].forEach(id => html.classList.remove('theme-' + id));
   if (name && name !== 'dark') html.classList.add('theme-' + name);
   localStorage.setItem('app-theme', name || 'dark');
 }
