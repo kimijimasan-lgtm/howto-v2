@@ -98,9 +98,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=649`
+- `style.css?v=653`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=692`
+- `app.js?v=696`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -118,6 +118,13 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 次のステップ（優先順）
 （現在の主要タスクはすべて対応済み）
+
+## 実装済み（追加分）
+- カード一覧ソートボタンのコントラスト改善（sort-bar/sort-btn CSS）
+- Undoボタンの挙動修正（updateUndoButtonVisibility、5秒自動非表示）
+- PCのカード新規作成「+」FABボタン復活（pointer: fine 判定で表示制御）
+- YouTube動画があるカードの右端にサムネイル表示（extractYoutubeId + img.youtube.com/vi/）
+- iPhoneでYouTube横画面全画面表示（orientationchange → .yt-landscape-fullscreen で fixed展開）
 
 ## その他保留タスク
 - `tiptap-bundle.js`（旧ファイル）と `tiptap-test.html` の削除検討

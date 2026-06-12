@@ -453,6 +453,13 @@ function htmlToLines(html) {
   return lines;
 }
 
+// ── HTMLコンテンツからYouTube Video IDを抽出 ───
+function extractYoutubeId(html) {
+  if (!html) return null;
+  const match = html.match(/youtube(?:-nocookie)?\.com\/embed\/([^"&?/\s]+)/);
+  return match ? match[1] : null;
+}
+
 // ── Markdown 記号を除去 ────────────────────────
 function stripMarkdown(text) {
   return text
@@ -801,6 +808,7 @@ function renderCategory(container) {
       <ul class="article-list" id="artList">
         <div class="loading-spinner">読み込み中…</div>
       </ul>
+      <button class="fab-add-article" id="btnAddArticle" title="新しいカードを作成">＋</button>
     </div>`;
 
   document.getElementById('btnHome').onclick   = () => goTo('home');
@@ -914,6 +922,7 @@ function renderCategory(container) {
         const textLines = htmlToLines(art.content);
         const title   = textLines[0] || '（タイトルなし）';
         const preview = textLines.slice(1).join(' ').slice(0, 60) || '内容がありません';
+        const ytId    = extractYoutubeId(art.content);
 
         const li = document.createElement('li');
         li.className = 'article-item';
@@ -931,8 +940,11 @@ function renderCategory(container) {
         li.innerHTML = `
           ${art.pinned ? '<span class="pin-indicator">📌</span>' : ''}
           <div class="article-inner">
-            <div class="article-title">${esc(title)}</div>
-            <div class="article-preview">${esc(preview)}</div>
+            <div class="article-text">
+              <div class="article-title">${esc(title)}</div>
+              <div class="article-preview">${esc(preview)}</div>
+            </div>
+            ${ytId ? `<img class="article-yt-thumb" src="https://img.youtube.com/vi/${ytId}/mqdefault.jpg" alt="" loading="lazy">` : ''}
           </div>
           <div class="swipe-actions">
             <button class="swipe-action-btn swipe-action-pin${art.pinned ? ' is-pinned' : ''}">
@@ -1075,6 +1087,16 @@ function renderCategory(container) {
       rerenderArts = null;
       if (artSortable) { artSortable.destroy(); artSortable = null; }
     });
+  }
+
+  // ─── PC用「+」ボタン（pointer: fine = マウス環境のみ表示）───
+  const fabBtn = document.getElementById('btnAddArticle');
+  if (fabBtn) {
+    const isMouseDevice = window.matchMedia('(pointer: fine)').matches;
+    if (isMouseDevice) {
+      fabBtn.style.display = 'flex';
+      fabBtn.onclick = () => createArticle(true);
+    }
   }
 
   // ─── ソートボタン ───
@@ -1444,14 +1466,36 @@ function renderEditor(container) {
       </header>
       <div id="edContent" class="editor-content"></div>
       <div class="mode-toggle-bar mode-view" id="btnModeToggle">閲</div>
-      <div class="editor-undo-btn" id="btnUndo" style="display:none">
+      <div class="editor-undo-btn" id="btnUndo" title="直前の操作を元に戻す" style="display:none">
         <span class="undo-icon">↩</span>
-        <span class="undo-label">取消</span>
+        <span class="undo-label">戻す</span>
       </div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
   document.getElementById('btnBack').onclick   = () => goBack();
+
+  // Undoボタン 自動非表示タイマー
+  let undoAutoHideTimer = null;
+
+  // Undoボタンの表示/非表示を undo履歴の有無で制御し、5秒で自動非表示
+  function updateUndoButtonVisibility() {
+    const undoBtn = document.getElementById('btnUndo');
+    if (!undoBtn || state.editorMode !== 'edit') return;
+    const canUndo = tiptapEditor && tiptapEditor.can().undo();
+    if (canUndo) {
+      undoBtn.style.display = 'flex';
+      clearTimeout(undoAutoHideTimer);
+      undoAutoHideTimer = setTimeout(() => {
+        undoBtn.style.display = 'none';
+        undoAutoHideTimer = null;
+      }, 5000);
+    } else {
+      undoBtn.style.display = 'none';
+      clearTimeout(undoAutoHideTimer);
+      undoAutoHideTimer = null;
+    }
+  }
 
   // 閲覧／編集モード切り替えの制御
   function setEditorMode(mode) {
@@ -1460,20 +1504,24 @@ function renderEditor(container) {
     if (!toggleBar) return;
     const proseMirrorEl = tiptapEditor ? tiptapEditor.view.dom : null;
 
-    const undoBtn = document.getElementById('btnUndo');
     if (mode === 'edit') {
       toggleBar.className = 'mode-toggle-bar mode-edit';
       toggleBar.textContent = '編';
-      if (undoBtn) undoBtn.style.display = 'flex';
       if (tiptapEditor) tiptapEditor.setEditable(true);
       if (proseMirrorEl) {
         proseMirrorEl.classList.remove('mode-view');
         cleanupAllSwipedParagraphs(proseMirrorEl);
       }
+      // undo履歴がある時だけ表示（履歴なし＝初回は非表示のまま）
+      updateUndoButtonVisibility();
     } else {
       toggleBar.className = 'mode-toggle-bar mode-view';
       toggleBar.textContent = '閲';
+      // 閲覧モードでは常に非表示＋タイマーリセット
+      const undoBtn = document.getElementById('btnUndo');
       if (undoBtn) undoBtn.style.display = 'none';
+      clearTimeout(undoAutoHideTimer);
+      undoAutoHideTimer = null;
       if (tiptapEditor) {
         tiptapEditor.setEditable(false);
         tiptapEditor.commands.blur();
@@ -1512,7 +1560,11 @@ function renderEditor(container) {
   if (undoBtn) {
     undoBtn.onclick = (e) => {
       e.stopPropagation();
-      if (tiptapEditor) tiptapEditor.chain().focus().undo().run();
+      if (tiptapEditor) {
+        tiptapEditor.chain().focus().undo().run();
+        // undo後に再チェック（履歴が尽きたら即非表示、残りがあれば再表示）
+        updateUndoButtonVisibility();
+      }
     };
   }
 
@@ -1838,6 +1890,7 @@ function renderEditor(container) {
     onUpdate: ({ editor }) => {
       if (isComposing) return;
       if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
+      updateUndoButtonVisibility();
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         try {
@@ -1909,6 +1962,44 @@ function renderEditor(container) {
     }
     const edContent = document.getElementById('edContent');
     if (edContent) { edContent.style.height = ''; edContent.style.flex = ''; }
+  });
+
+  // ── iPhone 横回転時に YouTube を全画面表示 ────────────
+  const clearYtLandscape = () => {
+    document.querySelectorAll('.yt-landscape-fullscreen').forEach(el => {
+      el.classList.remove('yt-landscape-fullscreen');
+    });
+    document.body.classList.remove('yt-fullscreen-active');
+  };
+
+  const orientationChangeHandler = () => {
+    setTimeout(() => {
+      const isLandscape = window.innerWidth > window.innerHeight;
+      if (!isLandscape) { clearYtLandscape(); return; }
+      if (state.screen !== 'editor') return;
+
+      const pm = tiptapEditor && tiptapEditor.view && tiptapEditor.view.dom;
+      if (!pm) return;
+      const edContent = document.getElementById('edContent');
+      const allYt = [
+        ...pm.querySelectorAll('[data-youtube-video]'),
+        ...(edContent ? edContent.querySelectorAll('.youtube-container') : [])
+      ];
+      for (const el of allYt) {
+        const rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) {
+          el.classList.add('yt-landscape-fullscreen');
+          document.body.classList.add('yt-fullscreen-active');
+          break;
+        }
+      }
+    }, 150);
+  };
+
+  window.addEventListener('orientationchange', orientationChangeHandler);
+  listeners.push(() => {
+    window.removeEventListener('orientationchange', orientationChangeHandler);
+    clearYtLandscape();
   });
 
   // ── Firebase からコンテンツを読み込む ─────────────
