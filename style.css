@@ -1528,6 +1528,31 @@ body {
   box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45);
 }
 
+/* Undo ボタン — 編集モード時だけ表示、モードボタンの左隣 */
+.undo-btn {
+  position: fixed;
+  bottom: 1.5rem;
+  right: calc(1rem + 50px + 0.75rem);
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: rgba(75, 85, 99, 0.88);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 1000;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.undo-btn:active {
+  filter: brightness(0.8);
+  transform: scale(0.93);
+}
+
 /* ボタンが右下に重なるためエディタ末尾に余白を確保 */
 .editor-content {
   padding-bottom: 5rem;

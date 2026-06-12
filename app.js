@@ -1320,6 +1320,9 @@ function renderEditor(container) {
       </header>
       <div id="edContent" class="editor-content"></div>
       <div class="mode-toggle-bar mode-view" id="btnModeToggle">閲</div>
+      <div class="undo-btn" id="btnUndo" style="display:none">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>
+      </div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
@@ -1332,9 +1335,11 @@ function renderEditor(container) {
     if (!toggleBar) return;
     const proseMirrorEl = tiptapEditor ? tiptapEditor.view.dom : null;
 
+    const undoBtn = document.getElementById('btnUndo');
     if (mode === 'edit') {
       toggleBar.className = 'mode-toggle-bar mode-edit';
       toggleBar.textContent = '編';
+      if (undoBtn) undoBtn.style.display = 'flex';
       if (tiptapEditor) tiptapEditor.setEditable(true);
       if (proseMirrorEl) {
         proseMirrorEl.classList.remove('mode-view');
@@ -1343,6 +1348,7 @@ function renderEditor(container) {
     } else {
       toggleBar.className = 'mode-toggle-bar mode-view';
       toggleBar.textContent = '閲';
+      if (undoBtn) undoBtn.style.display = 'none';
       if (tiptapEditor) {
         tiptapEditor.setEditable(false);
         tiptapEditor.commands.blur();
@@ -1374,6 +1380,14 @@ function renderEditor(container) {
       } else {
         setEditorMode('view');
       }
+    };
+  }
+
+  const undoBtn = document.getElementById('btnUndo');
+  if (undoBtn) {
+    undoBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (tiptapEditor) tiptapEditor.chain().focus().undo().run();
     };
   }
 
