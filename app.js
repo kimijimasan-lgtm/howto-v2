@@ -54,7 +54,7 @@ const db = firebase.database();
 const THEMES = [
   { id: 'dark',    label: 'ダーク',     swatch: '#0d1117' },
   { id: 'ocean',   label: 'オーシャン', swatch: '#102840' },
-  { id: 'forest',  label: 'フォレスト', swatch: '#112c1a' },
+  { id: 'sunset',  label: 'サンセット', swatch: '#1e0e04' },
   { id: 'sepia',   label: 'セピア',     swatch: '#f5edd8' },
   { id: 'light',   label: 'ライト',     swatch: '#f2f4f7' },
   { id: 'rose',    label: 'ローズ',     swatch: '#fce0ec' },
@@ -62,7 +62,7 @@ const THEMES = [
 
 function applyTheme(name) {
   const html = document.documentElement;
-  ['dark', 'ocean', 'forest', 'sepia', 'light', 'rose'].forEach(id => html.classList.remove('theme-' + id));
+  ['dark', 'ocean', 'sunset', 'sepia', 'light', 'rose'].forEach(id => html.classList.remove('theme-' + id));
   if (name && name !== 'dark') html.classList.add('theme-' + name);
   localStorage.setItem('app-theme', name || 'dark');
 }
