@@ -49,47 +49,47 @@ html.theme-sepia {
 
 /* ── テーマ: フォレスト ── */
 html.theme-forest {
-  --bg-outer:      #050f08;
-  --bg:            #0a1810;
-  --bg-card:       rgba(16,185,129,0.06);
-  --bg-card-hover: rgba(16,185,129,0.11);
-  --bg-header:     rgba(10,24,16,0.92);
-  --border:        rgba(16,185,129,0.12);
-  --text-primary:  #a8d4b8;
-  --text-sub:      #4a8a62;
-  --text-muted:    #1e4a30;
+  --bg-outer:      #091a0e;
+  --bg:            #112c1a;
+  --bg-card:       rgba(16,185,129,0.08);
+  --bg-card-hover: rgba(16,185,129,0.14);
+  --bg-header:     rgba(17,44,26,0.93);
+  --border:        rgba(16,185,129,0.16);
+  --text-primary:  #96ccaa;
+  --text-sub:      #3d7a56;
+  --text-muted:    #1a4030;
   --accent:        #10b981;
-  --accent-dim:    rgba(16,185,129,0.15);
+  --accent-dim:    rgba(16,185,129,0.18);
 }
 
 /* ── テーマ: ローズ ── */
 html.theme-rose {
-  --bg-outer:      #d4b0be;
-  --bg:            #fdf2f5;
-  --bg-card:       rgba(232,121,160,0.06);
-  --bg-card-hover: rgba(232,121,160,0.11);
-  --bg-header:     rgba(253,242,245,0.92);
-  --border:        rgba(232,121,160,0.15);
-  --text-primary:  #5a2840;
-  --text-sub:      #9a5a72;
-  --text-muted:    #c090a8;
-  --accent:        #e879a0;
-  --accent-dim:    rgba(232,121,160,0.15);
+  --bg-outer:      #d098b0;
+  --bg:            #fce0ec;
+  --bg-card:       rgba(220,80,140,0.07);
+  --bg-card-hover: rgba(220,80,140,0.13);
+  --bg-header:     rgba(252,224,236,0.93);
+  --border:        rgba(220,80,140,0.18);
+  --text-primary:  #4a1830;
+  --text-sub:      #904060;
+  --text-muted:    #c890a8;
+  --accent:        #db2777;
+  --accent-dim:    rgba(219,39,119,0.15);
 }
 
 /* ── テーマ: オーシャン ── */
 html.theme-ocean {
-  --bg-outer:      #040d14;
-  --bg:            #071824;
-  --bg-card:       rgba(6,182,212,0.06);
-  --bg-card-hover: rgba(6,182,212,0.11);
-  --bg-header:     rgba(7,24,36,0.92);
-  --border:        rgba(6,182,212,0.12);
-  --text-primary:  #b0d4e0;
-  --text-sub:      #5a8a9a;
-  --text-muted:    #2a4a5a;
+  --bg-outer:      #071020;
+  --bg:            #102840;
+  --bg-card:       rgba(6,182,212,0.08);
+  --bg-card-hover: rgba(6,182,212,0.14);
+  --bg-header:     rgba(16,40,64,0.93);
+  --border:        rgba(6,182,212,0.16);
+  --text-primary:  #90c8e0;
+  --text-sub:      #3878a0;
+  --text-muted:    #1a4060;
   --accent:        #06b6d4;
-  --accent-dim:    rgba(6,182,212,0.15);
+  --accent-dim:    rgba(6,182,212,0.18);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

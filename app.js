@@ -53,11 +53,11 @@ const db = firebase.database();
 // ── テーマ管理 ────────────────────────────────────────────────────────
 const THEMES = [
   { id: 'dark',    label: 'ダーク',     swatch: '#0d1117' },
-  { id: 'ocean',   label: 'オーシャン', swatch: '#071824' },
-  { id: 'forest',  label: 'フォレスト', swatch: '#0a1810' },
+  { id: 'ocean',   label: 'オーシャン', swatch: '#102840' },
+  { id: 'forest',  label: 'フォレスト', swatch: '#112c1a' },
   { id: 'sepia',   label: 'セピア',     swatch: '#f5edd8' },
   { id: 'light',   label: 'ライト',     swatch: '#f2f4f7' },
-  { id: 'rose',    label: 'ローズ',     swatch: '#fdf2f5' },
+  { id: 'rose',    label: 'ローズ',     swatch: '#fce0ec' },
 ];
 
 function applyTheme(name) {
