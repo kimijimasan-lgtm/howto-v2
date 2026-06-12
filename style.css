@@ -167,7 +167,7 @@ body {
 .screen-editor {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  height: var(--vvh, 100dvh); /* iOSキーボード表示時はJSで--vvhを更新 */
   position: relative; /* 子要素の絶対配置の基準にする */
   overflow: hidden;
 }

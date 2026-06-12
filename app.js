@@ -1747,6 +1747,20 @@ function renderEditor(container) {
     }, 500);
   });
 
+  // ── iOS キーボード対応: visualViewport.resize で .screen-editor 高さを更新 ──
+  if (window.visualViewport) {
+    const onVVResize = () => {
+      const vh = window.visualViewport.height;
+      document.documentElement.style.setProperty('--vvh', vh + 'px');
+    };
+    window.visualViewport.addEventListener('resize', onVVResize);
+    onVVResize(); // 初期値セット
+    listeners.push(() => {
+      window.visualViewport.removeEventListener('resize', onVVResize);
+      document.documentElement.style.removeProperty('--vvh');
+    });
+  }
+
   // ── Firebase からコンテンツを読み込む ─────────────
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
     if (!tiptapEditor) return;
