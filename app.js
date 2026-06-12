@@ -736,6 +736,10 @@ function renderCategory(container) {
           </svg>
         </button>
       </header>
+      <div class="sort-bar" id="sortBar">
+        <button class="sort-btn" id="btnSortName">名前 <span class="sort-arrow"></span></button>
+        <button class="sort-btn" id="btnSortDate">期日 <span class="sort-arrow"></span></button>
+      </div>
       <ul class="article-list" id="artList">
         <div class="loading-spinner">読み込み中…</div>
       </ul>
@@ -743,6 +747,23 @@ function renderCategory(container) {
 
   document.getElementById('btnHome').onclick   = () => goTo('home');
   document.getElementById('btnExportAll').onclick = () => showExportAllModal(state.categoryId);
+
+  // ─── ソート状態 ───
+  let sortField = null; // 'name' | 'date' | null
+  let sortDir   = 'asc';
+  let lastArtsData = null;
+  let rerenderArts = null;
+
+  function updateSortUI() {
+    [['btnSortName', 'name'], ['btnSortDate', 'date']].forEach(([id, f]) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      const active = sortField === f;
+      btn.classList.toggle('active', active);
+      btn.querySelector('.sort-arrow').textContent = active ? (sortDir === 'asc' ? '↑' : '↓') : '';
+    });
+  }
+
   addSwipeBack(container, () => goBack());
   addPullToCreate(document.getElementById('artList'));
 
@@ -789,10 +810,10 @@ function renderCategory(container) {
   });
 
   function bindArticlesListener() {
-    const aHandler = aRef.on('value', snap => {
+    function doRender(data) {
+      lastArtsData = data;
       const list = document.getElementById('artList');
       if (!list) return;
-      const data = snap.val();
 
       // リスナー内での自動補充（set）は絶対に排除する（ループ・フリーズ防止）
       if (!data || Object.keys(data).length === 0) {
@@ -804,15 +825,30 @@ function renderCategory(container) {
         return;
       }
 
-      const arts = Object.entries(data)
-        .map(([id, v]) => ({ id, ...v }))
-        .sort((a, b) => {
-          // ピン留め記事を先頭に
-          const ap = a.pinned ? 1 : 0, bp = b.pinned ? 1 : 0;
-          if (bp !== ap) return bp - ap;
+      const all = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+
+      // ピン留めを先頭に固定、それ以外はソート対象
+      const pinned   = all.filter(a =>  a.pinned).sort((a, b) => (b.order || 0) - (a.order || 0));
+      let   unpinned = all.filter(a => !a.pinned);
+
+      if (sortField === 'name') {
+        unpinned.sort((a, b) => {
+          const ta = (htmlToLines(a.content)[0] || '').toLowerCase();
+          const tb = (htmlToLines(b.content)[0] || '').toLowerCase();
+          return sortDir === 'asc' ? ta.localeCompare(tb, 'ja') : tb.localeCompare(ta, 'ja');
+        });
+      } else if (sortField === 'date') {
+        unpinned.sort((a, b) => sortDir === 'asc'
+          ? (a.updatedAt || 0) - (b.updatedAt || 0)
+          : (b.updatedAt || 0) - (a.updatedAt || 0));
+      } else {
+        unpinned.sort((a, b) => {
           if (a.order !== undefined && b.order !== undefined) return b.order - a.order;
           return (b.updatedAt || 0) - (a.updatedAt || 0);
         });
+      }
+
+      const arts = [...pinned, ...unpinned];
 
       list.innerHTML = '';
       arts.forEach((art, i) => {
@@ -972,12 +1008,32 @@ function renderCategory(container) {
           }
         });
       }
-    });
+    } // end doRender
+
+    rerenderArts = () => { if (lastArtsData) doRender(lastArtsData); };
+    const aHandler = aRef.on('value', snap => doRender(snap.val()));
     listeners.push(() => {
       aRef.off('value', aHandler);
+      rerenderArts = null;
       if (artSortable) { artSortable.destroy(); artSortable = null; }
     });
   }
+
+  // ─── ソートボタン ───
+  [['btnSortName', 'name'], ['btnSortDate', 'date']].forEach(([id, field]) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.onclick = () => {
+      if (sortField === field) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortField = field;
+        sortDir = 'asc';
+      }
+      updateSortUI();
+      if (rerenderArts) rerenderArts();
+    };
+  });
 }
 
 // カードを別カテゴリへ移動するモーダル

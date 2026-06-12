@@ -389,6 +389,35 @@ body {
   pointer-events: none;
 }
 
+/* ソートバー */
+.sort-bar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  background: rgba(0,0,0,0.2);
+  flex-shrink: 0;
+}
+.sort-btn {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.7);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: center;
+}
+.sort-btn.active {
+  background: rgba(99,102,241,0.4);
+  border-color: rgba(99,102,241,0.6);
+  color: #fff;
+}
+.sort-arrow {
+  display: inline-block;
+  width: 1em;
+}
+
 /* 移動先カテゴリ選択モーダル */
 .move-modal-overlay {
   position: fixed;
