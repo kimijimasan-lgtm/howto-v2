@@ -1609,13 +1609,8 @@ function renderEditor(container) {
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
 
-      // YouTubeノードをタップした場合 → 編集モードに切り替えるだけ（カーソル位置設定なし）
-      // posAtCoordsでYouTubeノード内の位置を指定するとTipTapが誤動作するため除外
-      const ytEl = e.target.closest('[data-youtube-video], .youtube-container');
-      if (ytEl) {
-        setEditorMode('edit');
-        return;
-      }
+      // YouTubeノードはiframeに直接タッチが届くため clickイベントはここまで来ない
+      // （overlayを除去済みのため、YouTubeタップはiframeが処理する）
 
       // posAtCoordsをsetEditorMode前に計算する（モード切替でツールバー高さが変わると
       // 座標→ドキュメント位置の変換がずれるため、元のレイアウトで取得する）
@@ -2925,9 +2920,8 @@ function bindParagraphSwipeEvents(editor) {
         }
         if (!target || target === editor) return;
 
-        if (target.hasAttribute('data-youtube-video')) {
-          toggleYoutubeSelect(target, editor);
-        } else if (target.tagName === 'P') {
+        // YouTubeはスマホではスワイプ選択しない（タップ直接再生を優先）
+        if (target.tagName === 'P') {
           toggleParagraphSelect(target, editor);
         }
       } else {

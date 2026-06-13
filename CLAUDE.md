@@ -98,9 +98,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=655`
+- `style.css?v=656`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=698`
+- `app.js?v=699`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

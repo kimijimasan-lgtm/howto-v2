@@ -1448,20 +1448,8 @@ body {
   border: 0;
 }
 
-/* 閲覧モード: YouTube の上に透明オーバーレイを重ねてスワイプ・タッチを有効化 */
-.editor-content .ProseMirror.mode-view [data-youtube-video]::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 5;
-}
-/* 閲覧モード: iframe 自体の pointer-events を無効化してマウスイベントを親に届ける */
-.editor-content .ProseMirror.mode-view [data-youtube-video] iframe {
-  pointer-events: none;
-}
+/* 閲覧モード: YouTube overlay は除去済み（スマホでタップ再生を可能にするため） */
+/* PC: hover削除ボタンは yt-del-btn CSS で継続提供 */
 
 /* 選択中の YouTube ノードのビジュアル */
 .editor-content [data-youtube-video].para-selected {
