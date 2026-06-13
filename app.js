@@ -2020,26 +2020,28 @@ function renderEditor(container) {
     onUpdate: ({ editor }) => {
       if (isComposing || isRemovingTrailingP) return;
 
-      // 画像段落直後の末尾空段落をドキュメントモデルから即時削除
-      // （ProseMirror が自動追加する場合があるため、保存前に視覚的にも除去する）
-      const { doc } = editor.state;
-      if (doc.childCount >= 2) {
-        const last = doc.child(doc.childCount - 1);
-        const prev = doc.child(doc.childCount - 2);
-        const lastIsEmpty = last.type.name === 'paragraph' && (
-          last.childCount === 0 ||
-          (last.childCount === 1 && last.firstChild.type.name === 'hardBreak')
-        );
-        const prevHasImage = prev.type.name === 'paragraph' &&
-          prev.childCount > 0 && prev.firstChild && prev.firstChild.type.name === 'image';
-        if (lastIsEmpty && prevHasImage) {
-          isRemovingTrailingP = true;
-          const from = doc.content.size - last.nodeSize;
-          editor.view.dispatch(
-            editor.state.tr.delete(from, doc.content.size).setMeta('addToHistory', false)
+      // 画像段落直後の末尾空段落を即時削除（閲覧モード限定）
+      // 編集モードではユーザーが Enter で意図的に追加した空段落を消さないよう除外する
+      if (state.editorMode !== 'edit') {
+        const { doc } = editor.state;
+        if (doc.childCount >= 2) {
+          const last = doc.child(doc.childCount - 1);
+          const prev = doc.child(doc.childCount - 2);
+          const lastIsEmpty = last.type.name === 'paragraph' && (
+            last.childCount === 0 ||
+            (last.childCount === 1 && last.firstChild.type.name === 'hardBreak')
           );
-          isRemovingTrailingP = false;
-          return;
+          const prevHasImage = prev.type.name === 'paragraph' &&
+            prev.childCount > 0 && prev.firstChild && prev.firstChild.type.name === 'image';
+          if (lastIsEmpty && prevHasImage) {
+            isRemovingTrailingP = true;
+            const from = doc.content.size - last.nodeSize;
+            editor.view.dispatch(
+              editor.state.tr.delete(from, doc.content.size).setMeta('addToHistory', false)
+            );
+            isRemovingTrailingP = false;
+            return;
+          }
         }
       }
 
@@ -2325,7 +2327,8 @@ function handleImageForTipTap(file) {
         ctx.drawImage(tempImg, 0, 0, w, h);
         const src = canvas.toDataURL('image/jpeg', 0.75);
         if (tiptapEditor) {
-          tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).splitBlock().run();
+          // splitBlock() は YouTube ノード境界など特定位置で RangeError を起こすため使用しない
+          tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
         }
         resolve();
       };
