@@ -1496,7 +1496,7 @@ function renderEditor(container) {
       </header>
       <div id="edContent" class="editor-content"></div>
       <div class="mode-toggle-bar mode-view" id="btnModeToggle">閲</div>
-      <div class="editor-undo-btn" id="btnUndo" title="直前の操作を元に戻す" style="display:none">
+      <div class="editor-undo-btn" id="btnUndo" title="削除した内容を復元する" style="display:none">
         <span class="undo-icon">↩</span>
         <span class="undo-label">戻す</span>
       </div>
@@ -1508,18 +1508,22 @@ function renderEditor(container) {
   // Undoボタン 自動非表示タイマー
   let undoAutoHideTimer = null;
 
-  // Undoボタンの表示/非表示を undo履歴の有無で制御し、5秒で自動非表示
+  // Undoボタン: lastDeletedContent（削除直前スナップショット）がある時のみ表示
+  // TipTapのundo()は使用しない（全消えリスクがあるため）
   function updateUndoButtonVisibility() {
     const undoBtn = document.getElementById('btnUndo');
     if (!undoBtn || state.editorMode !== 'edit') return;
-    const canUndo = tiptapEditor && tiptapEditor.can().undo();
-    if (canUndo) {
-      undoBtn.style.display = 'flex';
-      clearTimeout(undoAutoHideTimer);
-      undoAutoHideTimer = setTimeout(() => {
-        undoBtn.style.display = 'none';
-        undoAutoHideTimer = null;
-      }, 5000);
+    if (lastDeletedContent !== null) {
+      if (undoBtn.style.display !== 'flex') {
+        // 初回表示時のみタイマーをセット（onUpdateごとにリセットしない）
+        undoBtn.style.display = 'flex';
+        clearTimeout(undoAutoHideTimer);
+        undoAutoHideTimer = setTimeout(() => {
+          undoBtn.style.display = 'none';
+          undoAutoHideTimer = null;
+          lastDeletedContent = null; // 10秒経過でスナップショット廃棄
+        }, 10000);
+      }
     } else {
       undoBtn.style.display = 'none';
       clearTimeout(undoAutoHideTimer);
@@ -1590,11 +1594,15 @@ function renderEditor(container) {
   if (undoBtn) {
     undoBtn.onclick = (e) => {
       e.stopPropagation();
-      if (!tiptapEditor) return;
-      // 確認ダイアログ（誤操作防止）
-      if (!window.confirm('直前の編集を1つ取り消しますか？')) return;
-      tiptapEditor.chain().focus().undo().run();
-      // Undo後は即座に非表示にして次の編集まで再表示しない（1操作のみに制限）
+      if (!tiptapEditor || lastDeletedContent === null) return;
+      if (!window.confirm('削除した内容を復元しますか？')) return;
+      // TipTapのundo()は使わず、削除直前のスナップショットをそのまま復元
+      tiptapEditor.commands.setContent(lastDeletedContent);
+      lastDeletedContent = null;
+      const pm = tiptapEditor.view.dom;
+      initializeNativeParagraphActions(pm);
+      if (pm.classList.contains('mode-view')) refreshYoutubeDeleteButtons('view');
+      saveEditorContentDirectly();
       undoBtn.style.display = 'none';
       clearTimeout(undoAutoHideTimer);
       undoAutoHideTimer = null;
