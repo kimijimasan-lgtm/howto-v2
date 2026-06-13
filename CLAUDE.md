@@ -85,9 +85,9 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=660, tiptap.bundle.js?v=1）
-app.js              — アプリ全体（約3,660行）
-style.css           — スタイル（v=633）
+index.html          — エントリポイント（app.js?v=725, tiptap.bundle.js?v=1）
+app.js              — アプリ全体（約3,700行）
+style.css           — スタイル（v=666）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -96,9 +96,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=658`
+- `style.css?v=666`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=703`
+- `app.js?v=725`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -106,23 +106,51 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 実装済みの変更（直近）
 - 右下の閲覧/編集切替ボタンを「閲」「編」テキストUIに変更済み
-- Undoボタンを編集モードに追加済み
+- Undoボタンを編集モードに追加済み（`#btnUndo`）
 - カテゴリ画面のカード一覧から「+」ボタンを削除済み
 - コピー/カット後キャンセルボタンを緑地白文字✕に変更済み（btnPasteCancel）
 - カット後にbtnAttach・btnDelを非表示にする処理を追加済み（updatePasteButtonState）
 - 画像のみの段落ドラッグハンドルを上部（top:8px）に配置変更
 - iPhoneのIME確定後幽霊Enterによる余分な改行を抑止（compositionJustEndedをhandleKeyDownで使用）
 - 画像後の空段落でBackspace時に空段落のみ削除・画像を保持するよう修正
+- エクスポートモーダルUI改善（ボーダー付き選択リスト、フルワイドDLボタン）
+- 移動先モーダルUI改善（ティールグラジェントヘッダー、ボーダー付きリスト）
+- 画面下部カット改善（`Math.max(initialVVH, vvh)` でアドレスバー隠れ時も正確に高さ確保）
+- YouTube横回転時の自動フルスクリーン（`requestFullscreen()` + overlay方式、`webkitFullscreenchange`対応）
+- カード最下部画像でカードを開くたびに空行が増える問題を修正（`stripTrailingEmptyP` 3層防衛）
+  - 保存パスで除去 / `setContent`後に除去 / `onUpdate`（閲覧モードのみ）で`tr.delete`除去
+- YouTubeの下に画像を貼るとRangeErrorになる問題を修正（`splitBlock()`を`tr.insert(tr.doc.content.size, ...)`に置換）
+- 画像最下部でEnterによる改行ができない問題を修正（`onUpdate`の末尾空段落除去を閲覧モード限定に変更）
+- Undoボタンのテキストを「1つ前の状態に戻しますか？」に変更
+- PC画像削除（ホバーボタン）時にもUndoボタンが表示されるよう修正（`lastDeletedContent`スナップショット追加）
 
-## 次のステップ（優先順）
-（現在の主要タスクはすべて対応済み）
+## Undoボタン（#btnUndo）の動作
+- **表示条件**: 編集モードかつ `lastDeletedContent !== null` の時のみ表示
+- **自動非表示**: 表示から10秒後にタイマーで非表示（`undoAutoHideTimer`）
+- **`lastDeletedContent` をセットする箇所**:
+  - 画像挿入前（`fileInput.onchange`）
+  - 段落カット前（カットボタン `btnBulkDelete`）
+  - YouTube削除前（`refreshYoutubeDeleteButtons` の `btn.onclick`）
+  - PC画像削除前（`setupImageDeleteButtons` の `btn.onclick`）← 今回追加
+- **閲覧モードでの削除**: `lastDeletedContent`はセットされるが、編集モードに切替えた時に`setEditorMode`内の`updateUndoButtonVisibility()`で表示される
+
+## stripTrailingEmptyP の実装
+```js
+function stripTrailingEmptyP(html) {
+  const stripped = html.replace(/(<p>(\s|<br\s*\/?>|&nbsp;)*<\/p>)+$/, '');
+  return stripped || '<p></p>';
+}
+```
+- 末尾の空段落（`<br>`バリアント含む）を除去
+- 全除去されても最低限 `<p></p>` を返す
+- `getCleanEditorHTML()` / `forceSaveEditorContent()` / `setContent`後の後処理で使用
 
 ## 実装済み（追加分）
 - カード一覧ソートボタンのコントラスト改善（sort-bar/sort-btn CSS）
-- Undoボタンの挙動修正（updateUndoButtonVisibility、5秒自動非表示）
+- Undoボタンの挙動修正（updateUndoButtonVisibility、10秒自動非表示）
 - PCのカード新規作成「+」FABボタン復活（pointer: fine 判定で表示制御）
 - YouTube動画があるカードの右端にサムネイル表示（extractYoutubeId + img.youtube.com/vi/）
-- iPhoneでYouTube横画面全画面表示（orientationchange → .yt-landscape-fullscreen で fixed展開）
+- iPhoneでYouTube横画面全画面表示（orientationchange → requestFullscreen() + overlay方式）
 
-## その他保留タスク
-- `tiptap-bundle.js` と `tiptap-test.html` は削除済み
+## 次のステップ
+（現在の主要タスクはすべて対応済み）
