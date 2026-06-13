@@ -2109,8 +2109,14 @@ function renderEditor(container) {
 
   // ── iPhone 横回転時に YouTube を全画面表示 ──
   // TipTap の DOM は一切変更しない（DOM 移動は MutationObserver を誤発火させて画面を破壊する）
-  // 代わりに同じ src の iframe を持つ body 直下オーバーレイを生成・削除する
+  // 同じ src の iframe を持つ body 直下オーバーレイを生成し、requestFullscreen() でネイティブ全画面化する
   const clearYtLandscape = () => {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      try {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } catch (e) {}
+    }
     const overlay = document.getElementById('yt-ls-overlay');
     if (overlay) overlay.remove();
     document.body.classList.remove('yt-fullscreen-active');
@@ -2147,7 +2153,27 @@ function renderEditor(container) {
     overlay.appendChild(newIframe);
     document.body.appendChild(overlay);
     document.body.classList.add('yt-fullscreen-active');
+
+    // ネイティブフルスクリーンを要求（iOS 16.4+ Safari / Chrome 対応）
+    // orientationchange はユーザー操作とみなされるため requestFullscreen が通る場合がある
+    setTimeout(() => {
+      try {
+        if (overlay.requestFullscreen) overlay.requestFullscreen();
+        else if (overlay.webkitRequestFullscreen) overlay.webkitRequestFullscreen();
+      } catch (e) {}
+    }, 200);
   };
+
+  // ユーザーが Done ボタン等でフルスクリーンを手動解除した場合にオーバーレイも閉じる
+  const onFsChange = () => {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      const overlay = document.getElementById('yt-ls-overlay');
+      if (overlay) overlay.remove();
+      document.body.classList.remove('yt-fullscreen-active');
+    }
+  };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
 
   const getIsLandscape = () => {
     if (typeof window.orientation !== 'undefined') return Math.abs(window.orientation) === 90;
@@ -2169,6 +2195,8 @@ function renderEditor(container) {
   listeners.push(() => {
     window.removeEventListener('orientationchange', orientationChangeHandler);
     if (screen.orientation) screen.orientation.removeEventListener('change', orientationChangeHandler);
+    document.removeEventListener('fullscreenchange', onFsChange);
+    document.removeEventListener('webkitfullscreenchange', onFsChange);
     clearYtLandscape();
   });
 
