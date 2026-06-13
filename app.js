@@ -4304,6 +4304,7 @@ function setupImageDeleteButtons(editor) {
         event.stopPropagation();
         event.preventDefault();
         if (confirm('この画像を削除しますか？')) {
+          lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
           img.remove();
           removeDeleteBtn();
           if (tiptapEditor) {
