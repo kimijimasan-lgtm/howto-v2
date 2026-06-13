@@ -89,8 +89,6 @@ index.html          — エントリポイント（app.js?v=660, tiptap.bundle.j
 app.js              — アプリ全体（約3,660行）
 style.css           — スタイル（v=633）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
-tiptap-bundle.js    — 旧バンドルファイル（未使用、削除検討）
-tiptap-test.html    — TipTap単体テスト用ページ（本番不要）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
 .gitignore          — .tiptap-build/node_modules/ を除外
@@ -127,4 +125,4 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - iPhoneでYouTube横画面全画面表示（orientationchange → .yt-landscape-fullscreen で fixed展開）
 
 ## その他保留タスク
-- `tiptap-bundle.js`（旧ファイル）と `tiptap-test.html` の削除検討
+- `tiptap-bundle.js` と `tiptap-test.html` は削除済み
