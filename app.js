@@ -1680,7 +1680,7 @@ function renderEditor(container) {
     undoBtn.onclick = (e) => {
       e.stopPropagation();
       if (!tiptapEditor || lastDeletedContent === null) return;
-      if (!window.confirm('削除した内容を復元しますか？')) return;
+      if (!window.confirm('1つ前の状態に戻しますか？')) return;
       // TipTapのundo()は使わず、削除直前のスナップショットをそのまま復元
       tiptapEditor.commands.setContent(lastDeletedContent);
       lastDeletedContent = null;
