@@ -230,7 +230,7 @@ function forceSaveEditorContent() {
 
   let cleanHTML = '';
   if (tiptapEditor) {
-    cleanHTML = restoreOriginalSrcs(tiptapEditor.getHTML(), origDataUrls);
+    cleanHTML = getCleanEditorHTML();
   } else {
     const editor = document.getElementById('edContent');
     if (editor) cleanHTML = getCleanEditorHTML(editor);
@@ -2019,7 +2019,7 @@ function renderEditor(container) {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         try {
-          const content = restoreOriginalSrcs(editor.getHTML(), origDataUrls);
+          const content = stripTrailingEmptyP(restoreOriginalSrcs(editor.getHTML(), origDataUrls));
           await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
             content, updatedAt: Date.now()
           });
@@ -2978,9 +2978,15 @@ function restoreOriginalSrcs(rawOut, dataUrls) {
   });
 }
 
+// TipTapが画像末尾に自動追加する空 <p></p> を除去（保存のたびに蓄積するのを防ぐ）
+function stripTrailingEmptyP(html) {
+  const stripped = html.replace(/(<p>(\s|&nbsp;)*<\/p>)+$/, '');
+  return stripped || '<p></p>';
+}
+
 // エディタ全体のクリーンなHTMLを抽出
 function getCleanEditorHTML(editor) {
-  if (tiptapEditor) return restoreOriginalSrcs(tiptapEditor.getHTML(), origDataUrls);
+  if (tiptapEditor) return stripTrailingEmptyP(restoreOriginalSrcs(tiptapEditor.getHTML(), origDataUrls));
   if (!editor) return '';
   const tempDiv = document.createElement('div');
   tempDiv.innerHTML = editor.innerHTML;
