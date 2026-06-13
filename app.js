@@ -2088,8 +2088,9 @@ function renderEditor(container) {
       edContent.style.height = Math.max(100, vvh - headerH) + 'px';
       edContent.style.flex = 'none';
     } else {
-      // キーボード非表示: 初期ロック高に戻す（dvh ではなく固定値）
-      app.style.height = initialVVH + 'px';
+      // キーボード非表示: initialVVH か vvh の大きい方を採用
+      // アドレスバーが消えた際（vvh が増加）に #app を広げて表示域を最大化する
+      app.style.height = Math.max(initialVVH, vvh) + 'px';
       edContent.style.height = '';
       edContent.style.flex = '';
     }
