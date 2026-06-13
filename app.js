@@ -460,6 +460,36 @@ function extractYoutubeId(html) {
   return match ? match[1] : null;
 }
 
+// ── カード一覧サムネイル: YouTube + 画像を最大2件 DOM順に抽出 ───
+function extractThumbnails(html) {
+  if (!html) return [];
+  const thumbs = [];
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+
+  const walk = node => {
+    if (thumbs.length >= 2 || node.nodeType !== Node.ELEMENT_NODE) return;
+    // YouTube（TipTap形式 / カスタムコンテナ両対応）
+    if (node.hasAttribute('data-youtube-video') || node.classList.contains('youtube-container')) {
+      const iframe = node.querySelector('iframe');
+      const src = iframe ? (iframe.getAttribute('src') || '') : '';
+      const m = src.match(/embed\/([^"&?/\s]+)/);
+      if (m) thumbs.push(`https://img.youtube.com/vi/${m[1]}/mqdefault.jpg`);
+      return;
+    }
+    // 挿入画像
+    if (node.tagName === 'IMG' && node.classList.contains('inserted-img')) {
+      const src = node.getAttribute('src');
+      if (src) thumbs.push(src);
+      return;
+    }
+    for (const child of node.children) walk(child);
+  };
+
+  for (const child of tmp.children) walk(child);
+  return thumbs;
+}
+
 // ── Markdown 記号を除去 ────────────────────────
 function stripMarkdown(text) {
   return text
@@ -922,7 +952,7 @@ function renderCategory(container) {
         const textLines = htmlToLines(art.content);
         const title   = textLines[0] || '（タイトルなし）';
         const preview = textLines.slice(1).join(' ').slice(0, 60) || '内容がありません';
-        const ytId    = extractYoutubeId(art.content);
+        const thumbs  = extractThumbnails(art.content);
 
         const li = document.createElement('li');
         li.className = 'article-item';
@@ -944,7 +974,7 @@ function renderCategory(container) {
               <div class="article-title">${esc(title)}</div>
               <div class="article-preview">${esc(preview)}</div>
             </div>
-            ${ytId ? `<img class="article-yt-thumb" src="https://img.youtube.com/vi/${ytId}/mqdefault.jpg" alt="" loading="lazy">` : ''}
+            ${thumbs.length > 0 ? `<div class="article-thumbs">${thumbs.map(src => `<img class="article-thumb" src="${esc(src)}" alt="" loading="lazy">`).join('')}</div>` : ''}
           </div>
           <div class="swipe-actions">
             <button class="swipe-action-btn swipe-action-pin${art.pinned ? ' is-pinned' : ''}">
@@ -1560,11 +1590,14 @@ function renderEditor(container) {
   if (undoBtn) {
     undoBtn.onclick = (e) => {
       e.stopPropagation();
-      if (tiptapEditor) {
-        tiptapEditor.chain().focus().undo().run();
-        // undo後に再チェック（履歴が尽きたら即非表示、残りがあれば再表示）
-        updateUndoButtonVisibility();
-      }
+      if (!tiptapEditor) return;
+      // 確認ダイアログ（誤操作防止）
+      if (!window.confirm('直前の編集を1つ取り消しますか？')) return;
+      tiptapEditor.chain().focus().undo().run();
+      // Undo後は即座に非表示にして次の編集まで再表示しない（1操作のみに制限）
+      undoBtn.style.display = 'none';
+      clearTimeout(undoAutoHideTimer);
+      undoAutoHideTimer = null;
     };
   }
 
@@ -1575,6 +1608,15 @@ function renderEditor(container) {
       if (state.editorMode !== 'view') return;
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
+
+      // YouTubeノードをタップした場合 → 編集モードに切り替えるだけ（カーソル位置設定なし）
+      // posAtCoordsでYouTubeノード内の位置を指定するとTipTapが誤動作するため除外
+      const ytEl = e.target.closest('[data-youtube-video], .youtube-container');
+      if (ytEl) {
+        setEditorMode('edit');
+        return;
+      }
+
       // posAtCoordsをsetEditorMode前に計算する（モード切替でツールバー高さが変わると
       // 座標→ドキュメント位置の変換がずれるため、元のレイアウトで取得する）
       let targetPos = null;
@@ -2052,6 +2094,17 @@ function renderEditor(container) {
       tiptapEditor.commands.setContent(displayHTML, false);
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
     }
+
+    // setContent がUndo履歴に残るのを防ぐ（ロード前の空状態へのUndoを不可能にする）
+    // EditorState.createで同じdocを持つが履歴が空の新鮮な状態に差し替える
+    try {
+      const curState = tiptapEditor.view.state;
+      const freshState = curState.constructor.create({
+        doc: curState.doc,
+        plugins: curState.plugins,
+      });
+      tiptapEditor.view.updateState(freshState);
+    } catch (e) { /* 念のため握りつぶす */ }
 
     // 段落スワイプなどのネイティブアクションを初期化
     const proseMirrorEl = tiptapEditor.view.dom;
