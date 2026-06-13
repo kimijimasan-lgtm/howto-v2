@@ -286,8 +286,8 @@ body {
 .screen-editor {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  position: relative; /* 子要素の絶対配置の基準にする */
+  height: 100%; /* #app の JS ロック高に追従（dvh 変動の影響を受けない） */
+  position: relative;
   overflow: hidden;
 }
 /* エディタ画面のヘッダーを絶対固定 */
@@ -831,7 +831,7 @@ body {
 /* TipTap ProseMirror コンテナ */
 .editor-content .ProseMirror {
   padding: 1.25rem;
-  padding-bottom: 4rem;
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   min-height: 100%;
   outline: none;
   caret-color: var(--accent);

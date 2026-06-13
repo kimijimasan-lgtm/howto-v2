@@ -2063,26 +2063,29 @@ function renderEditor(container) {
     }, 500);
   });
 
-  // ── iOS キーボード対応: キーボード表示時のみ高さを縮める ──
-  // visualViewport.resize のみ監視（scroll は タップ時に誤発火するため除外）
-  // vvh が innerHeight の 85% 未満 = キーボード表示中と判定
+  // ── iOS アドレスバー対応: #app の高さを起動時にロックして dvh 変動を防ぐ ──
+  // タップ時にアドレスバーが出てきて dvh が縮小しても #app は固定高さを維持する
+  const app = document.getElementById('app');
+  const initialVVH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  if (app) app.style.height = initialVVH + 'px';
+
+  // キーボード表示時のみ #app と edContent を縮める
+  // 閾値を 75% にして address bar 変動（~6%）を誤検出しないようにする
   const updateEditorHeight = () => {
-    const screenEditor = document.querySelector('.screen-editor');
     const edContent = document.getElementById('edContent');
     const header = document.querySelector('.screen-editor .editor-header');
-    if (!screenEditor || !edContent || !header) return;
+    if (!app || !edContent || !header) return;
     const vvh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     const winH = window.innerHeight;
-    const keyboardVisible = vvh < winH * 0.85;
+    const keyboardVisible = vvh < winH * 0.75;
     if (keyboardVisible) {
-      // キーボード表示中: screen-editor と edContent を vvh に合わせて縮める
-      screenEditor.style.height = vvh + 'px';
+      app.style.height = vvh + 'px';
       const headerH = header.getBoundingClientRect().height;
       edContent.style.height = Math.max(100, vvh - headerH) + 'px';
       edContent.style.flex = 'none';
     } else {
-      // キーボード非表示: CSS デフォルト (100dvh / flex:1) に戻す
-      screenEditor.style.height = '';
+      // キーボード非表示: 初期ロック高に戻す（dvh ではなく固定値）
+      app.style.height = initialVVH + 'px';
       edContent.style.height = '';
       edContent.style.flex = '';
     }
@@ -2094,9 +2097,8 @@ function renderEditor(container) {
     if (window.visualViewport) {
       window.visualViewport.removeEventListener('resize', updateEditorHeight);
     }
-    const screenEditor = document.querySelector('.screen-editor');
+    if (app) app.style.height = ''; // エディタ離脱時に CSS デフォルト(100dvh)に戻す
     const edContent = document.getElementById('edContent');
-    if (screenEditor) screenEditor.style.height = '';
     if (edContent) { edContent.style.height = ''; edContent.style.flex = ''; }
   });
 
