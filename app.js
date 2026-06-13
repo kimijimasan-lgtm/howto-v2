@@ -2327,8 +2327,25 @@ function handleImageForTipTap(file) {
         ctx.drawImage(tempImg, 0, 0, w, h);
         const src = canvas.toDataURL('image/jpeg', 0.75);
         if (tiptapEditor) {
-          // splitBlock() は YouTube ノード境界など特定位置で RangeError を起こすため使用しない
-          tiptapEditor.chain().focus().setImage({ src, class: 'inserted-img' }).run();
+          tiptapEditor.chain()
+            .focus()
+            .setImage({ src, class: 'inserted-img' })
+            .command(({ tr, state, dispatch }) => {
+              // 画像の直後に空段落を追加（続けて入力できるように）
+              // splitBlock() は YouTube ノード境界などで RangeError を起こすため
+              // tr.doc.content.size（setImage 後の最新サイズ）を使って末尾に直接挿入する
+              if (!dispatch) return true;
+              try {
+                const insertPos = tr.doc.content.size;
+                if (insertPos > 0 && insertPos <= tr.doc.nodeSize - 2) {
+                  tr.insert(insertPos, state.schema.nodes.paragraph.create());
+                  const $pos = tr.doc.resolve(insertPos + 1);
+                  tr.setSelection(state.selection.constructor.near($pos));
+                }
+              } catch (e) { /* 位置計算失敗時は段落追加をスキップ */ }
+              return true;
+            })
+            .run();
         }
         resolve();
       };
