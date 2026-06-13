@@ -142,6 +142,7 @@ let state = { screen: 'home', categoryId: null, articleId: null, uid: null, edit
 let activePasteMarkerP = null;
 let activePasteLocation = null;
 let isComposing = false;
+let isRemovingTrailingP = false; // onUpdate 内での末尾空段落除去ループ防止フラグ
 // IME確定直後（同一ティック内）に発火する「幽霊Enter」を無視するためのフラグ。
 // iPhoneの日本語キーボードは「変換確定」と「改行」が同じEnterキーに割り当てられており、
 // 確定操作のEnterのkeydownでも isComposing が false になっているケースがあるため、
@@ -2017,7 +2018,31 @@ function renderEditor(container) {
       }
     },
     onUpdate: ({ editor }) => {
-      if (isComposing) return;
+      if (isComposing || isRemovingTrailingP) return;
+
+      // 画像段落直後の末尾空段落をドキュメントモデルから即時削除
+      // （ProseMirror が自動追加する場合があるため、保存前に視覚的にも除去する）
+      const { doc } = editor.state;
+      if (doc.childCount >= 2) {
+        const last = doc.child(doc.childCount - 1);
+        const prev = doc.child(doc.childCount - 2);
+        const lastIsEmpty = last.type.name === 'paragraph' && (
+          last.childCount === 0 ||
+          (last.childCount === 1 && last.firstChild.type.name === 'hardBreak')
+        );
+        const prevHasImage = prev.type.name === 'paragraph' &&
+          prev.childCount > 0 && prev.firstChild && prev.firstChild.type.name === 'image';
+        if (lastIsEmpty && prevHasImage) {
+          isRemovingTrailingP = true;
+          const from = doc.content.size - last.nodeSize;
+          editor.view.dispatch(
+            editor.state.tr.delete(from, doc.content.size).setMeta('addToHistory', false)
+          );
+          isRemovingTrailingP = false;
+          return;
+        }
+      }
+
       if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
       updateUndoButtonVisibility();
       clearTimeout(saveTimer);
@@ -2248,6 +2273,14 @@ function renderEditor(container) {
       origDataUrls = extractDataUrls(displayHTML);
       displayHTML = preprocessHTMLForTipTap(displayHTML).html;
       tiptapEditor.commands.setContent(displayHTML, false);
+      // setContent 後に TipTap が末尾空段落を自動追加した場合は再 setContent で除去
+      {
+        const postHTML = tiptapEditor.getHTML();
+        const postCleaned = stripTrailingEmptyP(postHTML);
+        if (postCleaned !== postHTML) {
+          tiptapEditor.commands.setContent(postCleaned, false);
+        }
+      }
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
     }
 
@@ -3011,9 +3044,9 @@ function restoreOriginalSrcs(rawOut, dataUrls) {
   });
 }
 
-// TipTapが画像末尾に自動追加する空 <p></p> を除去（保存のたびに蓄積するのを防ぐ）
+// TipTapが画像末尾に自動追加する空 <p></p>/<p><br></p> を除去（保存のたびに蓄積するのを防ぐ）
 function stripTrailingEmptyP(html) {
-  const stripped = html.replace(/(<p>(\s|&nbsp;)*<\/p>)+$/, '');
+  const stripped = html.replace(/(<p>(\s|<br\s*\/?>|&nbsp;)*<\/p>)+$/, '');
   return stripped || '<p></p>';
 }
 
