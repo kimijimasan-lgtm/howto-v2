@@ -1165,17 +1165,19 @@ async function showMoveModal(artId, currentCatId) {
   overlay.className = 'move-modal-overlay';
   overlay.innerHTML = `
     <div class="move-modal">
-      <div class="move-modal-header">
-        <span>移動先を選択</span>
+      <div class="move-modal-header move-modal-header-styled">
+        <span class="move-modal-title">📁 移動先を選択</span>
         <button class="move-modal-close" id="moveCancelBtn">キャンセル</button>
       </div>
-      <ul class="move-cat-list">
-        ${others.map(c => `
-          <li class="move-cat-item" data-cat-id="${c.id}"
-            style="border-left:4px solid ${c.color || '#6366f1'}">
-            ${esc(c.name || '（名前なし）')}
-          </li>`).join('')}
-      </ul>
+      <div class="move-cat-wrap">
+        <ul class="move-cat-list">
+          ${others.map(c => `
+            <li class="move-cat-item" data-cat-id="${c.id}"
+              style="border-left:4px solid ${c.color || '#6366f1'}">
+              ${esc(c.name || '（名前なし）')}
+            </li>`).join('')}
+        </ul>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
 
