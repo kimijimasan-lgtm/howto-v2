@@ -703,6 +703,33 @@ body {
 }
 .move-cat-item:hover, .move-cat-item:active { background: rgba(255,255,255,0.07); }
 
+/* エクスポートモーダル専用ヘッダー */
+.export-modal-header {
+  background: linear-gradient(135deg, #312e81 0%, #1e1b4b 100%);
+  border-radius: 20px 20px 0 0;
+  border-bottom: 1px solid rgba(129,140,248,0.3) !important;
+  padding: 1.4rem 1.25rem !important;
+}
+.export-modal-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #e0e7ff;
+  letter-spacing: 0.02em;
+}
+.export-modal-title em {
+  font-style: normal;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: rgba(129,140,248,0.25);
+  color: #a5b4fc;
+  padding: 0.15rem 0.55rem;
+  border-radius: 99px;
+  border: 1px solid rgba(129,140,248,0.4);
+}
+
 .export-dl-footer {
   padding: 0.75rem 1.25rem;
   border-top: 1px solid rgba(255,255,255,0.08);

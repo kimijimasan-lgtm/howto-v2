@@ -1254,8 +1254,8 @@ async function showExportAllModal(catId) {
   overlay.className = 'move-modal-overlay';
   overlay.innerHTML = `
     <div class="move-modal">
-      <div class="move-modal-header">
-        <span>一括エクスポート（${articles.length}件）</span>
+      <div class="move-modal-header export-modal-header">
+        <span class="export-modal-title">📦 一括エクスポート<em>${articles.length}件</em></span>
         <button class="move-modal-close" id="exportCancelBtn">キャンセル</button>
       </div>
       <ul class="move-cat-list">
@@ -1312,9 +1312,30 @@ function handleExportAllAction(type, articles) {
       }
     }).join('');
 
-    navigator.clipboard.writeText(textData)
+    // Clipboard API (HTTPS必須) → fallback: execCommand
+    const doCopy = () => {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(textData);
+      }
+      // HTTP環境・旧ブラウザ向けフォールバック
+      const ta = document.createElement('textarea');
+      ta.value = textData;
+      ta.style.cssText = 'position:fixed;top:-9999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return Promise.resolve();
+      } catch (e) {
+        document.body.removeChild(ta);
+        return Promise.reject(e);
+      }
+    };
+
+    doCopy()
       .then(() => alert('全メモをクリップボードに一括コピーしました！'))
-      .catch(() => alert('コピーに失敗しました。'));
+      .catch(() => alert('コピーに失敗しました。\nHTTPS環境でお試しください。'));
   }
   else if (type === 'text') {
     let textData = `【${catName}】\n【1ページ目】\n\n`;
@@ -1416,17 +1437,50 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
       container.innerHTML = buildFullHTML(false);
       container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
       document.body.appendChild(container);
+      const filename = `${catName}_一括エクスポート.pdf`;
+      const cleanupContainer = () => {
+        try { document.body.removeChild(container); } catch (_) {}
+      };
+
       window.html2pdf()
-        .from(container.querySelector('body') || container)
+        .from(container)
         .set({
           margin: 10,
-          filename: `${catName}_一括エクスポート.pdf`,
+          filename,
           image: { type: 'jpeg', quality: 0.95 },
           html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         })
-        .save()
-        .finally(() => { document.body.removeChild(container); });
+        .toPdf()
+        .get('pdf')
+        .then(pdf => {
+          cleanupContainer();
+          const arrayBuf = pdf.output('arraybuffer');
+          const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+          if (isIOS) {
+            // iOS Safari は <a download> を PDF に適用できないため新規タブで表示
+            // ユーザーは「共有 → ファイルに保存」で保存可能
+            const blob = new Blob([arrayBuf], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          } else {
+            // Desktop / Android: application/octet-stream でダウンロード強制
+            const blob = new Blob([arrayBuf], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+          }
+        })
+        .catch(() => {
+          cleanupContainer();
+          alert('PDF生成に失敗しました。HTMLでのエクスポートをお試しください。');
+        });
     }
   }
 }
@@ -2009,57 +2063,77 @@ function renderEditor(container) {
     }, 500);
   });
 
-  // ── iOS キーボード対応: #edContent の高さを visualViewport に合わせて更新 ──
-  // .screen-editor は 100dvh のまま変えず、edContent だけを縮めることで
-  // キーボード下に黒い隙間が生じるのを防ぐ
+  // ── iOS キーボード対応: キーボード表示時のみ高さを縮める ──
+  // visualViewport.resize のみ監視（scroll は タップ時に誤発火するため除外）
+  // vvh が innerHeight の 85% 未満 = キーボード表示中と判定
   const updateEditorHeight = () => {
+    const screenEditor = document.querySelector('.screen-editor');
     const edContent = document.getElementById('edContent');
     const header = document.querySelector('.screen-editor .editor-header');
-    if (!edContent || !header) return;
+    if (!screenEditor || !edContent || !header) return;
     const vvh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const headerH = header.getBoundingClientRect().height;
-    edContent.style.height = Math.max(100, vvh - headerH) + 'px';
-    edContent.style.flex = 'none';
+    const winH = window.innerHeight;
+    const keyboardVisible = vvh < winH * 0.85;
+    if (keyboardVisible) {
+      // キーボード表示中: screen-editor と edContent を vvh に合わせて縮める
+      screenEditor.style.height = vvh + 'px';
+      const headerH = header.getBoundingClientRect().height;
+      edContent.style.height = Math.max(100, vvh - headerH) + 'px';
+      edContent.style.flex = 'none';
+    } else {
+      // キーボード非表示: CSS デフォルト (100dvh / flex:1) に戻す
+      screenEditor.style.height = '';
+      edContent.style.height = '';
+      edContent.style.flex = '';
+    }
   };
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateEditorHeight);
-    window.visualViewport.addEventListener('scroll', updateEditorHeight);
   }
-  updateEditorHeight(); // 初期値セット
   listeners.push(() => {
     if (window.visualViewport) {
       window.visualViewport.removeEventListener('resize', updateEditorHeight);
-      window.visualViewport.removeEventListener('scroll', updateEditorHeight);
     }
+    const screenEditor = document.querySelector('.screen-editor');
     const edContent = document.getElementById('edContent');
+    if (screenEditor) screenEditor.style.height = '';
     if (edContent) { edContent.style.height = ''; edContent.style.flex = ''; }
   });
 
   // ── iPhone 横回転時に YouTube を全画面表示 ────────────
-  // iOS では position:fixed がスクロールコンテナ内で効かないため、
-  // YouTube要素をbody直下に移動してからfixedを適用する
+  // ── iPhone 横回転時に YouTube を全画面表示 ──
+  // body直下に移動 + inline style で直接制御（TipTap内部ラッパーのpadding等を確実に上書き）
   let ytLsTarget = null;
   let ytLsOrigParent = null;
   let ytLsOrigNext = null;
+  let ytLsOrigStyle = '';
+  let ytLsChildStyles = [];
+  let ytLsIframeStyle = '';
 
   const clearYtLandscape = () => {
     if (ytLsTarget) {
-      ytLsTarget.classList.remove('yt-landscape-fullscreen');
+      // 元のスタイルを復元
+      ytLsTarget.setAttribute('style', ytLsOrigStyle);
+      Array.from(ytLsTarget.children).forEach((child, i) => {
+        child.setAttribute('style', ytLsChildStyles[i] || '');
+      });
+      const iframe = ytLsTarget.querySelector('iframe');
+      if (iframe) iframe.setAttribute('style', ytLsIframeStyle);
+
       if (ytLsOrigParent && ytLsOrigParent.isConnected) {
         ytLsOrigParent.insertBefore(ytLsTarget, ytLsOrigNext);
       } else {
         ytLsTarget.remove();
       }
-      ytLsTarget = null;
-      ytLsOrigParent = null;
-      ytLsOrigNext = null;
+      ytLsTarget = null; ytLsOrigParent = null; ytLsOrigNext = null;
+      ytLsOrigStyle = ''; ytLsChildStyles = []; ytLsIframeStyle = '';
     }
     document.body.classList.remove('yt-fullscreen-active');
   };
 
   const applyYtLandscape = () => {
     if (state.screen !== 'editor') return;
-    if (ytLsTarget) return; // 既に適用済み
+    if (ytLsTarget) return;
     const pm = tiptapEditor && tiptapEditor.view && tiptapEditor.view.dom;
     if (!pm) return;
     const allYt = pm.querySelectorAll('[data-youtube-video]');
@@ -2069,23 +2143,48 @@ function renderEditor(container) {
       return r.top < window.innerHeight && r.bottom > 0;
     });
     const target = visible || allYt[0];
+
+    // 元スタイルを保存
+    ytLsOrigStyle = target.getAttribute('style') || '';
+    ytLsChildStyles = Array.from(target.children).map(c => c.getAttribute('style') || '');
+    const iframe = target.querySelector('iframe');
+    ytLsIframeStyle = iframe ? (iframe.getAttribute('style') || '') : '';
+
     ytLsTarget = target;
     ytLsOrigParent = target.parentNode;
     ytLsOrigNext = target.nextSibling;
-    // body直下に移動してから fixed を適用（iOSのスクロールコンテナ制約を回避）
+
+    // body直下に移動（iOS: position:fixed がスクロールコンテナ内で効かない問題を回避）
     document.body.appendChild(target);
-    target.classList.add('yt-landscape-fullscreen');
+
+    // 回転後の実寸（innerWidth/Height は orientation 確定後に正しい値）
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    // コンテナを全画面に
+    target.style.cssText = [
+      'position:fixed', 'top:0', 'left:0',
+      `width:${w}px`, `height:${h}px`,
+      'z-index:99999', 'background:#000',
+      'margin:0', 'padding:0', 'border-radius:0',
+    ].join('!important;') + '!important';
+
+    // 中間ラッパー（TipTapがpadding-topで aspect ratio を作ることがある）をリセット
+    Array.from(target.children).forEach(child => {
+      child.style.cssText = 'position:relative!important;width:100%!important;height:100%!important;padding:0!important;margin:0!important';
+    });
+
+    // iframe を全画面に
+    if (iframe) {
+      iframe.style.cssText = 'position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;border:0!important';
+    }
+
     document.body.classList.add('yt-fullscreen-active');
   };
 
   const getIsLandscape = () => {
-    // window.orientation は deprecated だが iOS で最も確実（0=縦, ±90=横）
-    if (typeof window.orientation !== 'undefined') {
-      return Math.abs(window.orientation) === 90;
-    }
-    if (screen.orientation && screen.orientation.type) {
-      return screen.orientation.type.startsWith('landscape');
-    }
+    if (typeof window.orientation !== 'undefined') return Math.abs(window.orientation) === 90;
+    if (screen.orientation && screen.orientation.type) return screen.orientation.type.startsWith('landscape');
     return window.innerWidth > window.innerHeight;
   };
 
@@ -2102,9 +2201,7 @@ function renderEditor(container) {
   }
   listeners.push(() => {
     window.removeEventListener('orientationchange', orientationChangeHandler);
-    if (screen.orientation) {
-      screen.orientation.removeEventListener('change', orientationChangeHandler);
-    }
+    if (screen.orientation) screen.orientation.removeEventListener('change', orientationChangeHandler);
     clearYtLandscape();
   });
 
