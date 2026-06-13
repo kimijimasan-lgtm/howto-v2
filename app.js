@@ -2100,85 +2100,45 @@ function renderEditor(container) {
     if (edContent) { edContent.style.height = ''; edContent.style.flex = ''; }
   });
 
-  // ── iPhone 横回転時に YouTube を全画面表示 ────────────
   // ── iPhone 横回転時に YouTube を全画面表示 ──
-  // body直下に移動 + inline style で直接制御（TipTap内部ラッパーのpadding等を確実に上書き）
-  let ytLsTarget = null;
-  let ytLsOrigParent = null;
-  let ytLsOrigNext = null;
-  let ytLsOrigStyle = '';
-  let ytLsChildStyles = [];
-  let ytLsIframeStyle = '';
-
+  // TipTap の DOM は一切変更しない（DOM 移動は MutationObserver を誤発火させて画面を破壊する）
+  // 代わりに同じ src の iframe を持つ body 直下オーバーレイを生成・削除する
   const clearYtLandscape = () => {
-    if (ytLsTarget) {
-      // 元のスタイルを復元
-      ytLsTarget.setAttribute('style', ytLsOrigStyle);
-      Array.from(ytLsTarget.children).forEach((child, i) => {
-        child.setAttribute('style', ytLsChildStyles[i] || '');
-      });
-      const iframe = ytLsTarget.querySelector('iframe');
-      if (iframe) iframe.setAttribute('style', ytLsIframeStyle);
-
-      if (ytLsOrigParent && ytLsOrigParent.isConnected) {
-        ytLsOrigParent.insertBefore(ytLsTarget, ytLsOrigNext);
-      } else {
-        ytLsTarget.remove();
-      }
-      ytLsTarget = null; ytLsOrigParent = null; ytLsOrigNext = null;
-      ytLsOrigStyle = ''; ytLsChildStyles = []; ytLsIframeStyle = '';
-    }
+    const overlay = document.getElementById('yt-ls-overlay');
+    if (overlay) overlay.remove();
     document.body.classList.remove('yt-fullscreen-active');
   };
 
   const applyYtLandscape = () => {
     if (state.screen !== 'editor') return;
-    if (ytLsTarget) return;
+    if (document.getElementById('yt-ls-overlay')) return; // 既に表示中
     const pm = tiptapEditor && tiptapEditor.view && tiptapEditor.view.dom;
     if (!pm) return;
-    const allYt = pm.querySelectorAll('[data-youtube-video]');
-    if (allYt.length === 0) return;
-    const visible = Array.from(allYt).find(el => {
-      const r = el.getBoundingClientRect();
+
+    // ビューポート内で最初に見えている YouTube iframe の src を取得
+    const allIframes = pm.querySelectorAll('[data-youtube-video] iframe');
+    if (allIframes.length === 0) return;
+    const visibleIframe = Array.from(allIframes).find(f => {
+      const r = f.getBoundingClientRect();
       return r.top < window.innerHeight && r.bottom > 0;
     });
-    const target = visible || allYt[0];
+    const srcIframe = visibleIframe || allIframes[0];
+    const src = srcIframe.src || srcIframe.getAttribute('src') || '';
+    if (!src) return;
 
-    // 元スタイルを保存
-    ytLsOrigStyle = target.getAttribute('style') || '';
-    ytLsChildStyles = Array.from(target.children).map(c => c.getAttribute('style') || '');
-    const iframe = target.querySelector('iframe');
-    ytLsIframeStyle = iframe ? (iframe.getAttribute('style') || '') : '';
+    // 全画面オーバーレイを body に追加（TipTap の DOM は不変）
+    const overlay = document.createElement('div');
+    overlay.id = 'yt-ls-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;';
 
-    ytLsTarget = target;
-    ytLsOrigParent = target.parentNode;
-    ytLsOrigNext = target.nextSibling;
+    const newIframe = document.createElement('iframe');
+    newIframe.src = src;
+    newIframe.style.cssText = 'width:100%;height:100%;border:0;';
+    newIframe.setAttribute('allow', 'autoplay;fullscreen;encrypted-media;picture-in-picture');
+    newIframe.setAttribute('allowfullscreen', '');
 
-    // body直下に移動（iOS: position:fixed がスクロールコンテナ内で効かない問題を回避）
-    document.body.appendChild(target);
-
-    // 回転後の実寸（innerWidth/Height は orientation 確定後に正しい値）
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    // コンテナを全画面に
-    target.style.cssText = [
-      'position:fixed', 'top:0', 'left:0',
-      `width:${w}px`, `height:${h}px`,
-      'z-index:99999', 'background:#000',
-      'margin:0', 'padding:0', 'border-radius:0',
-    ].join('!important;') + '!important';
-
-    // 中間ラッパー（TipTapがpadding-topで aspect ratio を作ることがある）をリセット
-    Array.from(target.children).forEach(child => {
-      child.style.cssText = 'position:relative!important;width:100%!important;height:100%!important;padding:0!important;margin:0!important';
-    });
-
-    // iframe を全画面に
-    if (iframe) {
-      iframe.style.cssText = 'position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;border:0!important';
-    }
-
+    overlay.appendChild(newIframe);
+    document.body.appendChild(overlay);
     document.body.classList.add('yt-fullscreen-active');
   };
 
