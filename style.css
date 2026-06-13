@@ -92,6 +92,51 @@ html.theme-ocean {
   --accent-dim:    rgba(6,182,212,0.18);
 }
 
+/* ── テーマ: ダークパープル ── */
+html.theme-purple {
+  --bg-outer:      #0d0718;
+  --bg:            #1e0e3a;
+  --bg-card:       rgba(167,139,250,0.08);
+  --bg-card-hover: rgba(167,139,250,0.14);
+  --bg-header:     rgba(30,14,58,0.93);
+  --border:        rgba(167,139,250,0.18);
+  --text-primary:  #c4b5fd;
+  --text-sub:      #7c5cbf;
+  --text-muted:    #4c2d95;
+  --accent:        #a78bfa;
+  --accent-dim:    rgba(167,139,250,0.18);
+}
+
+/* ── テーマ: ラベンダー ── */
+html.theme-lavender {
+  --bg-outer:      #c4b5fd;
+  --bg:            #ede9fe;
+  --bg-card:       rgba(139,92,246,0.07);
+  --bg-card-hover: rgba(139,92,246,0.13);
+  --bg-header:     rgba(237,233,254,0.93);
+  --border:        rgba(139,92,246,0.16);
+  --text-primary:  #3b0764;
+  --text-sub:      #6d28d9;
+  --text-muted:    #a78bfa;
+  --accent:        #7c3aed;
+  --accent-dim:    rgba(124,58,237,0.15);
+}
+
+/* ── テーマ: コーラル ── */
+html.theme-coral {
+  --bg-outer:      #ffb89a;
+  --bg:            #fff4ef;
+  --bg-card:       rgba(249,115,22,0.07);
+  --bg-card-hover: rgba(249,115,22,0.13);
+  --bg-header:     rgba(255,244,239,0.93);
+  --border:        rgba(234,88,12,0.16);
+  --text-primary:  #431407;
+  --text-sub:      #9a3412;
+  --text-muted:    #c2845a;
+  --accent:        #ea580c;
+  --accent-dim:    rgba(234,88,12,0.15);
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -624,6 +669,7 @@ body {
 }
 .move-modal {
   background: #1c2128;
+  color: #e6edf3; /* 常にライトテキスト（テーマに依存しない暗色シート） */
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-height: 60vh;
@@ -636,12 +682,12 @@ body {
   align-items: center;
   padding: 1.25rem;
   font-weight: 700;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255,255,255,0.12);
 }
 .move-modal-close {
   background: none;
   border: none;
-  color: var(--accent);
+  color: #f97316; /* 常にオレンジ（テーマ非依存） */
   font-size: 0.95rem;
   cursor: pointer;
   font-family: var(--font);
@@ -651,11 +697,30 @@ body {
   padding: 1rem 1.25rem;
   cursor: pointer;
   font-weight: 600;
-  color: var(--text-primary);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: #e6edf3; /* 常にライトテキスト */
+  border-bottom: 1px solid rgba(255,255,255,0.08);
   transition: background 0.2s;
 }
 .move-cat-item:hover, .move-cat-item:active { background: rgba(255,255,255,0.07); }
+
+.export-dl-footer {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.export-dl-btn {
+  background: none;
+  border: 1px solid rgba(96,165,250,0.4);
+  color: #93c5fd;
+  font-size: 0.85rem;
+  font-family: var(--font);
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.export-dl-btn:hover, .export-dl-btn:active {
+  background: rgba(96,165,250,0.1);
+}
 
 /* ── エクスポート関連 ── */
 .btn-export {
@@ -1496,15 +1561,15 @@ body {
   transform: scale(1.1);
 }
 
-/* iPhone 横回転時: ビューポート内のYouTubeをフル画面表示 */
+/* iPhone 横回転時: body直下に移動してから fixed を適用（iOS scroll制約回避） */
 .yt-landscape-fullscreen {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
   width: 100vw !important;
-  height: 100vh !important;
+  height: 100svh !important; /* small viewport height: Safari UIを除いた正確な高さ */
   padding-top: 0 !important;
-  z-index: 9000 !important;
+  z-index: 99999 !important;
   margin: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
@@ -1517,8 +1582,8 @@ body {
   width: 100% !important;
   height: 100% !important;
   pointer-events: auto !important;
+  border: 0 !important;
 }
-/* ビューモードの透明オーバーレイを解除（操作できるように） */
 .yt-landscape-fullscreen::after {
   display: none !important;
 }
@@ -1560,7 +1625,11 @@ body.yt-fullscreen-active {
 /* 🔍 画像拡大ライトボックスモーダル */
 .lightbox-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  /* height は JS で visualViewport.height を使って上書きする（iOS Safari 対策） */
+  height: 100dvh;
   background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -1571,11 +1640,13 @@ body.yt-fullscreen-active {
   cursor: zoom-out;
   opacity: 0;
   animation: fadeIn 0.25s ease forwards;
+  box-sizing: border-box;
 }
 
 .lightbox-content {
-  max-width: 92%;
-  max-height: 92%;
+  max-width: 92vw;
+  /* max-height は JS で overlay 高さに連動して設定 */
+  max-height: 88dvh;
   display: flex;
   align-items: center;
   justify-content: center;

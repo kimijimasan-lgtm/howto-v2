@@ -52,17 +52,21 @@ const db = firebase.database();
 
 // ── テーマ管理 ────────────────────────────────────────────────────────
 const THEMES = [
-  { id: 'dark',    label: 'ダーク',     swatch: '#0d1117' },
-  { id: 'ocean',   label: 'オーシャン', swatch: '#102840' },
-  { id: 'mint',    label: 'ミント',     swatch: '#eaf7f2' },
-  { id: 'sepia',   label: 'セピア',     swatch: '#f5edd8' },
-  { id: 'light',   label: 'ライト',     swatch: '#f2f4f7' },
-  { id: 'rose',    label: 'ローズ',     swatch: '#fce0ec' },
+  { id: 'dark',     label: 'ダーク',         swatch: '#0d1117' },
+  { id: 'ocean',    label: 'オーシャン',     swatch: '#102840' },
+  { id: 'purple',   label: 'パープル',       swatch: '#1e0e3a' },
+  { id: 'mint',     label: 'ミント',         swatch: '#eaf7f2' },
+  { id: 'sepia',    label: 'セピア',         swatch: '#f5edd8' },
+  { id: 'light',    label: 'ライト',         swatch: '#f2f4f7' },
+  { id: 'rose',     label: 'ローズ',         swatch: '#fce0ec' },
+  { id: 'lavender', label: 'ラベンダー',     swatch: '#ddd6fe' },
+  { id: 'coral',    label: 'コーラル',       swatch: '#ffd4bf' },
 ];
 
 function applyTheme(name) {
   const html = document.documentElement;
-  ['dark', 'ocean', 'mint', 'sepia', 'light', 'rose'].forEach(id => html.classList.remove('theme-' + id));
+  ['dark', 'ocean', 'purple', 'mint', 'sepia', 'light', 'rose', 'lavender', 'coral']
+    .forEach(id => html.classList.remove('theme-' + id));
   if (name && name !== 'dark') html.classList.add('theme-' + name);
   localStorage.setItem('app-theme', name || 'dark');
 }
@@ -1243,6 +1247,9 @@ async function showExportAllModal(catId) {
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
 
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const isAndroid = /Android/.test(navigator.userAgent);
+
   const overlay = document.createElement('div');
   overlay.className = 'move-modal-overlay';
   overlay.innerHTML = `
@@ -1258,11 +1265,24 @@ async function showExportAllModal(catId) {
         <li class="move-cat-item" data-type="html" style="border-left:4px solid #f97316">🌐 HTMLファイル (.html)</li>
         <li class="move-cat-item" data-type="pdf" style="border-left:4px solid #ef4444">📕 PDF</li>
       </ul>
+      <div class="export-dl-footer">
+        <button class="export-dl-btn" id="exportOpenDlBtn">📂 ダウンロード先を開く</button>
+      </div>
     </div>`;
   document.body.appendChild(overlay);
 
   overlay.querySelector('#exportCancelBtn').onclick = () => overlay.remove();
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('#exportOpenDlBtn').onclick = () => {
+    if (isIOS) {
+      window.location.href = 'shareddocuments://';
+    } else if (isAndroid) {
+      alert('ダウンロードフォルダをご確認ください。\nブラウザの「ダウンロード」メニューからもアクセスできます。');
+    } else {
+      alert('ブラウザのダウンロード一覧（Ctrl+J / ⌘+Shift+J）でファイルを確認できます。');
+    }
+  };
 
   overlay.querySelectorAll('.move-cat-item').forEach(item => {
     item.onclick = () => {
@@ -1342,108 +1362,72 @@ function handleExportAllAction(type, articles) {
     a.click();
     URL.revokeObjectURL(url);
   }
-  else if (type === 'pdf' || type === 'html') {
-    const articlesHTML = articles.map((art, idx) => {
+  else if (type === 'html' || type === 'pdf') {
+    const buildArticlesHTML = (dark) => articles.map((art, idx) => {
       const lines = htmlToLines(art.content);
       const title = lines[0] || 'タイトルなし';
-      const body = lines.slice(1);
-      const bodyHTML = body.map(line => `<p>${esc(line)}</p>`).join('');
-
-      let separatorHTML = '';
-      if (idx > 0) {
-        const pageNum = idx + 1;
-        separatorHTML = `<div class="page-separator">---- ${pageNum}ページ目 ----</div>`;
-      }
-
-      return `
-        ${separatorHTML}
-        <div class="article-section">
-          <h2 class="article-title">${esc(title)}</h2>
-          <div class="article-body">
-            ${bodyHTML}
-          </div>
-        </div>`;
+      const bodyHTML = lines.slice(1).map(line => `<p>${esc(line)}</p>`).join('');
+      const sep = idx > 0
+        ? `<div class="page-separator">---- ${idx + 1}ページ目 ----</div>`
+        : '';
+      return `${sep}<div class="article-section"><h2 class="article-title">${esc(title)}</h2><div class="article-body">${bodyHTML}</div></div>`;
     }).join('');
 
-    const fullHTML = `<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${esc(catName)} - 一括エクスポート</title>
-  <style>
-    body {
-      background-color: #0b0f19;
-      color: #f3f4f6;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
-      line-height: 1.7;
-      padding: 2rem 1rem;
-      max-width: 800px;
-      margin: 0 auto;
-    }
-    .category-title {
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: #818cf8;
-      border-bottom: 2px solid #312e81;
-      padding-bottom: 0.5rem;
-      margin-bottom: 2rem;
-      text-align: center;
-    }
-    .article-section {
-      background: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 16px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    .article-title {
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: #ffffff;
-      margin-top: 0;
-      margin-bottom: 1rem;
-      border-bottom: 1px solid #374151;
-      padding-bottom: 0.5rem;
-    }
-    .article-body {
-      color: #d1d5db;
-    }
-    .article-body p {
-      margin: 0.5rem 0;
-      min-height: 1em;
-    }
-    .article-body img {
-      max-width: 100%;
-      height: auto;
-      border-radius: 8px;
-      margin: 0.75rem 0;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    }
-    .page-separator {
-      text-align: center;
-      margin: 2.5rem 0;
-      color: #6b7280;
-      font-size: 0.9rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-    }
-  </style>
-</head>
-<body>
-  <div class="category-title">【${esc(catName)}】</div>
-  ${articlesHTML}
-</body>
-</html>`;
+    // HTML出力用（ダーク）
+    const buildFullHTML = (dark) => {
+      const bg      = dark ? '#0b0f19' : '#ffffff';
+      const text    = dark ? '#f3f4f6' : '#111827';
+      const cardBg  = dark ? '#111827' : '#f9fafb';
+      const cardBdr = dark ? '#1f2937' : '#e5e7eb';
+      const titleC  = dark ? '#ffffff' : '#111827';
+      const bodyC   = dark ? '#d1d5db' : '#374151';
+      const sepC    = dark ? '#6b7280' : '#9ca3af';
+      const headC   = dark ? '#818cf8' : '#4f46e5';
+      return `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>${esc(catName)} - 一括エクスポート</title>
+<style>
+body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.7;padding:2rem 1rem;max-width:800px;margin:0 auto}
+.category-title{font-size:1.5rem;font-weight:800;color:${headC};border-bottom:2px solid ${cardBdr};padding-bottom:.5rem;margin-bottom:2rem;text-align:center}
+.article-section{background:${cardBg};border:1px solid ${cardBdr};border-radius:12px;padding:1.5rem;margin-bottom:2rem}
+.article-title{font-size:1.25rem;font-weight:700;color:${titleC};margin:0 0 1rem;border-bottom:1px solid ${cardBdr};padding-bottom:.5rem}
+.article-body{color:${bodyC}}.article-body p{margin:.4rem 0;min-height:1em}
+.article-body img{max-width:100%;height:auto;border-radius:8px;margin:.75rem 0}
+.page-separator{text-align:center;margin:2rem 0;color:${sepC};font-size:.9rem;font-weight:600}
+</style></head>
+<body><div class="category-title">【${esc(catName)}】</div>${buildArticlesHTML()}</body></html>`;
+    };
 
-    const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${catName}_一括エクスポート.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (type === 'html') {
+      const blob = new Blob([buildFullHTML(true)], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${catName}_一括エクスポート.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      // PDF: html2pdf.js を使用（印刷向けライトテーマ）
+      if (!window.html2pdf) {
+        alert('PDFライブラリの読み込みに失敗しました。HTMLでのエクスポートをお試しください。');
+        return;
+      }
+      const container = document.createElement('div');
+      container.innerHTML = buildFullHTML(false);
+      container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+      document.body.appendChild(container);
+      window.html2pdf()
+        .from(container.querySelector('body') || container)
+        .set({
+          margin: 10,
+          filename: `${catName}_一括エクスポート.pdf`,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        })
+        .save()
+        .finally(() => { document.body.removeChild(container); });
+    }
   }
 }
 
@@ -2052,49 +2036,67 @@ function renderEditor(container) {
   });
 
   // ── iPhone 横回転時に YouTube を全画面表示 ────────────
+  // iOS では position:fixed がスクロールコンテナ内で効かないため、
+  // YouTube要素をbody直下に移動してからfixedを適用する
+  let ytLsTarget = null;
+  let ytLsOrigParent = null;
+  let ytLsOrigNext = null;
+
   const clearYtLandscape = () => {
-    document.querySelectorAll('.yt-landscape-fullscreen').forEach(el => {
-      el.classList.remove('yt-landscape-fullscreen');
-    });
+    if (ytLsTarget) {
+      ytLsTarget.classList.remove('yt-landscape-fullscreen');
+      if (ytLsOrigParent && ytLsOrigParent.isConnected) {
+        ytLsOrigParent.insertBefore(ytLsTarget, ytLsOrigNext);
+      } else {
+        ytLsTarget.remove();
+      }
+      ytLsTarget = null;
+      ytLsOrigParent = null;
+      ytLsOrigNext = null;
+    }
     document.body.classList.remove('yt-fullscreen-active');
   };
 
   const applyYtLandscape = () => {
     if (state.screen !== 'editor') return;
+    if (ytLsTarget) return; // 既に適用済み
     const pm = tiptapEditor && tiptapEditor.view && tiptapEditor.view.dom;
     if (!pm) return;
-    const edContent = document.getElementById('edContent');
-    const allYt = [
-      ...pm.querySelectorAll('[data-youtube-video]'),
-      ...(edContent ? edContent.querySelectorAll('.youtube-container') : [])
-    ];
+    const allYt = pm.querySelectorAll('[data-youtube-video]');
     if (allYt.length === 0) return;
-    // ビューポート内を優先、なければ最初の要素にフォールバック
-    const visible = allYt.find(el => {
+    const visible = Array.from(allYt).find(el => {
       const r = el.getBoundingClientRect();
       return r.top < window.innerHeight && r.bottom > 0;
     });
     const target = visible || allYt[0];
+    ytLsTarget = target;
+    ytLsOrigParent = target.parentNode;
+    ytLsOrigNext = target.nextSibling;
+    // body直下に移動してから fixed を適用（iOSのスクロールコンテナ制約を回避）
+    document.body.appendChild(target);
     target.classList.add('yt-landscape-fullscreen');
     document.body.classList.add('yt-fullscreen-active');
   };
 
+  const getIsLandscape = () => {
+    // window.orientation は deprecated だが iOS で最も確実（0=縦, ±90=横）
+    if (typeof window.orientation !== 'undefined') {
+      return Math.abs(window.orientation) === 90;
+    }
+    if (screen.orientation && screen.orientation.type) {
+      return screen.orientation.type.startsWith('landscape');
+    }
+    return window.innerWidth > window.innerHeight;
+  };
+
   const orientationChangeHandler = () => {
-    // iOSはorientationchange後にレイアウト更新が遅れるため350ms待つ
     setTimeout(() => {
-      let isLandscape;
-      if (screen.orientation && screen.orientation.type) {
-        isLandscape = screen.orientation.type.startsWith('landscape');
-      } else {
-        isLandscape = window.innerWidth > window.innerHeight;
-      }
-      if (!isLandscape) { clearYtLandscape(); return; }
+      if (!getIsLandscape()) { clearYtLandscape(); return; }
       applyYtLandscape();
-    }, 350);
+    }, 400);
   };
 
   window.addEventListener('orientationchange', orientationChangeHandler);
-  // screen.orientation APIも併用（iOS 16.4+）
   if (screen.orientation) {
     screen.orientation.addEventListener('change', orientationChangeHandler);
   }
@@ -3784,9 +3786,25 @@ function showLightbox(src) {
     </div>
   `;
   document.body.appendChild(overlay);
-  
+
+  // iOS Safari: visualViewport.height でオーバーレイの高さを正確に設定
+  // position:fixed + inset:0 は layoutViewport 基準になりアドレスバー分が切れるため
+  const applyLightboxSize = () => {
+    const vvh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    overlay.style.height = vvh + 'px';
+    const content = overlay.querySelector('.lightbox-content');
+    if (content) content.style.maxHeight = Math.floor(vvh * 0.92) + 'px';
+  };
+  applyLightboxSize();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', applyLightboxSize);
+  }
+
   overlay.onclick = () => {
     overlay.classList.add('fade-out');
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', applyLightboxSize);
+    }
     setTimeout(() => overlay.remove(), 250);
   };
 }
