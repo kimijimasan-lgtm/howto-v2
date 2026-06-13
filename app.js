@@ -1258,13 +1258,15 @@ async function showExportAllModal(catId) {
         <span class="export-modal-title">📦 一括エクスポート<em>${articles.length}件</em></span>
         <button class="move-modal-close" id="exportCancelBtn">キャンセル</button>
       </div>
-      <ul class="move-cat-list">
-        <li class="move-cat-item" data-type="copy" style="border-left:4px solid #6366f1">📋 クリップボードにコピー</li>
-        <li class="move-cat-item" data-type="text" style="border-left:4px solid #22c55e">📄 テキストファイル (.txt)</li>
-        <li class="move-cat-item" data-type="md" style="border-left:4px solid #f59e0b">📝 Markdownファイル (.md)</li>
-        <li class="move-cat-item" data-type="html" style="border-left:4px solid #f97316">🌐 HTMLファイル (.html)</li>
-        <li class="move-cat-item" data-type="pdf" style="border-left:4px solid #ef4444">📕 PDF</li>
-      </ul>
+      <div class="export-choices-wrap">
+        <ul class="move-cat-list">
+          <li class="move-cat-item" data-type="copy" style="border-left:4px solid #6366f1">📋 クリップボードにコピー</li>
+          <li class="move-cat-item" data-type="text" style="border-left:4px solid #22c55e">📄 テキストファイル (.txt)</li>
+          <li class="move-cat-item" data-type="md" style="border-left:4px solid #f59e0b">📝 Markdownファイル (.md)</li>
+          <li class="move-cat-item" data-type="html" style="border-left:4px solid #f97316">🌐 HTMLファイル (.html)</li>
+          <li class="move-cat-item" data-type="pdf" style="border-left:4px solid #ef4444">📕 PDF</li>
+        </ul>
+      </div>
       <div class="export-dl-footer">
         <button class="export-dl-btn" id="exportOpenDlBtn">📂 ダウンロード先を開く</button>
       </div>
