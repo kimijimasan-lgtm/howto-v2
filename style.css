@@ -389,24 +389,25 @@ body {
   position: fixed;
   bottom: 2rem;
   right: 1.5rem;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: #6366f1;
+  background: #f97316;
   color: #fff;
-  font-size: 1.6rem;
+  font-size: 1.8rem;
   line-height: 1;
   align-items: center;
   justify-content: center;
   border: none;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(99,102,241,0.5);
-  transition: background 0.15s, transform 0.15s;
+  box-shadow: 0 4px 20px rgba(249,115,22,0.6);
+  transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
   z-index: 200;
 }
 .fab-add-article:hover {
-  background: #4f46e5;
-  transform: scale(1.08);
+  background: #ea6c00;
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(249,115,22,0.75);
 }
 
 .article-list {

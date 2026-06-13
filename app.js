@@ -1230,6 +1230,48 @@ async function deleteArticleById(artId, catId) {
   }
 }
 
+// ── 一括エクスポートのモーダルを表示 ──────────────────
+async function showExportAllModal(catId) {
+  // 記事データを取得
+  const snap = await db.ref(`users/${state.uid}/articles/${catId}`).once('value');
+  const data = snap.val();
+  if (!data) { alert('エクスポートするメモがありません'); return; }
+
+  const articles = Object.values(data)
+    .sort((a, b) => {
+      if (a.order !== undefined && b.order !== undefined) return b.order - a.order;
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+
+  const overlay = document.createElement('div');
+  overlay.className = 'move-modal-overlay';
+  overlay.innerHTML = `
+    <div class="move-modal">
+      <div class="move-modal-header">
+        <span>一括エクスポート（${articles.length}件）</span>
+        <button class="move-modal-close" id="exportCancelBtn">キャンセル</button>
+      </div>
+      <ul class="move-cat-list">
+        <li class="move-cat-item" data-type="copy" style="border-left:4px solid #6366f1">📋 クリップボードにコピー</li>
+        <li class="move-cat-item" data-type="text" style="border-left:4px solid #22c55e">📄 テキストファイル (.txt)</li>
+        <li class="move-cat-item" data-type="md" style="border-left:4px solid #f59e0b">📝 Markdownファイル (.md)</li>
+        <li class="move-cat-item" data-type="html" style="border-left:4px solid #f97316">🌐 HTMLファイル (.html)</li>
+        <li class="move-cat-item" data-type="pdf" style="border-left:4px solid #ef4444">📕 PDF</li>
+      </ul>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#exportCancelBtn').onclick = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelectorAll('.move-cat-item').forEach(item => {
+    item.onclick = () => {
+      overlay.remove();
+      handleExportAllAction(item.dataset.type, articles);
+    };
+  });
+}
+
 // ── 実際の一括エクスポート処理の実行 ──────────────────
 function handleExportAllAction(type, articles) {
   const catTitleEl = document.getElementById('catTitle');
@@ -2017,33 +2059,50 @@ function renderEditor(container) {
     document.body.classList.remove('yt-fullscreen-active');
   };
 
-  const orientationChangeHandler = () => {
-    setTimeout(() => {
-      const isLandscape = window.innerWidth > window.innerHeight;
-      if (!isLandscape) { clearYtLandscape(); return; }
-      if (state.screen !== 'editor') return;
+  const applyYtLandscape = () => {
+    if (state.screen !== 'editor') return;
+    const pm = tiptapEditor && tiptapEditor.view && tiptapEditor.view.dom;
+    if (!pm) return;
+    const edContent = document.getElementById('edContent');
+    const allYt = [
+      ...pm.querySelectorAll('[data-youtube-video]'),
+      ...(edContent ? edContent.querySelectorAll('.youtube-container') : [])
+    ];
+    if (allYt.length === 0) return;
+    // ビューポート内を優先、なければ最初の要素にフォールバック
+    const visible = allYt.find(el => {
+      const r = el.getBoundingClientRect();
+      return r.top < window.innerHeight && r.bottom > 0;
+    });
+    const target = visible || allYt[0];
+    target.classList.add('yt-landscape-fullscreen');
+    document.body.classList.add('yt-fullscreen-active');
+  };
 
-      const pm = tiptapEditor && tiptapEditor.view && tiptapEditor.view.dom;
-      if (!pm) return;
-      const edContent = document.getElementById('edContent');
-      const allYt = [
-        ...pm.querySelectorAll('[data-youtube-video]'),
-        ...(edContent ? edContent.querySelectorAll('.youtube-container') : [])
-      ];
-      for (const el of allYt) {
-        const rect = el.getBoundingClientRect();
-        if (rect.top < window.innerHeight && rect.bottom > 0) {
-          el.classList.add('yt-landscape-fullscreen');
-          document.body.classList.add('yt-fullscreen-active');
-          break;
-        }
+  const orientationChangeHandler = () => {
+    // iOSはorientationchange後にレイアウト更新が遅れるため350ms待つ
+    setTimeout(() => {
+      let isLandscape;
+      if (screen.orientation && screen.orientation.type) {
+        isLandscape = screen.orientation.type.startsWith('landscape');
+      } else {
+        isLandscape = window.innerWidth > window.innerHeight;
       }
-    }, 150);
+      if (!isLandscape) { clearYtLandscape(); return; }
+      applyYtLandscape();
+    }, 350);
   };
 
   window.addEventListener('orientationchange', orientationChangeHandler);
+  // screen.orientation APIも併用（iOS 16.4+）
+  if (screen.orientation) {
+    screen.orientation.addEventListener('change', orientationChangeHandler);
+  }
   listeners.push(() => {
     window.removeEventListener('orientationchange', orientationChangeHandler);
+    if (screen.orientation) {
+      screen.orientation.removeEventListener('change', orientationChangeHandler);
+    }
     clearYtLandscape();
   });
 
@@ -3703,7 +3762,7 @@ function updatePasteButtonState() {
   if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
     pasteBtn.style.display = 'flex';
     pasteBtn.classList.add('pulse-delete-active');
-    if (cancelBtn) cancelBtn.style.display = 'flex';
+    if (cancelBtn) cancelBtn.style.display = 'none'; // カット後は✕を非表示（貼り付けボタンのみ）
     if (attachBtn) attachBtn.style.display = 'none';
     if (delBtn) delBtn.style.display = 'none';
   } else {
