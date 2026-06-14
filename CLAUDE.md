@@ -80,60 +80,80 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
 ## Firebase
 - `index.html` の `<script>` タグに `firebaseConfig` を直接記述（CDN compat版 v10.12.0）
-- Auth: メール/パスワード
+- Auth: **Googleログイン** + **匿名認証（ゲスト）**（メール/パスワード認証は廃止）
 - DB: Realtime Database
 
-## ファイル構成
+## 認証フロー
+
+### ログイン画面（`renderLogin`）
+- 「Googleでログイン」ボタン（メイン・白背景）
+- 「ゲストとして試す」ボタン（サブ・半透明）→ `firebase.auth().signInAnonymously()`
+- メール/パスワード認証は削除済み
+
+### 起動シーケンス（`onAuthStateChanged`）
 ```
-index.html          — エントリポイント（app.js?v=725, tiptap.bundle.js?v=1）
-app.js              — アプリ全体（約3,700行）
-style.css           — スタイル（v=666）
-tiptap.bundle.js    — TipTapバンドル（IIFE）
-manifest.json       — PWA設定（start_url/scope: /howto-v2/）
-.nojekyll           — GitHub Pages Jekyll無効化
-.gitignore          — .tiptap-build/node_modules/ を除外
+起動
+ ├─ getRedirectResult() を先行実行（Promise保持）
+ └─ onAuthStateChanged
+      ├─ user あり
+      │   ├─ isPremium フラグを Firebase から取得
+      │   ├─ categories が 0件 → createSampleData() でサンプル2カテゴリ作成
+      │   └─ goTo('home')
+      └─ user なし → await redirectResultPromise
+           ├─ currentUser が非 null → 何もしない（再発火される）
+           └─ currentUser が null → goTo('login')
 ```
 
-## キャッシュバスティング（重要）
-`index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=666`
-- `tiptap.bundle.js?v=1`
-- `app.js?v=725`
+### ゲストのサインアウト（`btnSignOut`）
+ゲスト (`user.isAnonymous`) がサインアウトを押すと：
+1. `confirm` で「Googleと連携」or「サインアウト」を選択
+2. OK → `currentUser.linkWithPopup(provider)` でデータ保持のまま連携
+3. `auth/credential-already-in-use` → `signInWithCredential(err.credential)` で既存アカウントへシームレス切替
+4. キャンセル → 2段確認後に `signOut()`
 
-## テスト
-- ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
-- テスト用アカウント: `kimijimasan+test@gmail.com`
+## 新規ユーザーの初期状態（`createSampleData`）
+`onAuthStateChanged` でカテゴリが0件の場合のみ実行。
+- カテゴリ「使い方」（インディゴ）+ 操作説明カード
+- カテゴリ「メモ」（エメラルド）+ 空カード
 
-## 実装済みの変更（直近）
-- 右下の閲覧/編集切替ボタンを「閲」「編」テキストUIに変更済み
-- Undoボタンを編集モードに追加済み（`#btnUndo`）
-- カテゴリ画面のカード一覧から「+」ボタンを削除済み
-- コピー/カット後キャンセルボタンを緑地白文字✕に変更済み（btnPasteCancel）
-- カット後にbtnAttach・btnDelを非表示にする処理を追加済み（updatePasteButtonState）
-- 画像のみの段落ドラッグハンドルを上部（top:8px）に配置変更
-- iPhoneのIME確定後幽霊Enterによる余分な改行を抑止（compositionJustEndedをhandleKeyDownで使用）
-- 画像後の空段落でBackspace時に空段落のみ削除・画像を保持するよう修正
-- エクスポートモーダルUI改善（ボーダー付き選択リスト、フルワイドDLボタン）
-- 移動先モーダルUI改善（ティールグラジェントヘッダー、ボーダー付きリスト）
-- 画面下部カット改善（`Math.max(initialVVH, vvh)` でアドレスバー隠れ時も正確に高さ確保）
-- YouTube横回転時の自動フルスクリーン（`requestFullscreen()` + overlay方式、`webkitFullscreenchange`対応）
-- カード最下部画像でカードを開くたびに空行が増える問題を修正（`stripTrailingEmptyP` 3層防衛）
-  - 保存パスで除去 / `setContent`後に除去 / `onUpdate`（閲覧モードのみ）で`tr.delete`除去
-- YouTubeの下に画像を貼るとRangeErrorになる問題を修正（`splitBlock()`を`tr.insert(tr.doc.content.size, ...)`に置換）
-- 画像最下部でEnterによる改行ができない問題を修正（`onUpdate`の末尾空段落除去を閲覧モード限定に変更）
-- Undoボタンのテキストを「1つ前の状態に戻しますか？」に変更
-- PC画像削除（ホバーボタン）時にもUndoボタンが表示されるよう修正（`lastDeletedContent`スナップショット追加）
+## 制限・課金
 
-## Undoボタン（#btnUndo）の動作
-- **表示条件**: 編集モード中は**常に表示**（`lastDeletedContent` の有無に関わらず）
-- **active/inactive**: `lastDeletedContent !== null` → 通常表示、`=== null` → `.inactive`クラス（opacity 0.35、pointer-events none）
-- **自動非表示タイマーなし**: 編集モードにいる間はずっと表示。閲覧モードに切替えたら非表示
-- **`lastDeletedContent` をセットする箇所**:
-  - 画像挿入前（`fileInput.onchange`）
-  - 段落カット前（カットボタン `btnBulkDelete`）
-  - YouTube削除前（`refreshYoutubeDeleteButtons` の `btn.onclick`）
-  - PC画像削除前（`setupImageDeleteButtons` の `btn.onclick`）
-- **閲覧モードでの削除**: `lastDeletedContent`はセットされるが、編集モードに切替えた時に`setEditorMode`内の`updateUndoButtonVisibility()`でactiveになる
+### ユーザー種別と制限
+| 種別 | カテゴリ上限 | カード上限/カテゴリ |
+|------|------------|------------------|
+| ゲスト（匿名）| 3つ | 10枚 |
+| Google（非課金）| 3つ | 10枚 |
+| 課金済み（`isPremium: true`）| 無制限 | 無制限 |
+| 開発者（Firebase で `isPremium: true` 設定）| 無制限 | 無制限 |
+
+### 制限チェックの実装箇所
+- **カテゴリ**: `showCategoryModal` の保存ボタン → `categories` 件数 >= 3 で `showLimitModal()`
+- **カード**: `createArticle()` 冒頭（async）→ `articles/{catId}` 件数 >= 10 で `showLimitModal()`
+- 判定条件: `if (!state.isPremium)`
+
+### `showLimitModal(message)`
+オレンジ→ピンクの「アップグレードする」ボタン + 「閉じる」ボタン。  
+Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホルダー（後で差し替え）。
+
+## スワイプジェスチャー（カテゴリ画面）
+
+### `addSwipeBack`（右スワイプ → ホームへ）
+```js
+const isStraightDown = dy >= 80 && dx < dy * 0.2;
+if (dx > 30 && !isStraightDown) onSwipe();
+```
+- 右方向30px超 かつ 真下（垂直から11度以内）でなければホームへ戻る
+- 右斜め下のスワイプも「ホームへ」として判定
+
+### `addPullToCreate`（真下プル → 新規カード作成）
+- `onMove`: `dx > 20` で即キャンセル（右方向への動きで中断）
+- `onEnd`: `dy >= 80 && dx <= 20 && |dx| < dy * 0.3`（ほぼ垂直のみ）
+
+## ホーム画面の全文検索（`showSearchModal`）
+- 右下の虫眼鏡FAB（`#btnSearchFab`）で起動
+- Firebase から全カテゴリ・全カードを並列取得 (`Promise.all`)
+- `htmlToLines(content)` でHTML→テキスト行配列変換
+- 結果クリック → `state.pendingScrollToParagraph` / `state.pendingSearchKeyword` をセット → エディターで3秒点滅（`blinkSearchKeyword`）
 
 ## stripTrailingEmptyP の実装
 ```js
@@ -143,15 +163,35 @@ function stripTrailingEmptyP(html) {
 }
 ```
 - 末尾の空段落（`<br>`バリアント含む）を除去
-- 全除去されても最低限 `<p></p>` を返す
 - `getCleanEditorHTML()` / `forceSaveEditorContent()` / `setContent`後の後処理で使用
 
-## 実装済み（追加分）
-- カード一覧ソートボタンのコントラスト改善（sort-bar/sort-btn CSS）
-- Undoボタンの挙動修正（updateUndoButtonVisibility、10秒自動非表示）
-- PCのカード新規作成「+」FABボタン復活（pointer: fine 判定で表示制御）
-- YouTube動画があるカードの右端にサムネイル表示（extractYoutubeId + img.youtube.com/vi/）
-- iPhoneでYouTube横画面全画面表示（orientationchange → requestFullscreen() + overlay方式）
+## Undoボタン（#btnUndo）の動作
+- **表示条件**: 編集モード中は**常に表示**
+- **active/inactive**: `lastDeletedContent !== null` → 通常、`=== null` → `.inactive`（opacity 0.35）
+- **`lastDeletedContent` をセットする箇所**: 画像挿入前 / 段落カット前 / YouTube削除前 / PC画像削除前
+
+## ファイル構成
+```
+index.html          — エントリポイント（app.js?v=737, tiptap.bundle.js?v=1）
+app.js              — アプリ全体（約3,900行）
+style.css           — スタイル（v=675）
+tiptap.bundle.js    — TipTapバンドル（IIFE）
+manifest.json       — PWA設定（start_url/scope: /howto-v2/）
+.nojekyll           — GitHub Pages Jekyll無効化
+.gitignore          — .tiptap-build/node_modules/ を除外
+```
+
+## キャッシュバスティング（重要）
+`index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
+- `style.css?v=675`
+- `tiptap.bundle.js?v=1`
+- `app.js?v=737`
+
+## テスト
+- ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
+- テスト用アカウント: `kimijimasan+test@gmail.com`
+- 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
 ## 次のステップ
-（現在の主要タスクはすべて対応済み）
+- Stripe Payment Link URL を `showLimitModal` の `paymentUrl` に設定
+- Firebase Console で Anonymous Auth を有効化（ゲストログインに必要）
