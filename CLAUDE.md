@@ -172,7 +172,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=744, tiptap.bundle.js?v=1）
+index.html          — エントリポイント（app.js?v=745, tiptap.bundle.js?v=1）
 app.js              — アプリ全体（約3,900行）
 style.css           — スタイル（v=675）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -185,7 +185,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=675`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=744`
+- `app.js?v=745`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

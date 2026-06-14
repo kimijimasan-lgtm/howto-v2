@@ -3921,7 +3921,21 @@ function showLimitModal(message) {
   };
 }
 
-// ── 新規ユーザー向けサンプルデータ作成 ──────────────────────
+// ── テンプレートコンテンツ定数（saveCurrentDataAsTemplate と createSampleData で共用）──
+const TEMPLATE_EXPLANATION_CARDS = [
+  '<p>3つの画面について</p><p>このアプリは3つの画面で構成されています。</p><p>・ホーム画面：カテゴリ（パネル）の一覧</p><p>・カード一覧：選んだカテゴリ内のメモ一覧</p><p>・編集画面：メモの内容を見る・編集する</p><p>画面を深く入るにはタップ、戻るには右フリップです。</p>',
+  '<p>ホーム画面の使い方</p><p>・パネルをタップ → カード一覧へ</p><p>・パネルを長押し → 名前・色の変更</p><p>・パネルをドラッグ → 並び替え</p><p>・右上の検索アイコン → 全文検索</p><p>・右上のダウンロードアイコン → 一括エクスポート</p>',
+  '<p>カード一覧の使い方</p><p>・カードをタップ → 編集画面へ</p><p>・カードを左スワイプ → コピー・移動・削除</p><p>・上部の並び替えアイコン → カードの順番変更</p><p>・「離して新規メモ」を下にスワイプ → 新規カード作成</p>',
+  '<p>閲覧モードと編集モード</p><p>編集画面には2つのモードがあります。</p><p>・閲覧モード（青い「閲」ボタン）</p><p>　→ 段落の選択・移動・削除ができます</p><p>・編集モード（赤い「編」ボタン）</p><p>　→ テキスト入力・画像追加ができます</p><p>右下のボタンをタップしてモードを切り替えます。</p>',
+  '<p>テキストを入力するには</p><p>1. 右下の「閲」ボタンをタップして編集モードへ</p><p>2. 入力したい場所をタップしてカーソルを置く</p><p>3. キーボードで文字を入力</p><p>4. Enterで改行（新しい段落）</p><p>5. 自動的に保存されます</p>',
+  '<p>画像を追加するには</p><p>1. 編集モードにする</p><p>2. 画像を入れたい場所をタップ</p><p>3. 右上のクリップアイコンをタップ</p><p>4. 写真を選択すると挿入されます</p><p>画像をタップすると拡大表示されます。</p>',
+  '<p>段落を移動・削除するには</p><p>閲覧モードで：</p><p>・段落を長押し → ドラッグで並び替え</p><p>・段落を左スワイプ → 選択状態に</p><p>・選択後にカット → 別の場所にペースト可能</p><p>・選択後に削除 → 段落を削除</p>',
+  '<p>YouTube動画を埋め込むには</p><p>1. 編集モードにする</p><p>2. 動画を入れたい場所をタップ</p><p>3. 右上のクリップアイコンの横のYouTubeアイコンをタップ</p><p>4. YouTubeのURLを貼り付けて確定</p><p>縦画面で再生中に横向きにすると全画面表示になります。</p>',
+  '<p>PCとスマホで同期するには</p><p>Googleアカウントでログインすると</p><p>PCとスマホで自動的にデータが同期されます。</p><p>・片方で書いたメモがもう片方にも表示される</p><p>・リアルタイムで更新されます</p><p>ゲストモードではこのデバイスのみに保存されます。</p>',
+  '<p>よくある質問</p><p>Q. 間違えて削除した</p><p>A. 右下の取り消しボタンで元に戻せます</p><p></p><p>Q. データが消えた</p><p>A. カード一覧に戻ると復元されている場合があります</p><p></p><p>Q. PCとスマホで同期されない</p><p>A. Googleアカウントでログインしているか確認してください</p>',
+];
+
+// ── 新規ユーザー向けサンプルデータ作成（テンプレートが存在しない場合のフォールバック）──
 async function createSampleData(uid) {
   const now = Date.now();
 
@@ -3930,31 +3944,18 @@ async function createSampleData(uid) {
   await cat1Ref.set({
     name: '解説',
     color: 'linear-gradient(135deg,#4f46e5,#6366f1)',
-    order: now + 1,
+    order: 1,
     createdAt: now,
   });
 
-  const explanationCards = [
-    '<p>3つの画面について</p><p>このアプリは3つの画面で構成されています。</p><p>・ホーム画面：カテゴリ（パネル）の一覧</p><p>・カード一覧：選んだカテゴリ内のメモ一覧</p><p>・編集画面：メモの内容を見る・編集する</p><p>画面を深く入るにはタップ、戻るには右フリップです。</p>',
-    '<p>ホーム画面の使い方</p><p>・パネルをタップ → カード一覧へ</p><p>・パネルを長押し → 名前・色の変更</p><p>・パネルをドラッグ → 並び替え</p><p>・右上の検索アイコン → 全文検索</p><p>・右上のダウンロードアイコン → 一括エクスポート</p>',
-    '<p>カード一覧の使い方</p><p>・カードをタップ → 編集画面へ</p><p>・カードを左スワイプ → コピー・移動・削除</p><p>・上部の並び替えアイコン → カードの順番変更</p><p>・「離して新規メモ」を下にスワイプ → 新規カード作成</p>',
-    '<p>閲覧モードと編集モード</p><p>編集画面には2つのモードがあります。</p><p>・閲覧モード（青い「閲」ボタン）</p><p>　→ 段落の選択・移動・削除ができます</p><p>・編集モード（赤い「編」ボタン）</p><p>　→ テキスト入力・画像追加ができます</p><p>右下のボタンをタップしてモードを切り替えます。</p>',
-    '<p>テキストを入力するには</p><p>1. 右下の「閲」ボタンをタップして編集モードへ</p><p>2. 入力したい場所をタップしてカーソルを置く</p><p>3. キーボードで文字を入力</p><p>4. Enterで改行（新しい段落）</p><p>5. 自動的に保存されます</p>',
-    '<p>画像を追加するには</p><p>1. 編集モードにする</p><p>2. 画像を入れたい場所をタップ</p><p>3. 右上のクリップアイコンをタップ</p><p>4. 写真を選択すると挿入されます</p><p>画像をタップすると拡大表示されます。</p>',
-    '<p>段落を移動・削除するには</p><p>閲覧モードで：</p><p>・段落を長押し → ドラッグで並び替え</p><p>・段落を左スワイプ → 選択状態に</p><p>・選択後にカット → 別の場所にペースト可能</p><p>・選択後に削除 → 段落を削除</p>',
-    '<p>YouTube動画を埋め込むには</p><p>1. 編集モードにする</p><p>2. 動画を入れたい場所をタップ</p><p>3. 右上のクリップアイコンの横のYouTubeアイコンをタップ</p><p>4. YouTubeのURLを貼り付けて確定</p><p>縦画面で再生中に横向きにすると全画面表示になります。</p>',
-    '<p>PCとスマホで同期するには</p><p>Googleアカウントでログインすると</p><p>PCとスマホで自動的にデータが同期されます。</p><p>・片方で書いたメモがもう片方にも表示される</p><p>・リアルタイムで更新されます</p><p>ゲストモードではこのデバイスのみに保存されます。</p>',
-    '<p>よくある質問</p><p>Q. 間違えて削除した</p><p>A. 右下の取り消しボタンで元に戻せます</p><p></p><p>Q. データが消えた</p><p>A. カード一覧に戻ると復元されている場合があります</p><p></p><p>Q. PCとスマホで同期されない</p><p>A. Googleアカウントでログインしているか確認してください</p>',
-  ];
-
   // カード1が最上部になるよう order を降順に設定（デフォルトソートが b.order - a.order）
-  await Promise.all(explanationCards.map((content, i) => {
+  await Promise.all(TEMPLATE_EXPLANATION_CARDS.map((content, i) => {
     const ref = db.ref(`users/${uid}/articles/${cat1Ref.key}`).push();
     return ref.set({
       content,
       createdAt: now,
       updatedAt: now,
-      order: now + (explanationCards.length - i),
+      order: now + (TEMPLATE_EXPLANATION_CARDS.length - i),
     });
   }));
 
@@ -3965,11 +3966,11 @@ async function createSampleData(uid) {
     cat2Ref.set({
       name: 'メモ',
       color: 'linear-gradient(135deg,#059669,#10b981)',
-      order: now,
+      order: 2,
       createdAt: now,
     }),
     art2Ref.set({
-      content: '<p>ここにメモを書こう</p>',
+      content: '<p>最初のメモ</p><p>ここにメモを書いてください</p>',
       createdAt: now,
       updatedAt: now,
       order: now,
@@ -4014,27 +4015,22 @@ async function copyTemplateToUser(uid) {
 
 // ── 開発者：現在のパネルをテンプレートとして保存 ─────────────
 async function saveCurrentDataAsTemplate() {
-  if (!confirm('「解説」パネル（開発者データ）と「メモ」パネル（固定）を templates/default に上書き保存しますか？')) return;
-
-  const uid = state.uid;
-  const catsSnap = await db.ref(`users/${uid}/categories`).once('value');
-  const allCats = catsSnap.exists() ? catsSnap.val() : {};
-
-  // 「解説」パネルを開発者アカウントから取得
-  const kaisetsuEntry = Object.entries(allCats).find(([, cat]) => cat.name === '解説');
-  if (!kaisetsuEntry) { showToast('「解説」パネルが見つかりません'); return; }
-
-  const [kaisetsuId, kaisetsuCat] = kaisetsuEntry;
-  const kaisetsuArtsSnap = await db.ref(`users/${uid}/articles/${kaisetsuId}`).once('value');
+  if (!confirm(`「解説」（${TEMPLATE_EXPLANATION_CARDS.length}枚）と「メモ」（1枚）を templates/default に上書き保存しますか？`)) return;
 
   const now = Date.now();
 
-  // 「メモ」パネル用のキーをクライアントサイドで生成
-  const memoKey    = db.ref().push().key;
-  const memoArtKey = db.ref().push().key;
+  // キーをクライアントサイドで生成
+  const kaisetsuKey = db.ref().push().key;
+  const memoKey     = db.ref().push().key;
+  const memoArtKey  = db.ref().push().key;
 
   const categories = {
-    [kaisetsuId]: { ...kaisetsuCat, order: 1 }, // 「解説」を先頭に固定
+    [kaisetsuKey]: {
+      name: '解説',
+      color: 'linear-gradient(135deg,#4f46e5,#6366f1)',
+      order: 1,
+      createdAt: now,
+    },
     [memoKey]: {
       name: 'メモ',
       color: 'linear-gradient(135deg,#059669,#10b981)',
@@ -4043,8 +4039,20 @@ async function saveCurrentDataAsTemplate() {
     },
   };
 
+  // 「解説」の10枚を TEMPLATE_EXPLANATION_CARDS から生成
+  const kaisetsuArticles = {};
+  TEMPLATE_EXPLANATION_CARDS.forEach((content, i) => {
+    const key = db.ref().push().key;
+    kaisetsuArticles[key] = {
+      content,
+      createdAt: now,
+      updatedAt: now,
+      order: now + (TEMPLATE_EXPLANATION_CARDS.length - i),
+    };
+  });
+
   const articles = {
-    ...(kaisetsuArtsSnap.exists() ? { [kaisetsuId]: kaisetsuArtsSnap.val() } : {}),
+    [kaisetsuKey]: kaisetsuArticles,
     [memoKey]: {
       [memoArtKey]: {
         content: '<p>最初のメモ</p><p>ここにメモを書いてください</p>',
