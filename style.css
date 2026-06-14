@@ -1277,6 +1277,15 @@ body {
   transform: translateY(1px);
 }
 
+/* 認証初期化中のローディング（ログイン画面を一瞬見せないための中立画面） */
+.auth-init-loading {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
 /* ════════════════════════════
    SCREEN: Login (プレミアムデザイン)
    ════════════════════════════ */

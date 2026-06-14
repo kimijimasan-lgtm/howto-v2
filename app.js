@@ -343,8 +343,8 @@ function addSwipeBack(el, onSwipe) {
 
     const dx = e.changedTouches[0].clientX - sx;
     const dy = Math.abs(e.changedTouches[0].clientY - sy);
-    // 横方向の移動が50px以上かつ縦より横の方が大きい場合は戻る（斜め戻りの感度緩和）
-    if (dx > 50 && dy < dx) onSwipe();
+    // 右方向50px以上かつ縦成分が横の2.5倍未満なら戻る（斜め右下スワイプもホームへ）
+    if (dx > 50 && dy < dx * 2.5) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
   el.addEventListener('touchend',   onEnd,   { passive: true });
@@ -387,8 +387,14 @@ function addPullToCreate(el) {
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
 
-    // 横ブレを監視：横スワイプ等の動作（横移動が15pxを超え、かつ縦移動の60%以上）を検知したら即時キャンセル
-    if (Math.abs(dx) > 15 && Math.abs(dx) > dy * 0.6) {
+    // 右方向に30px以上動いたら即時キャンセル（右スワイプでのホーム戻りを妨げない）
+    if (dx > 30) {
+      isCancelled = true;
+      if (indicator) { indicator.remove(); indicator = null; }
+      return;
+    }
+    // 横ブレを監視：横スワイプ等の動作（横移動が15pxを超え、かつ縦移動の40%以上）を検知したら即時キャンセル
+    if (Math.abs(dx) > 15 && Math.abs(dx) > dy * 0.4) {
       isCancelled = true;
       if (indicator) { indicator.remove(); indicator = null; }
       return;
@@ -412,8 +418,8 @@ function addPullToCreate(el) {
     const dy = e.changedTouches[0].clientY - startY;
     if (indicator) { indicator.remove(); indicator = null; }
     
-    // 最終判定：しっかり縦方向に引っ張られ、横ブレが半分以下の時だけ新規作成
-    if (dy >= THRESHOLD && Math.abs(dx) < dy * 0.5) {
+    // 最終判定：真下方向（右への移動が30px以下かつ横ブレが縦の30%未満）のみ新規作成
+    if (dy >= THRESHOLD && dx <= 30 && Math.abs(dx) < dy * 0.3) {
       createArticle(true);
     }
     startY = -1;
@@ -3891,8 +3897,12 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="screen-login"><div class="loading-spinner">認証状態を確認中…</div></div>';
+  app.innerHTML = '<div class="auth-init-loading"><div class="loading-spinner">読み込み中…</div></div>';
   app.classList.add('visible');
+
+  // signInWithRedirect 後に onAuthStateChanged が null で先発火するのを防ぐため、
+  // リダイレクト結果の処理を先に開始し Promise として保持する
+  const redirectResultPromise = firebase.auth().getRedirectResult().catch(() => null);
 
   firebase.auth().onAuthStateChanged(async (user) => {
     if (user) {
@@ -3906,10 +3916,15 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       goTo('home');
     } else {
-      // 未ログイン
-      state.uid = null;
-      state.isPremium = false;
-      goTo('login');
+      // null で来た場合、リダイレクト処理の完了を待ってから再確認する
+      // （redirect ログイン直後は処理完了前に null で発火するため）
+      await redirectResultPromise;
+      if (!firebase.auth().currentUser) {
+        state.uid = null;
+        state.isPremium = false;
+        goTo('login');
+      }
+      // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
     }
   });
 });
