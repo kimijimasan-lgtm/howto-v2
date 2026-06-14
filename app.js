@@ -4014,29 +4014,46 @@ async function copyTemplateToUser(uid) {
 
 // ── 開発者：現在のパネルをテンプレートとして保存 ─────────────
 async function saveCurrentDataAsTemplate() {
-  const TEMPLATE_PANELS = ['メモ', '解説'];
-  if (!confirm(`「${TEMPLATE_PANELS.join('」「')}」パネルを templates/default に上書き保存しますか？`)) return;
+  if (!confirm('「解説」パネル（開発者データ）と「メモ」パネル（固定）を templates/default に上書き保存しますか？')) return;
 
   const uid = state.uid;
   const catsSnap = await db.ref(`users/${uid}/categories`).once('value');
-  if (!catsSnap.exists()) { showToast('パネルがありません'); return; }
+  const allCats = catsSnap.exists() ? catsSnap.val() : {};
 
-  // 対象パネル名のみ絞り込む
-  const allCats = catsSnap.val();
-  const categories = Object.fromEntries(
-    Object.entries(allCats).filter(([, cat]) => TEMPLATE_PANELS.includes(cat.name))
-  );
+  // 「解説」パネルを開発者アカウントから取得
+  const kaisetsuEntry = Object.entries(allCats).find(([, cat]) => cat.name === '解説');
+  if (!kaisetsuEntry) { showToast('「解説」パネルが見つかりません'); return; }
 
-  if (Object.keys(categories).length === 0) {
-    showToast(`「${TEMPLATE_PANELS.join('」「')}」パネルが見つかりません`);
-    return;
-  }
+  const [kaisetsuId, kaisetsuCat] = kaisetsuEntry;
+  const kaisetsuArtsSnap = await db.ref(`users/${uid}/articles/${kaisetsuId}`).once('value');
 
-  const articles = {};
-  await Promise.all(Object.keys(categories).map(async (catId) => {
-    const artsSnap = await db.ref(`users/${uid}/articles/${catId}`).once('value');
-    if (artsSnap.exists()) articles[catId] = artsSnap.val();
-  }));
+  const now = Date.now();
+
+  // 「メモ」パネル用のキーをクライアントサイドで生成
+  const memoKey    = db.ref().push().key;
+  const memoArtKey = db.ref().push().key;
+
+  const categories = {
+    [kaisetsuId]: { ...kaisetsuCat, order: 1 }, // 「解説」を先頭に固定
+    [memoKey]: {
+      name: 'メモ',
+      color: 'linear-gradient(135deg,#059669,#10b981)',
+      order: 2,
+      createdAt: now,
+    },
+  };
+
+  const articles = {
+    ...(kaisetsuArtsSnap.exists() ? { [kaisetsuId]: kaisetsuArtsSnap.val() } : {}),
+    [memoKey]: {
+      [memoArtKey]: {
+        content: '<p>最初のメモ</p><p>ここにメモを書いてください</p>',
+        createdAt: now,
+        updatedAt: now,
+        order: now,
+      },
+    },
+  };
 
   await db.ref('templates/default').set({ categories, articles });
   showToast('テンプレートを更新しました');
