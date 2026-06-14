@@ -3387,22 +3387,22 @@ function bindParagraphSwipeEvents(editor) {
     const dx = touch.clientX - txStart;
     const dy = Math.abs(touch.clientY - tyStart);
 
-    if (Math.abs(dx) > 50 && dy < 40) {
-      if (dx < 0) {
-        // タップされた位置からエディタ直下のブロック要素を特定
-        let target = e.target;
-        while (target && target.parentNode !== editor) {
-          target = target.parentNode;
-        }
-        if (!target || target === editor) return;
+    // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべて戻る
+    const isStraightDown = dy >= 80 && dx < dy * 0.2;
+    if (dx > 30 && !isStraightDown) {
+      // 右フリップで前の画面に戻る（緩いルール）
+      goBack();
+    } else if (dx < -50 && dy < 40) {
+      // 左フリップで段落選択（厳しいルールを維持）
+      let target = e.target;
+      while (target && target.parentNode !== editor) {
+        target = target.parentNode;
+      }
+      if (!target || target === editor) return;
 
-        // YouTubeはスマホではスワイプ選択しない（タップ直接再生を優先）
-        if (target.tagName === 'P') {
-          toggleParagraphSelect(target, editor);
-        }
-      } else {
-        // 右フリップで前の画面に戻る
-        goBack();
+      // YouTubeはスマホではスワイプ選択しない（タップ直接再生を優先）
+      if (target.tagName === 'P') {
+        toggleParagraphSelect(target, editor);
       }
     } else if (Math.abs(dx) <= 15 && dy <= 15 && window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
       // 短タップ＋カットバッファあり → 貼り付けマーカーを設定
