@@ -465,6 +465,72 @@ function htmlToLines(html) {
   return lines;
 }
 
+// ── 貼り付け時のMarkdown除去・空行正規化 ──────────────────
+function cleanMarkdownForPaste(text) {
+  const lines = text.split('\n');
+  const result = [];
+  let inCodeBlock = false;
+
+  for (let line of lines) {
+    // コードブロックの開閉 (``` または ~~~)
+    if (/^(`{3,}|~{3,})/.test(line.trim())) {
+      inCodeBlock = !inCodeBlock;
+      continue; // フェンス行自体は除去
+    }
+    if (inCodeBlock) {
+      result.push(line); // コードブロック内はそのまま保持
+      continue;
+    }
+
+    // 見出し: # ## ### ... → テキスト部分のみ
+    line = line.replace(/^#{1,6}\s+/, '');
+
+    // 太字: **text** / __text__ → text（先に処理）
+    line = line.replace(/\*\*(.+?)\*\*/g, '$1');
+    line = line.replace(/__(.+?)__/g, '$1');
+
+    // イタリック: *text* / _text_ → text（太字除去後に処理）
+    line = line.replace(/\*(.+?)\*/g, '$1');
+    line = line.replace(/_(.+?)_/g, '$1');
+
+    // 取り消し線: ~~text~~ → text
+    line = line.replace(/~~(.+?)~~/g, '$1');
+
+    // インラインコード: `code` → code
+    line = line.replace(/`([^`]+)`/g, '$1');
+
+    // 箇条書き: - item / * item / + item（行頭のみ）
+    line = line.replace(/^[\-\*\+]\s+/, '');
+
+    // 番号付きリスト: 1. item（行頭のみ）
+    line = line.replace(/^\d+\.\s+/, '');
+
+    // 引用: > text → text
+    line = line.replace(/^(>\s*)+/, '');
+
+    // 水平線: --- / *** / ___ → 除去（行全体）
+    if (/^[\-\*_]{3,}\s*$/.test(line.trim())) continue;
+
+    result.push(line);
+  }
+
+  // 連続する空行を最大1行にまとめる
+  const collapsed = [];
+  let prevEmpty = false;
+  for (const line of result) {
+    const isEmpty = line.trim() === '';
+    if (isEmpty && prevEmpty) continue;
+    collapsed.push(line);
+    prevEmpty = isEmpty;
+  }
+
+  // 先頭・末尾の空行を除去
+  while (collapsed.length > 0 && collapsed[0].trim() === '') collapsed.shift();
+  while (collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === '') collapsed.pop();
+
+  return collapsed.join('\n');
+}
+
 // ── HTMLコンテンツからYouTube Video IDを抽出 ───
 function extractYoutubeId(html) {
   if (!html) return null;
@@ -2119,21 +2185,27 @@ function renderEditor(container) {
           }
         }
 
-        // 罫線文字があるテキストのみ自前整形
         const text = event.clipboardData?.getData('text/plain') || '';
+        if (!text) return false;
+
+        event.preventDefault();
+
+        // 罫線テーブル文字は専用整形
         const borderMatches = text.match(/[\|│┃┼├┤┌┐└┘｜┆┇┊┋┬┴]/g);
         const hasTableBorders = borderMatches && borderMatches.length >= 3 && text.includes('\n');
-        if (hasTableBorders) {
-          event.preventDefault();
-          const cleaned = cleanAndFormatBorderLines(text);
-          // 改行ごとに段落に分けて挿入
-          const lines = cleaned.split('\n').filter(l => l.length > 0);
-          const html = lines.map(l => `<p>${esc(l)}</p>`).join('');
-          tiptapEditor.commands.insertContent(html);
-          return true;
-        }
+        const cleaned = hasTableBorders
+          ? cleanAndFormatBorderLines(text)
+          : cleanMarkdownForPaste(text);
 
-        return false; // TipTapのデフォルト処理に委ねる
+        if (!cleaned.trim()) return true;
+
+        // 改行ごとに段落へ変換（空行は空の<p>として保持）
+        const lines = cleaned.split('\n');
+        const html = lines.map(l =>
+          l.trim() === '' ? '<p></p>' : `<p>${esc(l)}</p>`
+        ).join('');
+        tiptapEditor.commands.insertContent(html);
+        return true;
       },
       handleKeyDown(view, event) {
         // IME確定直後の幽霊Enter（iPhoneで変換確定と改行が同キー）を抑止
