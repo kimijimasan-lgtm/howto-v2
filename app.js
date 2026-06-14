@@ -665,26 +665,8 @@ function renderHome(container) {
 
     signoutBtn.onclick = async () => {
       if (isGuest) {
-        // ゲストの場合: Googleアカウントと連携してデータを保持するか、サインアウトするか選択
-        const choice = confirm('Googleアカウントでログインすると、データをこのデバイス以外でも使えるようになります。\n\n「OK」→ Googleアカウントと連携\n「キャンセル」→ ゲストのままサインアウト');
-        if (choice) {
-          const provider = new firebase.auth.GoogleAuthProvider();
-          try {
-            await currentUser.linkWithPopup(provider);
-            // 連携成功 — onAuthStateChanged が再発火してホームが再描画される
-          } catch (err) {
-            if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
-              await currentUser.linkWithRedirect(provider).catch(() => {});
-            } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
-              // このGoogleアカウントはすでに登録済み → そのアカウントでサインイン
-              await firebase.auth().signInWithCredential(err.credential).catch(() => {});
-            }
-            // popup-closed-by-user などは何もしない
-          }
-        } else {
-          if (confirm('サインアウトするとゲストデータが失われます。よろしいですか？')) {
-            await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
-          }
+        if (confirm('サインアウトするとゲストデータが失われます。よろしいですか？')) {
+          await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
         }
       } else {
         if (confirm('サインアウトしますか？')) {
@@ -3899,11 +3881,31 @@ function showLimitModal(message) {
   `;
   document.getElementById('btnLimitClose').onclick = () => { root.innerHTML = ''; };
   document.getElementById('limitModal').onclick = (e) => { if (e.target.id === 'limitModal') root.innerHTML = ''; };
-  document.getElementById('btnUpgrade').onclick = () => {
-    // TODO: Stripe Payment Link に差し替え
-    const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID';
-    window.open(paymentUrl, '_blank');
+  document.getElementById('btnUpgrade').onclick = async () => {
     root.innerHTML = '';
+    const currentUser = firebase.auth().currentUser;
+    const isGuest = currentUser && currentUser.isAnonymous;
+    if (isGuest) {
+      // ゲストユーザー: Googleアカウントにデータを引き継ぎながら連携
+      if (confirm('ゲストのデータをGoogleアカウントに引き継ぎます。\nこれまでのメモはそのまま使えます。')) {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        try {
+          await currentUser.linkWithPopup(provider);
+          // 連携成功 — onAuthStateChanged が再発火してホームが再描画される
+        } catch (err) {
+          if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+            await currentUser.linkWithRedirect(provider).catch(() => {});
+          } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
+            // このGoogleアカウントはすでに登録済み → そのアカウントでシームレス切替
+            await firebase.auth().signInWithCredential(err.credential).catch(() => {});
+          }
+        }
+      }
+    } else {
+      // 非ゲストユーザー: Stripe 課金ページへ
+      const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID';
+      window.open(paymentUrl, '_blank');
+    }
   };
 }
 
