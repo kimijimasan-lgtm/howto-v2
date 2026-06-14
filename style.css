@@ -2136,13 +2136,15 @@ body.yt-fullscreen-active {
 .search-empty {
   padding: 2rem;
   text-align: center;
-  color: rgba(255, 255, 255, 0.55);
+  color: #fff;
+  font-weight: 700;
   font-size: 0.95rem;
 }
 .search-count {
   padding: 0.4rem 1.1rem;
   font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.55);
+  color: #fff;
+  font-weight: 700;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 .search-result-item {
@@ -2164,30 +2166,33 @@ body.yt-fullscreen-active {
 }
 .search-result-cat {
   font-size: 0.82rem;
-  color: var(--accent);
-  font-weight: 600;
+  color: #fff;
+  font-weight: 700;
 }
 .search-result-sep {
-  color: rgba(255, 255, 255, 0.4);
+  color: #fff;
   font-size: 0.82rem;
+  font-weight: 700;
 }
 .search-result-card {
   font-size: 0.92rem;
   color: #fff;
-  font-weight: 600;
+  font-weight: 700;
 }
 .search-result-para {
   margin-left: auto;
   font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.65);
-  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.15);
   padding: 0.15rem 0.45rem;
   border-radius: 4px;
   white-space: nowrap;
 }
 .search-result-excerpt {
   font-size: 0.88rem;
-  color: rgba(255, 255, 255, 0.8);
+  color: #fff;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -2196,8 +2201,9 @@ body.yt-fullscreen-active {
   line-height: 1.55;
 }
 mark.search-highlight {
-  background: rgba(249, 115, 22, 0.5);
+  background: rgba(249, 115, 22, 0.6);
   color: #fff;
+  font-weight: 700;
   border-radius: 2px;
   padding: 0 2px;
 }
