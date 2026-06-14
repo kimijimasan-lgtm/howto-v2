@@ -1459,18 +1459,38 @@ body {
   padding: 0 0.75rem;
 }
 
-/* Googleログインボタン */
+/* Googleログインボタン（メインボタン） */
 .btn-google {
   background: #ffffff;
   color: #1f2937;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-size: 1rem;
 }
 .btn-google:hover {
   background: #f3f4f6;
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .btn-google:active {
+  transform: translateY(1px);
+}
+
+/* ゲストログインボタン（サブボタン） */
+.btn-guest {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.6rem 1.25rem;
+  margin-top: 0.5rem;
+  box-shadow: none;
+}
+.btn-guest:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.65);
+}
+.btn-guest:active {
   transform: translateY(1px);
 }
 
