@@ -1590,29 +1590,16 @@ function renderEditor(container) {
 
   document.getElementById('btnBack').onclick   = () => goBack();
 
-  // Undoボタン 自動非表示タイマー
-  let undoAutoHideTimer = null;
-
-  // Undoボタン: lastDeletedContent（削除直前スナップショット）がある時のみ表示
+  // Undoボタン: 編集モード中は常に表示。lastDeletedContent の有無で active/inactive を切替
   // TipTapのundo()は使用しない（全消えリスクがあるため）
   function updateUndoButtonVisibility() {
     const undoBtn = document.getElementById('btnUndo');
     if (!undoBtn || state.editorMode !== 'edit') return;
+    undoBtn.style.display = 'flex';
     if (lastDeletedContent !== null) {
-      if (undoBtn.style.display !== 'flex') {
-        // 初回表示時のみタイマーをセット（onUpdateごとにリセットしない）
-        undoBtn.style.display = 'flex';
-        clearTimeout(undoAutoHideTimer);
-        undoAutoHideTimer = setTimeout(() => {
-          undoBtn.style.display = 'none';
-          undoAutoHideTimer = null;
-          lastDeletedContent = null; // 10秒経過でスナップショット廃棄
-        }, 10000);
-      }
+      undoBtn.classList.remove('inactive');
     } else {
-      undoBtn.style.display = 'none';
-      clearTimeout(undoAutoHideTimer);
-      undoAutoHideTimer = null;
+      undoBtn.classList.add('inactive');
     }
   }
 
@@ -1631,16 +1618,12 @@ function renderEditor(container) {
         proseMirrorEl.classList.remove('mode-view');
         cleanupAllSwipedParagraphs(proseMirrorEl);
       }
-      // undo履歴がある時だけ表示（履歴なし＝初回は非表示のまま）
       updateUndoButtonVisibility();
     } else {
       toggleBar.className = 'mode-toggle-bar mode-view';
       toggleBar.textContent = '閲';
-      // 閲覧モードでは常に非表示＋タイマーリセット
       const undoBtn = document.getElementById('btnUndo');
-      if (undoBtn) undoBtn.style.display = 'none';
-      clearTimeout(undoAutoHideTimer);
-      undoAutoHideTimer = null;
+      if (undoBtn) { undoBtn.style.display = 'none'; undoBtn.classList.remove('inactive'); }
       if (tiptapEditor) {
         tiptapEditor.setEditable(false);
         tiptapEditor.commands.blur();
@@ -1681,16 +1664,13 @@ function renderEditor(container) {
       e.stopPropagation();
       if (!tiptapEditor || lastDeletedContent === null) return;
       if (!window.confirm('1つ前の状態に戻しますか？')) return;
-      // TipTapのundo()は使わず、削除直前のスナップショットをそのまま復元
       tiptapEditor.commands.setContent(lastDeletedContent);
       lastDeletedContent = null;
       const pm = tiptapEditor.view.dom;
       initializeNativeParagraphActions(pm);
       if (pm.classList.contains('mode-view')) refreshYoutubeDeleteButtons('view');
       saveEditorContentDirectly();
-      undoBtn.style.display = 'none';
-      clearTimeout(undoAutoHideTimer);
-      undoAutoHideTimer = null;
+      updateUndoButtonVisibility();
     };
   }
 

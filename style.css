@@ -1947,7 +1947,11 @@ body.yt-fullscreen-active {
   user-select: none;
   -webkit-user-select: none;
   z-index: 1000;
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+.editor-undo-btn.inactive {
+  opacity: 0.35;
+  pointer-events: none;
 }
 .editor-undo-btn .undo-icon {
   font-size: 16px;

@@ -125,14 +125,15 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - PC画像削除（ホバーボタン）時にもUndoボタンが表示されるよう修正（`lastDeletedContent`スナップショット追加）
 
 ## Undoボタン（#btnUndo）の動作
-- **表示条件**: 編集モードかつ `lastDeletedContent !== null` の時のみ表示
-- **自動非表示**: 表示から10秒後にタイマーで非表示（`undoAutoHideTimer`）
+- **表示条件**: 編集モード中は**常に表示**（`lastDeletedContent` の有無に関わらず）
+- **active/inactive**: `lastDeletedContent !== null` → 通常表示、`=== null` → `.inactive`クラス（opacity 0.35、pointer-events none）
+- **自動非表示タイマーなし**: 編集モードにいる間はずっと表示。閲覧モードに切替えたら非表示
 - **`lastDeletedContent` をセットする箇所**:
   - 画像挿入前（`fileInput.onchange`）
   - 段落カット前（カットボタン `btnBulkDelete`）
   - YouTube削除前（`refreshYoutubeDeleteButtons` の `btn.onclick`）
-  - PC画像削除前（`setupImageDeleteButtons` の `btn.onclick`）← 今回追加
-- **閲覧モードでの削除**: `lastDeletedContent`はセットされるが、編集モードに切替えた時に`setEditorMode`内の`updateUndoButtonVisibility()`で表示される
+  - PC画像削除前（`setupImageDeleteButtons` の `btn.onclick`）
+- **閲覧モードでの削除**: `lastDeletedContent`はセットされるが、編集モードに切替えた時に`setEditorMode`内の`updateUndoButtonVisibility()`でactiveになる
 
 ## stripTrailingEmptyP の実装
 ```js
