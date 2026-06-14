@@ -343,8 +343,9 @@ function addSwipeBack(el, onSwipe) {
 
     const dx = e.changedTouches[0].clientX - sx;
     const dy = Math.abs(e.changedTouches[0].clientY - sy);
-    // 右方向50px以上かつ縦成分が横の2.5倍未満なら戻る（斜め右下スワイプもホームへ）
-    if (dx > 50 && dy < dx * 2.5) onSwipe();
+    // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべてホームへ
+    const isStraightDown = dy >= 80 && dx < dy * 0.2;
+    if (dx > 30 && !isStraightDown) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
   el.addEventListener('touchend',   onEnd,   { passive: true });
@@ -387,8 +388,8 @@ function addPullToCreate(el) {
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
 
-    // 右方向に30px以上動いたら即時キャンセル（右スワイプでのホーム戻りを妨げない）
-    if (dx > 30) {
+    // 右方向に20px以上動いたら即時キャンセル（右スワイプでのホーム戻りを妨げない）
+    if (dx > 20) {
       isCancelled = true;
       if (indicator) { indicator.remove(); indicator = null; }
       return;
@@ -418,8 +419,8 @@ function addPullToCreate(el) {
     const dy = e.changedTouches[0].clientY - startY;
     if (indicator) { indicator.remove(); indicator = null; }
     
-    // 最終判定：真下方向（右への移動が30px以下かつ横ブレが縦の30%未満）のみ新規作成
-    if (dy >= THRESHOLD && dx <= 30 && Math.abs(dx) < dy * 0.3) {
+    // 最終判定：真下方向（右への移動が20px以下かつ横ブレが縦の20%未満）のみ新規作成
+    if (dy >= THRESHOLD && dx <= 20 && Math.abs(dx) < dy * 0.2) {
       createArticle(true);
     }
     startY = -1;
