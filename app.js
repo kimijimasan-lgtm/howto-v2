@@ -602,6 +602,9 @@ function stripMarkdownFromDOM(el) {
 //  SCREEN A: ホーム（カテゴリグリッド）
 // ============================================
 function renderHome(container) {
+  const _homeUser = firebase.auth().currentUser;
+  const _isDev = _homeUser?.email === 'kimijimasan@gmail.com';
+
   container.innerHTML = `
     <div class="screen-home">
       <header class="app-header">
@@ -632,6 +635,11 @@ function renderHome(container) {
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
         </button>
+        ${_isDev ? `<button class="btn-icon" id="btnUpdateTemplate" title="テンプレートを更新" style="opacity:0.55;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
+          </svg>
+        </button>` : ''}
         <button class="btn-icon danger btn-signout" id="btnSignOut" title="サインアウト">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -657,6 +665,10 @@ function renderHome(container) {
   document.getElementById('btnSearchFab').onclick = () => showSearchModal();
   const showQrBtn = document.getElementById('btnShowQR');
   if (showQrBtn) showQrBtn.onclick = () => showQRCodeModal();
+
+  if (_isDev) {
+    document.getElementById('btnUpdateTemplate').onclick = () => saveCurrentDataAsTemplate();
+  }
 
   const signoutBtn = document.getElementById('btnSignOut');
   if (signoutBtn) {
@@ -3965,6 +3977,61 @@ async function createSampleData(uid) {
   ]);
 }
 
+// ── テンプレートからユーザーデータをコピー ───────────────────
+async function copyTemplateToUser(uid) {
+  const templateSnap = await db.ref('templates/default').once('value');
+  if (!templateSnap.exists()) {
+    // テンプレートがなければ静的サンプルデータにフォールバック
+    await createSampleData(uid);
+    return;
+  }
+
+  const tmpl = templateSnap.val();
+  const cats = tmpl.categories || {};
+  const arts = tmpl.articles || {};
+  const now = Date.now();
+
+  // カテゴリをコピーしながら旧キー→新キーのマッピングを作成
+  const keyMap = {};
+  for (const [oldKey, cat] of Object.entries(cats)) {
+    const newRef = db.ref(`users/${uid}/categories`).push();
+    keyMap[oldKey] = newRef.key;
+    await newRef.set({ ...cat, createdAt: now });
+  }
+
+  // 記事をコピー（新カテゴリキーに紐づけ）
+  const artWrites = [];
+  for (const [oldCatKey, articles] of Object.entries(arts)) {
+    const newCatKey = keyMap[oldCatKey];
+    if (!newCatKey) continue;
+    for (const art of Object.values(articles)) {
+      const newRef = db.ref(`users/${uid}/articles/${newCatKey}`).push();
+      artWrites.push(newRef.set({ ...art, createdAt: now, updatedAt: now }));
+    }
+  }
+  await Promise.all(artWrites);
+}
+
+// ── 開発者：現在のパネルをテンプレートとして保存 ─────────────
+async function saveCurrentDataAsTemplate() {
+  if (!confirm('現在のパネル全件を templates/default に上書き保存しますか？')) return;
+
+  const uid = state.uid;
+  const catsSnap = await db.ref(`users/${uid}/categories`).once('value');
+  if (!catsSnap.exists()) { showToast('パネルがありません'); return; }
+
+  const categories = catsSnap.val();
+  const articles = {};
+
+  await Promise.all(Object.keys(categories).map(async (catId) => {
+    const artsSnap = await db.ref(`users/${uid}/articles/${catId}`).once('value');
+    if (artsSnap.exists()) articles[catId] = artsSnap.val();
+  }));
+
+  await db.ref('templates/default').set({ categories, articles });
+  showToast('テンプレートを更新しました');
+}
+
 // ── 起動と認証の監視 ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   applyTheme(getCurrentTheme());
@@ -3996,11 +4063,13 @@ window.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         state.isPremium = false;
       }
-      // 新規ユーザー: カテゴリが1件もなければサンプルデータを作成
+      // 新規ユーザー: カテゴリが1件もなければテンプレートをコピー（開発者は除外）
       try {
         const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
-        if (!catSnap.exists()) await createSampleData(user.uid);
-      } catch (e) { /* サンプル作成失敗は非致命的 */ }
+        if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
+          await copyTemplateToUser(user.uid);
+        }
+      } catch (e) { /* 非致命的 */ }
       goTo('home');
     } else {
       // null で来た場合、リダイレクト処理の完了を待ってから再確認する
