@@ -575,8 +575,6 @@ function renderHome(container) {
         </button>
       </header>
       
-      <div id="migrationBannerContainer"></div>
-
       <div class="category-grid" id="catGrid">
         <div class="loading-spinner">読み込み中…</div>
       </div>
@@ -594,50 +592,37 @@ function renderHome(container) {
   const showQrBtn = document.getElementById('btnShowQR');
   if (showQrBtn) showQrBtn.onclick = () => showQRCodeModal();
 
-  const user = firebase.auth().currentUser;
-  const isGuest = user && user.isAnonymous;
-  const bannerContainer = document.getElementById('migrationBannerContainer');
-
-  if (isGuest) {
-    if (bannerContainer) {
-      bannerContainer.innerHTML = `
-        <div id="guestBanner" style="background: rgba(59,130,246,0.1); border: 1.5px dashed rgba(59,130,246,0.5); border-radius: 14px; padding: 0.75rem 1rem; margin: 0.75rem 0.75rem 0 0.75rem; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; animation: popIn 0.3s ease;">
-          <span style="font-size: 0.78rem; color: rgba(255,255,255,0.7); line-height: 1.5;">💾 ゲスト利用中 — データはこのデバイスのみに保存されています</span>
-          <button id="btnLinkGoogle" style="font-size: 0.78rem; padding: 0.4rem 0.9rem; border-radius: 8px; font-weight: 600; background: rgba(59,130,246,0.85); border: none; color: #fff; cursor: pointer; font-family: var(--font); align-self: flex-end;">アカウントを作成してデータを保存する</button>
-        </div>
-      `;
-
-      document.getElementById('btnLinkGoogle').onclick = async () => {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        try {
-          await firebase.auth().currentUser.linkWithPopup(provider);
-          // 連携成功 — onAuthStateChanged が再発火してホームが再描画（バナー消去）される
-        } catch (err) {
-          console.error('Link error:', err);
-          if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
-            try {
-              await firebase.auth().currentUser.linkWithRedirect(provider);
-            } catch (redirErr) {
-              alert('エラーが発生しました。もう一度お試しください。');
-            }
-          } else if (err.code === 'auth/credential-already-in-use') {
-            alert('このGoogleアカウントはすでに別のデータと紐づいています。\nゲストデータを引き継ぎたい場合はサポートにお問い合わせください。');
-          } else if (err.code !== 'auth/popup-closed-by-user') {
-            alert('エラーが発生しました。もう一度お試しください。');
-          }
-        }
-      };
-    }
-  }
-  
   const signoutBtn = document.getElementById('btnSignOut');
   if (signoutBtn) {
+    const currentUser = firebase.auth().currentUser;
+    const isGuest = currentUser && currentUser.isAnonymous;
+
     signoutBtn.onclick = async () => {
-      if (confirm("サインアウトしますか？")) {
-        try {
-          await firebase.auth().signOut();
-        } catch (err) {
-          console.error("SignOut error:", err);
+      if (isGuest) {
+        // ゲストの場合: Googleアカウントと連携してデータを保持するか、サインアウトするか選択
+        const choice = confirm('Googleアカウントでログインすると、データをこのデバイス以外でも使えるようになります。\n\n「OK」→ Googleアカウントと連携\n「キャンセル」→ ゲストのままサインアウト');
+        if (choice) {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          try {
+            await currentUser.linkWithPopup(provider);
+            // 連携成功 — onAuthStateChanged が再発火してホームが再描画される
+          } catch (err) {
+            if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+              await currentUser.linkWithRedirect(provider).catch(() => {});
+            } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
+              // このGoogleアカウントはすでに登録済み → そのアカウントでサインイン
+              await firebase.auth().signInWithCredential(err.credential).catch(() => {});
+            }
+            // popup-closed-by-user などは何もしない
+          }
+        } else {
+          if (confirm('サインアウトするとゲストデータが失われます。よろしいですか？')) {
+            await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
+          }
+        }
+      } else {
+        if (confirm('サインアウトしますか？')) {
+          await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
         }
       }
     };
@@ -967,7 +952,7 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
         const currentCount = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
         if (currentCount >= 3) {
           close();
-          showPurchasePrompt();
+          showLimitModal('無料プランはカテゴリ3つまでです。\nアップグレードしてさらに追加できます。');
           return;
         }
       }
@@ -1678,7 +1663,17 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
   }
 }
 
-function createArticle(noTransition = false) {
+async function createArticle(noTransition = false) {
+  // 無料プランのカード上限チェック（10枚まで）
+  if (!state.isPremium) {
+    const snap = await db.ref(`users/${state.uid}/articles/${state.categoryId}`).once('value');
+    const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+    if (count >= 10) {
+      showLimitModal('無料プランはカテゴリ内のメモが10枚までです。\nアップグレードしてさらに追加できます。');
+      return;
+    }
+  }
+
   // 通信を待たずにクライアント側で即座に一意なID（キー）を生成（遅延ゼロ）
   const newRef = db.ref(`users/${state.uid}/articles/${state.categoryId}`).push();
   const newKey = newRef.key;
@@ -3817,29 +3812,20 @@ function renderLogin(container) {
   };
 }
 
-// 購入促進ダイアログ（無料ユーザーがパネル4個目を作ろうとした時）
-function showPurchasePrompt() {
+// 上限到達ダイアログ（無料プランの各制限に到達した時）
+function showLimitModal(message) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
-    <div class="modal-overlay" id="purchaseModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+    <div class="modal-overlay" id="limitModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
       <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
         <div style="font-size:2.5rem;margin-bottom:0.75rem;">🔒</div>
-        <h2 style="color:#fff;font-size:1.1rem;margin-bottom:0.5rem;font-weight:800;">全機能を使うには¥100が必要です</h2>
-        <p style="color:rgba(255,255,255,0.6);font-size:0.82rem;line-height:1.5;margin-bottom:1.5rem;">無料プランではパネルを3個まで作成できます。<br>購入するとパネル無制限で全機能が使えます。</p>
-        <button id="btnPurchase" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);transition:transform 0.15s;">¥100で購入する</button>
-        <button id="btnPurchaseClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);font-size:0.85rem;cursor:pointer;font-family:var(--font);">閉じる</button>
+        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;white-space:pre-line;">${message}</p>
+        <button id="btnLimitClose" style="width:100%;padding:0.8rem;border:none;border-radius:14px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.8);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:var(--font);">閉じる</button>
       </div>
     </div>
   `;
-  document.getElementById('btnPurchaseClose').onclick = () => { root.innerHTML = ''; };
-  document.getElementById('purchaseModal').onclick = (e) => { if (e.target.id === 'purchaseModal') root.innerHTML = ''; };
-  document.getElementById('btnPurchase').onclick = () => {
-    // Stripe Payment Link へ遷移（後で実際のURLに差し替え）
-    const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID';
-    window.open(paymentUrl, '_blank');
-    root.innerHTML = '';
-    showToast('決済ページを開きました。購入完了後、アプリを再読み込みしてください。');
-  };
+  document.getElementById('btnLimitClose').onclick = () => { root.innerHTML = ''; };
+  document.getElementById('limitModal').onclick = (e) => { if (e.target.id === 'limitModal') root.innerHTML = ''; };
 }
 
 // ── 起動と認証の監視 ────────────────────────────────────
