@@ -344,7 +344,7 @@ function addSwipeBack(el, onSwipe) {
     const dx = e.changedTouches[0].clientX - sx;
     const dy = Math.abs(e.changedTouches[0].clientY - sy);
     // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべてホームへ
-    if (dx > 30 && dy < dx * 2) onSwipe();
+    if (dx > 30 && dy < dx * 3) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
   el.addEventListener('touchend',   onEnd,   { passive: true });
@@ -639,6 +639,11 @@ function renderHome(container) {
             <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
           </svg>
         </button>` : ''}
+        ${_homeUser?.isAnonymous ? `<button class="btn-icon" id="btnGuestUpgradeHint" title="プレミアムにアップグレード" style="color:#f97316;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </button>` : ''}
         <button class="btn-icon danger btn-signout" id="btnSignOut" title="サインアウト">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -669,6 +674,11 @@ function renderHome(container) {
     document.getElementById('btnUpdateTemplate').onclick = () => saveCurrentDataAsTemplate();
   }
 
+  const guestUpgradeBtn = document.getElementById('btnGuestUpgradeHint');
+  if (guestUpgradeBtn) {
+    guestUpgradeBtn.onclick = () => showLimitModal('プレミアムにアップグレードすると\nカテゴリ・メモが無制限になります。\nデータはGoogleアカウントに引き継げます。');
+  }
+
   const signoutBtn = document.getElementById('btnSignOut');
   if (signoutBtn) {
     const currentUser = firebase.auth().currentUser;
@@ -676,9 +686,7 @@ function renderHome(container) {
 
     signoutBtn.onclick = async () => {
       if (isGuest) {
-        if (confirm('サインアウトするとゲストデータが失われます。よろしいですか？')) {
-          await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
-        }
+        showGuestSignoutModal();
       } else {
         if (confirm('サインアウトしますか？')) {
           await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
@@ -2120,7 +2128,6 @@ function renderEditor(container) {
           updatePasteButtonState();
           pasteAutoHideTimer = null;
         }, 5000);
-        showToast("段落をカットしました");
       }, 500);
     };
   }
@@ -3381,11 +3388,14 @@ function bindParagraphSwipeEvents(editor) {
 
     const touch = e.changedTouches[0];
     const dx = touch.clientX - txStart;
-    const dy = Math.abs(touch.clientY - tyStart);
+    const rawDy = touch.clientY - tyStart;
+    const dy = Math.abs(rawDy);
 
     // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべて戻る
     const isStraightDown = dy >= 80 && dx < dy * 0.2;
-    if (dx > 30 && !isStraightDown) {
+    // 上方向への移動量が右方向の2倍を超える場合は上フリックとみなし戻らない
+    const isStronglyUp = rawDy < 0 && dy > dx * 2;
+    if (dx > 30 && !isStraightDown && !isStronglyUp) {
       // 右フリップで前の画面に戻る（緩いルール）
       goBack();
     } else if (dx < -50 && dy < 40) {
@@ -3881,6 +3891,33 @@ function renderLogin(container) {
 }
 
 // 上限到達ダイアログ（無料プランの各制限に到達した時）
+function showGuestSignoutModal() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="guestSignoutModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+      <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+        <div style="font-size:2.5rem;margin-bottom:0.75rem;">⚠️</div>
+        <p style="color:rgba(255,255,255,0.85);font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;">サインアウトするとゲストデータが失われます</p>
+        <p style="color:rgba(255,255,255,0.55);font-size:0.85rem;line-height:1.6;margin-bottom:1.5rem;">課金してデータを引き継ぎますか？</p>
+        <button id="btnGuestSignoutUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">課金する</button>
+        <button id="btnGuestSignoutLogoff" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;margin-bottom:0.4rem;font-family:var(--font);">課金しないでログオフする</button>
+        <button id="btnGuestSignoutCancel" style="width:100%;padding:0.6rem;border:none;background:none;color:rgba(255,255,255,0.35);font-size:0.8rem;cursor:pointer;font-family:var(--font);">キャンセル</button>
+      </div>
+    </div>
+  `;
+  const close = () => { root.innerHTML = ''; };
+  document.getElementById('btnGuestSignoutCancel').onclick = close;
+  document.getElementById('guestSignoutModal').onclick = (e) => { if (e.target.id === 'guestSignoutModal') close(); };
+  document.getElementById('btnGuestSignoutLogoff').onclick = async () => {
+    close();
+    await firebase.auth().signOut().catch(err => console.error('SignOut error:', err));
+  };
+  document.getElementById('btnGuestSignoutUpgrade').onclick = () => {
+    close();
+    showLimitModal('データをGoogleアカウントに引き継いで\n課金プランにアップグレードできます。');
+  };
+}
+
 function showLimitModal(message) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
@@ -3931,7 +3968,7 @@ const TEMPLATE_EXPLANATION_CARDS = [
   '<p>閲覧モードと編集モード</p><p>編集画面には2つのモードがあります。</p><p>・閲覧モード（青い「閲」ボタン）</p><p>　→ 段落の選択・移動・削除ができます</p><p>・編集モード（赤い「編」ボタン）</p><p>　→ テキスト入力・画像追加ができます</p><p>右下のボタンをタップしてモードを切り替えます。</p>',
   '<p>テキストを入力するには</p><p>1. 右下の「閲」ボタンをタップして編集モードへ</p><p>2. 入力したい場所をタップしてカーソルを置く</p><p>3. キーボードで文字を入力</p><p>4. Enterで改行（新しい段落）</p><p>5. 自動的に保存されます</p>',
   '<p>画像を追加するには</p><p>1. 編集モードにする</p><p>2. 画像を入れたい場所をタップ</p><p>3. 右上のクリップアイコンをタップ</p><p>4. 写真を選択すると挿入されます</p><p>画像をタップすると拡大表示されます。</p>',
-  '<p>段落を移動・削除するには</p><p>閲覧モードで：</p><p>・段落を長押し → ドラッグで並び替え</p><p>・段落を左スワイプ → 選択状態に</p><p>・選択後にカット → 別の場所にペースト可能</p><p>・選択後に削除 → 段落を削除</p>',
+  '<p>段落を移動・削除するには</p><p>閲覧モードで：</p><p>・段落を長押し → ドラッグで並び替え</p><p>・段落を左スワイプ → 選択状態に</p><p>・選択後にカット → 別の場所にペースト可能</p><p>・選択後に削除 → 段落を削除</p><p>※現時点では段落操作に既知の問題があります。ご不便をおかけしています。</p>',
   '<p>YouTube動画を埋め込むには</p><p>1. 編集モードにする</p><p>2. 動画を入れたい場所をタップ</p><p>3. 右上のクリップアイコンの横のYouTubeアイコンをタップ</p><p>4. YouTubeのURLを貼り付けて確定</p><p>縦画面で再生中に横向きにすると全画面表示になります。</p>',
   '<p>PCとスマホで同期するには</p><p>Googleアカウントでログインすると</p><p>PCとスマホで自動的にデータが同期されます。</p><p>・片方で書いたメモがもう片方にも表示される</p><p>・リアルタイムで更新されます</p><p>ゲストモードではこのデバイスのみに保存されます。</p>',
   '<p>よくある質問</p><p>Q. 間違えて削除した</p><p>A. 右下の取り消しボタンで元に戻せます</p><p></p><p>Q. データが消えた</p><p>A. カード一覧に戻ると復元されている場合があります</p><p></p><p>Q. PCとスマホで同期されない</p><p>A. Googleアカウントでログインしているか確認してください</p>',
