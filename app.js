@@ -3820,12 +3820,60 @@ function showLimitModal(message) {
       <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
         <div style="font-size:2.5rem;margin-bottom:0.75rem;">🔒</div>
         <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;white-space:pre-line;">${message}</p>
-        <button id="btnLimitClose" style="width:100%;padding:0.8rem;border:none;border-radius:14px;background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.8);font-size:0.9rem;font-weight:600;cursor:pointer;font-family:var(--font);">閉じる</button>
+        <button id="btnUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">アップグレードする</button>
+        <button id="btnLimitClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">閉じる</button>
       </div>
     </div>
   `;
   document.getElementById('btnLimitClose').onclick = () => { root.innerHTML = ''; };
   document.getElementById('limitModal').onclick = (e) => { if (e.target.id === 'limitModal') root.innerHTML = ''; };
+  document.getElementById('btnUpgrade').onclick = () => {
+    // TODO: Stripe Payment Link に差し替え
+    const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID';
+    window.open(paymentUrl, '_blank');
+    root.innerHTML = '';
+  };
+}
+
+// ── 新規ユーザー向けサンプルデータ作成 ──────────────────────
+async function createSampleData(uid) {
+  const now = Date.now();
+
+  // カテゴリ1: 使い方（インディゴ）
+  const cat1Ref = db.ref(`users/${uid}/categories`).push();
+  const art1Ref = db.ref(`users/${uid}/articles/${cat1Ref.key}`).push();
+  await Promise.all([
+    cat1Ref.set({
+      name: '使い方',
+      color: 'linear-gradient(135deg,#4f46e5,#6366f1)',
+      order: now + 1,
+      createdAt: now,
+    }),
+    art1Ref.set({
+      content: '<p><strong>PCスマホ連動メモへようこそ！</strong></p><p>■ 基本操作</p><p>・カードをタップ → 内容を編集</p><p>・下にスワイプ → 新しいカードを追加</p><p>・右にスワイプ → ホームに戻る</p><p>■ 編集モード</p><p>・右下「編」ボタン → 編集開始</p><p>・右下「閲」ボタン → 閲覧モードに戻る</p>',
+      createdAt: now,
+      updatedAt: now,
+      order: now,
+    }),
+  ]);
+
+  // カテゴリ2: メモ（エメラルド）
+  const cat2Ref = db.ref(`users/${uid}/categories`).push();
+  const art2Ref = db.ref(`users/${uid}/articles/${cat2Ref.key}`).push();
+  await Promise.all([
+    cat2Ref.set({
+      name: 'メモ',
+      color: 'linear-gradient(135deg,#059669,#10b981)',
+      order: now,
+      createdAt: now,
+    }),
+    art2Ref.set({
+      content: '<p>ここにメモを書こう</p>',
+      createdAt: now,
+      updatedAt: now,
+      order: now,
+    }),
+  ]);
 }
 
 // ── 起動と認証の監視 ────────────────────────────────────
@@ -3859,6 +3907,11 @@ window.addEventListener('DOMContentLoaded', () => {
       } catch (e) {
         state.isPremium = false;
       }
+      // 新規ユーザー: カテゴリが1件もなければサンプルデータを作成
+      try {
+        const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
+        if (!catSnap.exists()) await createSampleData(user.uid);
+      } catch (e) { /* サンプル作成失敗は非致命的 */ }
       goTo('home');
     } else {
       // null で来た場合、リダイレクト処理の完了を待ってから再確認する
