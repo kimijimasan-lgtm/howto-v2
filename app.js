@@ -344,8 +344,7 @@ function addSwipeBack(el, onSwipe) {
     const dx = e.changedTouches[0].clientX - sx;
     const dy = Math.abs(e.changedTouches[0].clientY - sy);
     // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべてホームへ
-    const isStraightDown = dy >= 80 && dx < dy * 0.2;
-    if (dx > 30 && !isStraightDown) onSwipe();
+    if (dx > 30 && dy < dx * 2) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
   el.addEventListener('touchend',   onEnd,   { passive: true });
@@ -2140,9 +2139,12 @@ function renderEditor(container) {
     const horizontalBorderRegex = /^[ \t]*([-_=\*~\+\.─━┄┅┈┉＝＊◆■★☆┌┐└┘├┤┬┴┼])\1{2,}[ \t]*$/gm;
     t = t.replace(horizontalBorderRegex, '');
 
-    // 2. 縦方向の罫線・区切り記号（│, ┃, ├, ┤, ┼, ｜, |, │ 等）を適度な複数の半角スペースに置換
-    const verticalBorderRegex = /[ \t　]*([│┃├┤┼｜\|┆┇┊┋┬┴])[ \t　]*/g;
-    t = t.replace(verticalBorderRegex, '     '); // 5個の半角スペースに置き換えて美しく整形
+    // 2. 縦方向の罫線・区切り記号を改行に変換（後続の ─ 等も除去して行ごとに分離）
+    const verticalBorderRegex = /[ \t　]*[│┃├┤┼┌┐└┘｜\|┆┇┊┋┬┴][─━ \t　]*/g;
+    t = t.replace(verticalBorderRegex, '\n');
+
+    // 3. 連続する空行を1行に圧縮
+    t = t.replace(/\n{3,}/g, '\n\n').trim();
 
     return t;
   }

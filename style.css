@@ -1025,9 +1025,10 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.7rem 1rem;
-  color: var(--text-primary);
+  color: #ffffff;
   font-family: var(--font);
   font-size: 1rem;
+  font-weight: 700;
   outline: none;
   margin-bottom: 1.25rem;
   transition: border-color 0.2s;
@@ -1512,6 +1513,7 @@ body {
 .inserted-img {
   display: block;
   max-width: 100%;
+  max-height: 66vh;
   border-radius: 12px;
   margin: 0.75rem 0;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
