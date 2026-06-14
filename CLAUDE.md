@@ -79,13 +79,35 @@ if (rect.bottom > visibleBottom) {
 Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
 ## Firebase
+
+### 構成
 - `index.html` の `<script>` タグに `firebaseConfig` を直接記述（CDN compat版 v10.12.0）
 - Auth: **Googleログイン** + **匿名認証（ゲスト）**（メール/パスワード認証は廃止）
 - DB: Realtime Database
 
+### セキュリティルール（設定済み）
+```json
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "templates": {
+      ".read": "auth !== null",
+      "default": {
+        ".write": "auth.token.email === 'kimijimasan@gmail.com'"
+      }
+    }
+  }
+}
+```
+
 ## 認証フロー
 
-### ログイン画面（`renderLogin`）
+### ログイン画面（`renderLogin`）— シンプル化済み
 - 「Googleでログイン」ボタン（メイン・白背景）
 - 「ゲストとして試す」ボタン（サブ・半透明）→ `firebase.auth().signInAnonymously()`
 - メール/パスワード認証は削除済み
@@ -97,7 +119,7 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
  └─ onAuthStateChanged
       ├─ user あり
       │   ├─ isPremium フラグを Firebase から取得
-      │   ├─ categories が 0件 → createSampleData() でサンプル2カテゴリ作成
+      │   ├─ categories が 0件 かつ 開発者でない → copyTemplateToUser()
       │   └─ goTo('home')
       └─ user なし → await redirectResultPromise
            ├─ currentUser が非 null → 何もしない（再発火される）
@@ -105,16 +127,42 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 ```
 
 ### ゲストのサインアウト（`btnSignOut`）
-ゲスト (`user.isAnonymous`) がサインアウトを押すと：
-1. `confirm` で「Googleと連携」or「サインアウト」を選択
-2. OK → `currentUser.linkWithPopup(provider)` でデータ保持のまま連携
-3. `auth/credential-already-in-use` → `signInWithCredential(err.credential)` で既存アカウントへシームレス切替
-4. キャンセル → 2段確認後に `signOut()`
+- ゲスト: 「サインアウトするとゲストデータが失われます。よろしいですか？」確認 → `signOut()`
+- 通常ユーザー: 「サインアウトしますか？」確認 → `signOut()`
+- Google連携のオファーはサインアウト時には行わない（アップグレードボタン経由に統一）
 
-## 新規ユーザーの初期状態（`createSampleData`）
-`onAuthStateChanged` でカテゴリが0件の場合のみ実行。
-- カテゴリ「使い方」（インディゴ）+ 操作説明カード
-- カテゴリ「メモ」（エメラルド）+ 空カード
+### アップグレードボタン（`showLimitModal` 内）の動作
+- **ゲスト**: 「ゲストのデータをGoogleアカウントに引き継ぎます…」確認 → `linkWithPopup(GoogleAuthProvider)`
+  - `auth/credential-already-in-use` → `signInWithCredential(err.credential)` でシームレス切替
+- **通常ユーザー（非課金）**: Stripe 課金ページを開く（URL は現在プレースホルダー）
+
+## 新規ユーザーの初期テンプレート機能
+
+### テンプレートの構成
+Firebase `templates/default` に保存されており、新規ユーザーに自動コピーされる。
+
+| パネル | カード数 | 色 |
+|--------|---------|-----|
+| 解説（インディゴ）| 10枚 | `linear-gradient(135deg,#4f46e5,#6366f1)` |
+| メモ（エメラルド）| 1枚（「最初のメモ」） | `linear-gradient(135deg,#059669,#10b981)` |
+
+解説カード10枚の内容はコード定数 `TEMPLATE_EXPLANATION_CARDS`（`app.js` 内）で管理。
+
+### 関連関数
+| 関数 | 役割 |
+|------|------|
+| `copyTemplateToUser(uid)` | `templates/default` を読み込み、新規ユーザーのパスにコピー。テンプレート不在時は `createSampleData` にフォールバック |
+| `createSampleData(uid)` | フォールバック用静的サンプル。`TEMPLATE_EXPLANATION_CARDS` 定数を使用 |
+| `saveCurrentDataAsTemplate()` | 開発者専用。`TEMPLATE_EXPLANATION_CARDS` 定数から `templates/default` を生成・上書き |
+
+### 開発者専用「テンプレートを更新」ボタン
+- 表示条件: `firebase.auth().currentUser?.email === 'kimijimasan@gmail.com'`
+- 場所: ホーム画面ヘッダー（サインアウトボタンの左隣、データベースアイコン）
+- 動作: `TEMPLATE_EXPLANATION_CARDS` の10枚＋固定「メモ」1枚を `templates/default` に書き込む
+
+### 除外条件
+- 開発者アカウント（`kimijimasan@gmail.com`）はテンプレートコピーをスキップ
+- categories が既に存在するユーザーにはコピーしない
 
 ## 制限・課金
 
@@ -135,25 +183,36 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 オレンジ→ピンクの「アップグレードする」ボタン + 「閉じる」ボタン。  
 Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホルダー（後で差し替え）。
 
-## スワイプジェスチャー（カテゴリ画面）
+## スワイプジェスチャー
 
-### `addSwipeBack`（右スワイプ → ホームへ）
+### `addSwipeBack`（右スワイプ → 前の画面へ）
 ```js
 const isStraightDown = dy >= 80 && dx < dy * 0.2;
 if (dx > 30 && !isStraightDown) onSwipe();
 ```
-- 右方向30px超 かつ 真下（垂直から11度以内）でなければホームへ戻る
-- 右斜め下のスワイプも「ホームへ」として判定
+- 真下（垂直から11度以内）以外の右方向ジェスチャーはすべて「前の画面へ戻る」
+- カード一覧→ホーム、エディター→カード一覧の両方に適用
+
+### `bindParagraphSwipeEvents`（エディター内スワイプ）
+- 右フリップ（緩いルール）: `dx > 30 && !isStraightDown` → `goBack()`
+- 左フリップ（厳しいルール）: `dx < -50 && dy < 40` → 段落選択
 
 ### `addPullToCreate`（真下プル → 新規カード作成）
 - `onMove`: `dx > 20` で即キャンセル（右方向への動きで中断）
-- `onEnd`: `dy >= 80 && dx <= 20 && |dx| < dy * 0.3`（ほぼ垂直のみ）
+- `onEnd`: `dy >= 80 && dx <= 20 && |dx| < dy * 0.2`（ほぼ垂直のみ）
 
 ## ホーム画面の全文検索（`showSearchModal`）
 - 右下の虫眼鏡FAB（`#btnSearchFab`）で起動
 - Firebase から全カテゴリ・全カードを並列取得 (`Promise.all`)
 - `htmlToLines(content)` でHTML→テキスト行配列変換
 - 結果クリック → `state.pendingScrollToParagraph` / `state.pendingSearchKeyword` をセット → エディターで3秒点滅（`blinkSearchKeyword`）
+
+## テキスト貼り付け処理（`handlePaste`）
+- 画像: 常に横取りして圧縮・挿入
+- テキスト: 常に横取りして `cleanMarkdownForPaste()` を通す
+  - Markdown記法（`##`, `**`, `` ` ``, `-`, `>` 等）を除去
+  - 連続する空行を最大1行に圧縮
+- 罫線テーブル文字（`│`, `┼` 等が3つ以上）: `cleanAndFormatBorderLines()` で整形
 
 ## stripTrailingEmptyP の実装
 ```js
@@ -173,7 +232,7 @@ function stripTrailingEmptyP(html) {
 ## ファイル構成
 ```
 index.html          — エントリポイント（app.js?v=745, tiptap.bundle.js?v=1）
-app.js              — アプリ全体（約3,900行）
+app.js              — アプリ全体（約4,000行）
 style.css           — スタイル（v=675）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
@@ -193,5 +252,6 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
 ## 次のステップ
+- 解説カード10枚の内容を充実させる（`TEMPLATE_EXPLANATION_CARDS` 定数を編集 → 「テンプレートを更新」ボタンで反映）
+- 残っているバグの修正を続ける
 - Stripe Payment Link URL を `showLimitModal` の `paymentUrl` に設定
-- Firebase Console で Anonymous Auth を有効化（ゲストログインに必要）
