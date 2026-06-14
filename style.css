@@ -2208,3 +2208,16 @@ mark.search-highlight {
   padding: 0 2px;
 }
 
+/* エディタ内キーワード点滅（検索ジャンプ時 3秒間） */
+.search-blink {
+  background: rgba(249, 115, 22, 0.65);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 2px;
+  animation: searchBlink 0.5s ease-in-out 6 forwards;
+}
+@keyframes searchBlink {
+  0%, 100% { background: rgba(249, 115, 22, 0.65); }
+  50%       { background: transparent; }
+}
+

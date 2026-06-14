@@ -754,7 +754,7 @@ function showSearchModal() {
   overlay.innerHTML = `
     <div class="search-modal-box">
       <div class="search-modal-header">
-        <span class="search-modal-title">全文検索</span>
+        <span class="search-modal-title">全カテゴリ内の文字検索</span>
         <button class="search-modal-close" id="btnSearchClose">✕</button>
       </div>
       <div class="search-modal-form">
@@ -803,6 +803,7 @@ function showSearchModal() {
           <div class="search-result-excerpt">${buildHighlightedExcerpt(r.excerpt, kw)}</div>`;
         item.onclick = () => {
           state.pendingScrollToParagraph = r.paragraphIndex;
+          state.pendingSearchKeyword = kw;
           close();
           goTo('editor', r.catId, r.artId);
         };
@@ -848,6 +849,51 @@ function buildHighlightedExcerpt(text, keyword) {
   const escaped = esc(text);
   const kwEsc = esc(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return escaped.replace(new RegExp(kwEsc, 'gi'), m => `<mark class="search-highlight">${m}</mark>`);
+}
+
+// エディタ内のキーワードをスパンでラップして点滅 → durationMs 後にアンラップ
+function blinkSearchKeyword(container, keyword, durationMs) {
+  if (!container || !keyword) return;
+  const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  const spans = [];
+
+  // テキストノードを収集（DOM変更前に全取得）
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) textNodes.push(node);
+
+  textNodes.forEach(textNode => {
+    const text = textNode.textContent;
+    if (!regex.test(text)) { regex.lastIndex = 0; return; }
+    regex.lastIndex = 0;
+    const parent = textNode.parentNode;
+    if (!parent) return;
+
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      if (m.index > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
+      const span = document.createElement('span');
+      span.className = 'search-blink';
+      span.textContent = m[0];
+      frag.appendChild(span);
+      spans.push(span);
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    parent.replaceChild(frag, textNode);
+  });
+
+  // 3秒後にスパンをアンラップして元のテキストノードに戻す
+  setTimeout(() => {
+    spans.forEach(span => {
+      if (!span.parentNode) return;
+      span.parentNode.replaceChild(document.createTextNode(span.textContent), span);
+    });
+    container.normalize();
+  }, durationMs);
 }
 
 // ── カテゴリ追加/編集モーダル（色選択統合版） ────────────
@@ -2410,10 +2456,12 @@ function renderEditor(container) {
     if (proseMirrorEl.classList.contains('mode-view')) {
       refreshYoutubeDeleteButtons('view');
     }
-    // 全文検索からジャンプしてきた場合は指定段落にスクロール
+    // 全文検索からジャンプしてきた場合は指定段落にスクロール＋キーワード点滅
     if (state.pendingScrollToParagraph !== undefined) {
       const paraIdx = state.pendingScrollToParagraph;
+      const searchKw = state.pendingSearchKeyword || null;
       delete state.pendingScrollToParagraph;
+      delete state.pendingSearchKeyword;
       setTimeout(() => {
         const pm = tiptapEditor?.view?.dom;
         if (!pm) return;
@@ -2422,6 +2470,7 @@ function renderEditor(container) {
         );
         const target = paras[paraIdx];
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (searchKw) blinkSearchKeyword(pm, searchKw, 3000);
       }, 400);
     }
   });
