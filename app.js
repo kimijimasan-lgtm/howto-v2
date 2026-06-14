@@ -2032,7 +2032,7 @@ function renderEditor(container) {
             (last.childCount === 1 && last.firstChild.type.name === 'hardBreak')
           );
           const prevHasImage = prev.type.name === 'paragraph' &&
-            prev.childCount > 0 && prev.firstChild && prev.firstChild.type.name === 'image';
+            prev.childCount > 0 && prev.lastChild && prev.lastChild.type.name === 'image';
           if (lastIsEmpty && prevHasImage) {
             isRemovingTrailingP = true;
             const from = doc.content.size - last.nodeSize;
@@ -2331,13 +2331,16 @@ function handleImageForTipTap(file) {
             .focus()
             .setImage({ src, class: 'inserted-img' })
             .command(({ tr, state, dispatch }) => {
-              // 画像の直後に空段落を追加（続けて入力できるように）
+              // 画像の親段落の直後に空段落を追加（続けて入力できるように）
               // splitBlock() は YouTube ノード境界などで RangeError を起こすため
-              // tr.doc.content.size（setImage 後の最新サイズ）を使って末尾に直接挿入する
+              // setImage 後のカーソル位置から親段落末端を求めて挿入する
               if (!dispatch) return true;
               try {
-                const insertPos = tr.doc.content.size;
-                if (insertPos > 0 && insertPos <= tr.doc.nodeSize - 2) {
+                const { from } = tr.selection;
+                const $from = tr.doc.resolve(from);
+                // 画像の親段落の直後の位置（末尾段落なら content.size と等しくなる）
+                const insertPos = $from.after($from.depth);
+                if (insertPos > 0 && insertPos <= tr.doc.content.size) {
                   tr.insert(insertPos, state.schema.nodes.paragraph.create());
                   const $pos = tr.doc.resolve(insertPos + 1);
                   tr.setSelection(state.selection.constructor.near($pos));
