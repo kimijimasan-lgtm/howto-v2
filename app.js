@@ -573,10 +573,17 @@ function renderHome(container) {
       <div class="category-grid" id="catGrid">
         <div class="loading-spinner">読み込み中…</div>
       </div>
+      <button class="search-fab" id="btnSearchFab" title="全文検索">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
     </div>`;
 
   document.getElementById('btnAddCat').onclick = () => showCategoryModal();
   document.getElementById('btnTheme').onclick = () => showThemePicker();
+  document.getElementById('btnSearchFab').onclick = () => showSearchModal();
   const showQrBtn = document.getElementById('btnShowQR');
   if (showQrBtn) showQrBtn.onclick = () => showQRCodeModal();
 
@@ -649,7 +656,8 @@ function renderHome(container) {
       card.style.background = grad;
       card.innerHTML = `
         <button class="cat-edit-btn" title="編集">✏️</button>
-        <span class="cat-name">${esc(cat.name)}</span>`;
+        <span class="cat-name">${esc(cat.name)}</span>
+        <span class="cat-card-count">…</span>`;
 
       // もし直前に訪れていたカテゴリIDであれば、戻りフラッシュ効果クラスを付与
       if (cat.id === window.justVisitedCategoryId) {
@@ -683,6 +691,17 @@ function renderHome(container) {
       card.onclick = () => goTo('category', cat.id);
       grid.appendChild(card);
     });
+
+    // カテゴリごとのカード数を非同期取得してバッジ更新（"…" → 実数値）
+    db.ref(`users/${state.uid}/articles`).once('value').then(artSnap => {
+      const allArts = artSnap.val() || {};
+      grid.querySelectorAll('.category-card[data-id]').forEach(cardEl => {
+        const arts = allArts[cardEl.dataset.id];
+        const count = arts ? Object.keys(arts).length : 0;
+        const badge = cardEl.querySelector('.cat-card-count');
+        if (badge) badge.textContent = count;
+      });
+    }).catch(() => {});
 
     // ドラッグ並び替え初期化
     if (window.Sortable) {
@@ -723,6 +742,112 @@ function renderHome(container) {
     ref.off('value', handler);
     if (catSortable) { catSortable.destroy(); catSortable = null; }
   });
+}
+
+// ── 全文検索 ──────────────────────────────────────────
+function showSearchModal() {
+  if (document.getElementById('searchModal')) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'search-modal-overlay';
+  overlay.id = 'searchModal';
+  overlay.innerHTML = `
+    <div class="search-modal-box">
+      <div class="search-modal-header">
+        <span class="search-modal-title">全文検索</span>
+        <button class="search-modal-close" id="btnSearchClose">✕</button>
+      </div>
+      <div class="search-modal-form">
+        <input class="search-modal-input" id="searchInput" type="search" placeholder="キーワードを入力…" autocomplete="off" />
+        <button class="search-modal-run" id="btnSearchRun">検索</button>
+      </div>
+      <div class="search-results-area" id="searchResultsArea">
+        <div class="search-empty">キーワードを入力してください</div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  document.getElementById('btnSearchClose').onclick = close;
+
+  const input = document.getElementById('searchInput');
+  const runBtn = document.getElementById('btnSearchRun');
+  const resultsArea = document.getElementById('searchResultsArea');
+
+  const doSearch = async () => {
+    const kw = input.value.trim();
+    if (!kw) return;
+    resultsArea.innerHTML = '<div class="search-empty">検索中…</div>';
+    try {
+      const results = await performFullSearch(kw);
+      if (results.length === 0) {
+        resultsArea.innerHTML = '<div class="search-empty">一致するメモが見つかりませんでした</div>';
+        return;
+      }
+      resultsArea.innerHTML = '';
+      const countEl = document.createElement('div');
+      countEl.className = 'search-count';
+      countEl.textContent = `${results.length} 件見つかりました`;
+      resultsArea.appendChild(countEl);
+      results.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'search-result-item';
+        item.innerHTML = `
+          <div class="search-result-meta">
+            <span class="search-result-cat">${esc(r.catName)}</span>
+            <span class="search-result-sep">›</span>
+            <span class="search-result-card">${esc(r.cardName)}</span>
+            <span class="search-result-para">${r.paragraph}段落目</span>
+          </div>
+          <div class="search-result-excerpt">${buildHighlightedExcerpt(r.excerpt, kw)}</div>`;
+        item.onclick = () => {
+          state.pendingScrollToParagraph = r.paragraphIndex;
+          close();
+          goTo('editor', r.catId, r.artId);
+        };
+        resultsArea.appendChild(item);
+      });
+    } catch (_) {
+      resultsArea.innerHTML = '<div class="search-empty">エラーが発生しました</div>';
+    }
+  };
+
+  runBtn.onclick = doSearch;
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+  setTimeout(() => input.focus(), 100);
+}
+
+async function performFullSearch(keyword) {
+  const kw = keyword.toLowerCase();
+  const [artSnap, catSnap] = await Promise.all([
+    db.ref(`users/${state.uid}/articles`).once('value'),
+    db.ref(`users/${state.uid}/categories`).once('value'),
+  ]);
+  const categories = catSnap.val() || {};
+  const allArticles = artSnap.val() || {};
+  const results = [];
+  for (const [catId, articles] of Object.entries(allArticles)) {
+    if (!articles || typeof articles !== 'object') continue;
+    const catName = categories[catId]?.name || '不明なカテゴリ';
+    for (const [artId, article] of Object.entries(articles)) {
+      if (!article || typeof article !== 'object') continue;
+      const lines = htmlToLines(article.content || '');
+      const cardName = lines[0] || '（タイトルなし）';
+      lines.forEach((line, idx) => {
+        if (line.toLowerCase().includes(kw)) {
+          results.push({ catId, artId, catName, cardName, paragraph: idx + 1, paragraphIndex: idx, excerpt: line });
+        }
+      });
+    }
+  }
+  return results;
+}
+
+function buildHighlightedExcerpt(text, keyword) {
+  const escaped = esc(text);
+  const kwEsc = esc(keyword).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(kwEsc, 'gi'), m => `<mark class="search-highlight">${m}</mark>`);
 }
 
 // ── カテゴリ追加/編集モーダル（色選択統合版） ────────────
@@ -1585,6 +1710,7 @@ function renderEditor(container) {
         <span class="undo-icon">↩</span>
         <span class="undo-label">戻す</span>
       </div>
+      <div id="pasteHintBar" class="paste-hint-bar" style="display:none">貼り付け位置をタップしてください</div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
@@ -2283,6 +2409,20 @@ function renderEditor(container) {
     // Firebase コンテンツロード後に YouTube削除ボタンを再inject（setEditorMode時点では要素がまだ無い）
     if (proseMirrorEl.classList.contains('mode-view')) {
       refreshYoutubeDeleteButtons('view');
+    }
+    // 全文検索からジャンプしてきた場合は指定段落にスクロール
+    if (state.pendingScrollToParagraph !== undefined) {
+      const paraIdx = state.pendingScrollToParagraph;
+      delete state.pendingScrollToParagraph;
+      setTimeout(() => {
+        const pm = tiptapEditor?.view?.dom;
+        if (!pm) return;
+        const paras = Array.from(pm.children).filter(
+          el => !el.classList.contains('paste-insert-line') && !el.classList.contains('insert-line')
+        );
+        const target = paras[paraIdx];
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 400);
     }
   });
 
@@ -3894,19 +4034,23 @@ function updatePasteButtonState() {
   const cancelBtn = document.getElementById('btnPasteCancel');
   const attachBtn = document.getElementById('btnAttach');
   const delBtn = document.getElementById('btnDel');
+  const hintBar = document.getElementById('pasteHintBar');
   if (!pasteBtn) return;
   if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
     pasteBtn.style.display = 'flex';
     pasteBtn.classList.add('pulse-delete-active');
-    if (cancelBtn) cancelBtn.style.display = 'none'; // カット後は✕を非表示（貼り付けボタンのみ）
+    if (cancelBtn) cancelBtn.style.display = 'none';
     if (attachBtn) attachBtn.style.display = 'none';
     if (delBtn) delBtn.style.display = 'none';
+    if (hintBar) hintBar.style.display = 'block';
   } else {
     pasteBtn.style.display = 'none';
     pasteBtn.classList.remove('pulse-delete-active');
     if (cancelBtn) cancelBtn.style.display = 'none';
     if (attachBtn) attachBtn.style.display = '';
     if (delBtn) delBtn.style.display = '';
+    if (hintBar) hintBar.style.display = 'none';
+    removePasteMarker();
   }
 }
 
