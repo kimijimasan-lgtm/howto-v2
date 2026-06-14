@@ -183,14 +183,19 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 オレンジ→ピンクの「アップグレードする」ボタン + 「閉じる」ボタン。  
 Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホルダー（後で差し替え）。
 
+## UI詳細
+
+### パネル名入力フォーム（`#catInput` / `.modal-input`）
+- 文字色: `#ffffff`（白）、`font-weight: 700`（太字）
+- `showCategoryModal` で使用（新規作成・編集とも同じ input）
+
 ## スワイプジェスチャー
 
 ### `addSwipeBack`（右スワイプ → 前の画面へ）
 ```js
-const isStraightDown = dy >= 80 && dx < dy * 0.2;
-if (dx > 30 && !isStraightDown) onSwipe();
+if (dx > 30 && dy < dx * 2) onSwipe();
 ```
-- 真下（垂直から11度以内）以外の右方向ジェスチャーはすべて「前の画面へ戻る」
+- 水平から約63度以内の右方向ジェスチャーで「前の画面へ戻る」（一定の緩い角度で安定）
 - カード一覧→ホーム、エディター→カード一覧の両方に適用
 
 ### `bindParagraphSwipeEvents`（エディター内スワイプ）
@@ -208,11 +213,14 @@ if (dx > 30 && !isStraightDown) onSwipe();
 - 結果クリック → `state.pendingScrollToParagraph` / `state.pendingSearchKeyword` をセット → エディターで3秒点滅（`blinkSearchKeyword`）
 
 ## テキスト貼り付け処理（`handlePaste`）
-- 画像: 常に横取りして圧縮・挿入
+- 画像: 常に横取りして圧縮・挿入（縦画像は `max-height: 66vh` でiPhone画面2/3以下に表示）
 - テキスト: 常に横取りして `cleanMarkdownForPaste()` を通す
   - Markdown記法（`##`, `**`, `` ` ``, `-`, `>` 等）を除去
   - 連続する空行を最大1行に圧縮
 - 罫線テーブル文字（`│`, `┼` 等が3つ以上）: `cleanAndFormatBorderLines()` で整形
+  - 縦罫線（`│`, `├`, `└` 等）および後続の `─` を `\n` に変換（行ごとに分離）
+  - 横罫線のみの行（3文字以上）は削除
+  - 連続する空行は1行に圧縮
 
 ## stripTrailingEmptyP の実装
 ```js
@@ -231,9 +239,9 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=745, tiptap.bundle.js?v=1）
+index.html          — エントリポイント（app.js?v=746, tiptap.bundle.js?v=1）
 app.js              — アプリ全体（約4,000行）
-style.css           — スタイル（v=675）
+style.css           — スタイル（v=676）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -242,9 +250,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=675`
+- `style.css?v=676`
 - `tiptap.bundle.js?v=1`
-- `app.js?v=745`
+- `app.js?v=746`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
