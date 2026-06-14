@@ -4014,15 +4014,25 @@ async function copyTemplateToUser(uid) {
 
 // ── 開発者：現在のパネルをテンプレートとして保存 ─────────────
 async function saveCurrentDataAsTemplate() {
-  if (!confirm('現在のパネル全件を templates/default に上書き保存しますか？')) return;
+  const TEMPLATE_PANELS = ['メモ', '解説'];
+  if (!confirm(`「${TEMPLATE_PANELS.join('」「')}」パネルを templates/default に上書き保存しますか？`)) return;
 
   const uid = state.uid;
   const catsSnap = await db.ref(`users/${uid}/categories`).once('value');
   if (!catsSnap.exists()) { showToast('パネルがありません'); return; }
 
-  const categories = catsSnap.val();
-  const articles = {};
+  // 対象パネル名のみ絞り込む
+  const allCats = catsSnap.val();
+  const categories = Object.fromEntries(
+    Object.entries(allCats).filter(([, cat]) => TEMPLATE_PANELS.includes(cat.name))
+  );
 
+  if (Object.keys(categories).length === 0) {
+    showToast(`「${TEMPLATE_PANELS.join('」「')}」パネルが見つかりません`);
+    return;
+  }
+
+  const articles = {};
   await Promise.all(Object.keys(categories).map(async (catId) => {
     const artsSnap = await db.ref(`users/${uid}/articles/${catId}`).once('value');
     if (artsSnap.exists()) articles[catId] = artsSnap.val();
