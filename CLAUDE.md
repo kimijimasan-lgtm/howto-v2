@@ -15,6 +15,7 @@ GitHub Pages でホスティング: `https://kimijimasan-lgtm.github.io/howto-v2
 - `tiptap.bundle.js`（294KB、IIFE、`window.TipTapBundle` に export）
 - ビルド元: `.tiptap-build/entry.js`（esbuild）
 - エクスポート: `Editor`, `StarterKit`, `ImageExtension`, `YoutubeExtension`, `TaskList`, `TaskItem`
+- `ImageExtension` は `CustomImageExtension`（`class` 属性を per-image で保持できるよう extend 済み）
 
 ### 初期化（`renderEditor` 内）
 ```js
@@ -38,12 +39,35 @@ tiptapEditor = new TiptapEditor({
 ### TipTap関連の主要関数
 | 関数 | 役割 |
 |------|------|
-| `handleImageForTipTap(file)` | 画像圧縮(800px/JPEG0.75)→`chain().setImage()`で挿入 |
+| `_insertImageBlock(imgHtml)` | 画像HTMLを独立段落として挿入するコアヘルパー（後述） |
+| `insertSingleImageIntoTipTap(data)` | `_insertImageBlock` 経由で1枚挿入 |
+| `insertPortraitGroupIntoTipTap(imageData)` | `_insertImageBlock` 経由で複数縦画像を1段落に挿入 |
+| `handleMultipleImagesForTipTap(files)` | 複数画像を向き・枚数に応じてレイアウト分けして挿入 |
+| `handleImageForTipTap(file)` | 後方互換ラッパー → `insertSingleImageIntoTipTap` を呼ぶ |
+| `compressImageForLayout(file)` | 画像圧縮(800px/JPEG0.75)→`{src, w, h, isPortrait}` |
 | `getCleanEditorHTML(editor)` | `tiptapEditor.getHTML()` を返す |
 | `saveEditorContentDirectly()` | Firebase に即時保存 |
 | `isEditorEmpty()` | `tiptapEditor.isEmpty` を返す |
 | `initializeNativeParagraphActions(pm)` | ProseMirror domにスワイプ・SortableJS等をバインド |
 | `forceSaveEditorContent()` | 保存後 `tiptapEditor.destroy()` |
+
+### `_insertImageBlock` の挙動（重要）
+```js
+function _insertImageBlock(imgHtml) {
+  // カーソルが空段落 → その段落を置換（splitで余分な空段落を作らない）
+  // カーソルが文字段落 → 段落末尾の直後に挿入（テキストと混在しない）
+  // 挿入後: 直後にブロックが既存 → そこへ移動、末尾 → 空段落を1つ追加
+  const isEmpty = (curPara.childCount === 0 || hardBreakOnly);
+  tiptapEditor.chain()
+    .focus()
+    .insertContentAt(isEmpty ? { from: paraStart, to: paraEnd } : paraEnd, imgHtml)
+    .command(/* 直後のブロックへ移動 or 空段落1つだけ追加 */)
+    .run();
+}
+```
+- `setImage`（インライン挿入）を廃止し `insertContentAt` に統一
+- テキストと画像が同じ `<p>` に混入しない
+- 挿入のたびに空段落が積み重なる問題を解消
 
 ### DOM構造
 ```
@@ -59,6 +83,21 @@ tiptapEditor = new TiptapEditor({
   - 閲覧モード：「閲」（青）、編集モード：「編」（赤）
   - `#btnModeToggle` の `textContent` を切り替えるだけ（span不使用）
 - **Undoボタン**（`#btnUndo`）を編集モード時のみ表示（`setEditorMode` 内で `display` 切替）
+- **iOSキーボード「完了」で自動閲覧モード復帰**:
+  ```js
+  let _blurToViewTimer = null;
+  tiptapEditor.on('blur', () => {
+    _blurToViewTimer = setTimeout(() => {
+      if (state.editorMode !== 'edit') return;
+      if (!tiptapEditor || tiptapEditor.isDestroyed || tiptapEditor.isFocused) return;
+      setEditorMode('view');
+    }, 300);
+  });
+  tiptapEditor.on('focus', () => {
+    if (_blurToViewTimer) { clearTimeout(_blurToViewTimer); _blurToViewTimer = null; }
+    // ... 既存スクロール補正
+  });
+  ```
 
 ### iOSキーボード時のカーソルスクロール補正
 `tiptapEditor.on('focus')` + 500ms 後に実行：
@@ -155,10 +194,11 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 | `createSampleData(uid)` | フォールバック用静的サンプル。`TEMPLATE_EXPLANATION_CARDS` 定数を使用 |
 | `saveCurrentDataAsTemplate()` | 開発者専用。`TEMPLATE_EXPLANATION_CARDS` 定数から `templates/default` を生成・上書き |
 
-### 開発者専用「テンプレートを更新」ボタン
+### 「テンプレートを更新」モーダル（開発者専用）
 - 表示条件: `firebase.auth().currentUser?.email === 'kimijimasan@gmail.com'`
 - 場所: ホーム画面ヘッダー（サインアウトボタンの左隣、データベースアイコン）
-- 動作: `TEMPLATE_EXPLANATION_CARDS` の10枚＋固定「メモ」1枚を `templates/default` に書き込む
+- **チェックボックスはデフォルトで全チェック外し**（誤更新防止）
+- **パネルが多い場合はスクロール対応**（rows コンテナに `max-height:60vh; overflow-y:auto`）
 
 ### 除外条件
 - 開発者アカウント（`kimijimasan@gmail.com`）はテンプレートコピーをスキップ
@@ -189,6 +229,32 @@ Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホ�
 - 文字色: `#ffffff`（白）、`font-weight: 700`（太字）
 - `showCategoryModal` で使用（新規作成・編集とも同じ input）
 
+### カード一覧の並び替え
+- **デフォルト**: 名前の昇順（`sortField = 'name'`, `sortDir = 'asc'`）
+- 起動時に `updateSortUI()` を呼んでデフォルト状態をUIに反映
+
+### テーマ管理
+現在のテーマ一覧（`THEMES` 配列）:
+
+| id | ラベル | スウォッチ |
+|----|--------|----------|
+| dark | ダーク | `#0d1117` |
+| ocean | オーシャン | `#102840` |
+| purple | パープル | `#1e0e3a` |
+| mint | ミント | `#eaf7f2` |
+| sepia | セピア | `#f5edd8` |
+| light | ライト | `#f2f4f7` |
+| rose | ローズ | `#fce0ec` |
+| lavender | ラベンダー | `#ddd6fe` |
+| coral | コーラル | `#ffd4bf` |
+| gold | ゴールド | `#c9930a` |
+| charcoal | チャコール | `#3a3a3c` |
+| forest | フォレスト | `#0d2010` |
+
+- **デフォルトテーマ**: `'rose'`（`getCurrentTheme()` の fallback）
+- テーマ選択UIタイトル: `'テーマ色を選んでください'`
+- `applyTheme(name)` の削除リストに `'gold'`, `'charcoal'`, `'forest'` を含む
+
 ## スワイプジェスチャー
 
 ### `addSwipeBack`（右スワイプ → 前の画面へ）
@@ -206,6 +272,11 @@ if (dx > 30 && dy < dx * 2) onSwipe();
 - `onMove`: `dx > 20` で即キャンセル（右方向への動きで中断）
 - `onEnd`: `dy >= 80 && dx <= 20 && |dx| < dy * 0.2`（ほぼ垂直のみ）
 
+## ホーム画面パネルドラッグ（`catSortable`）
+- **スクロールジャンプ修正済み**: `onStart` で `grid.style.overflow = 'visible'` を設定していた行を削除
+- `scroll: true, scrollEl: grid, scrollSensitivity: 60, scrollSpeed: 12` を追加（SortableJS の明示的スクロール設定）
+- ドラッグ中はドラッグ開始位置を基準に追従スクロール（ページトップへジャンプしない）
+
 ## ホーム画面の全文検索（`showSearchModal`）
 - 右下の虫眼鏡FAB（`#btnSearchFab`）で起動
 - Firebase から全カテゴリ・全カードを並列取得 (`Promise.all`)
@@ -221,6 +292,54 @@ if (dx > 30 && dy < dx * 2) onSwipe();
   - 縦罫線（`│`, `├`, `└` 等）および後続の `─` を `\n` に変換（行ごとに分離）
   - 横罫線のみの行（3文字以上）は削除
   - 連続する空行は1行に圧縮
+
+## 画像レイアウト
+
+### 縦画像（`portrait-img`）・横画像（`landscape-img`）のクラス付与
+- `compressImageForLayout(file)` で `isPortrait` を判定
+- `_insertImageBlock` 経由で `<img class="portrait-img" ...>` or `<img class="landscape-img" ...>` を挿入
+- TipTap の `CustomImageExtension` が `class` 属性を per-image で保持・復元
+
+### CSS レイアウト
+```css
+/* 縦画像（単独・グループ共通の基準サイズ） */
+img.inserted-img.portrait-img {
+  width: calc(50% - 2px);
+  max-height: 66vh;
+  display: block;
+}
+
+/* 横画像 */
+img.inserted-img.landscape-img {
+  width: 100%;
+  max-height: none;
+}
+
+/* 縦画像を含む段落 → flex で自動2列レイアウト（枚数問わず） */
+.editor-content p:has(> img.portrait-img) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.editor-content p:has(> img.portrait-img) > img.inserted-img.portrait-img {
+  flex: 0 0 calc(50% - 2px);
+  width: calc(50% - 2px);
+  max-height: 66vh;
+  border-radius: 8px;
+}
+```
+
+- 1枚: 50%幅で左寄せ
+- 2枚: 各50%で横並び（flex で自動）
+- 3枚: 上段2枚・下段1枚
+- 4枚: 2×2グリッド
+- `:has(> img.portrait-img)` を使用（子要素の枚数に関係なく適用）
+
+### `preprocessHTMLForTipTap` でのクラス保持（重要）
+Firebase から読み込んだHTMLを `setContent` に渡す前処理:
+- `<img>` の `contenteditable` 属性と `inserted-img` クラスは除去
+- **`portrait-img` / `landscape-img` クラスは保持する**（除去すると再表示時にレイアウトが崩れる）
+- テキストと画像が混在する `<p>` を分割する際、**連続する `portrait-img` は同一 `<p>` に保持**（グループを維持）
 
 ## stripTrailingEmptyP の実装
 ```js
@@ -239,9 +358,9 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=746, tiptap.bundle.js?v=1）
+index.html          — エントリポイント（app.js?v=756, tiptap.bundle.js?v=2）
 app.js              — アプリ全体（約4,000行）
-style.css           — スタイル（v=676）
+style.css           — スタイル（v=679）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -250,9 +369,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=676`
-- `tiptap.bundle.js?v=1`
-- `app.js?v=746`
+- `style.css?v=679`
+- `tiptap.bundle.js?v=2`
+- `app.js?v=756`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
