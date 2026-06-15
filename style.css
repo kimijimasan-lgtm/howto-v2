@@ -1583,33 +1583,20 @@ img.inserted-img.landscape-img {
   height: auto;
 }
 
-/* ── 縦画像グループレイアウト（CSS :has() 使用） ── */
+/* ── 縦画像グループレイアウト ── */
 
-/* 縦2枚横並び */
-.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(2)) {
+/* 縦画像を含む段落: 枚数問わず flex で2列横並び */
+.editor-content p:has(> img.portrait-img) {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin: 0.75rem 0;
-}
-.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(2)) > img.inserted-img {
-  flex: 1 1 0;
-  min-width: 0;
-  width: 0;
-  height: auto;
-  max-height: 66vh;
-  margin: 0;
-  border-radius: 8px;
 }
 
-/* 縦2×2グリッド */
-.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(4)) {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  margin: 0.75rem 0;
-}
-.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(4)) > img.inserted-img {
-  width: 100%;
+/* flex段落内の縦画像: 50%幅固定（1枚でも2枚でも同サイズ） */
+.editor-content p:has(> img.portrait-img) > img.inserted-img.portrait-img {
+  flex: 0 0 calc(50% - 2px);
+  width: calc(50% - 2px);
   height: auto;
   max-height: 66vh;
   margin: 0;
