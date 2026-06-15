@@ -1523,6 +1523,48 @@ body {
   cursor: zoom-in; /* タップで拡大できることを視覚的に示す */
 }
 
+/* 横画像: 高さ制限なし・幅100% */
+img.inserted-img.landscape-img {
+  max-height: none;
+  width: 100%;
+  height: auto;
+}
+
+/* ── 縦画像グループレイアウト（CSS :has() 使用） ── */
+
+/* 縦2枚横並び */
+.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(2)) {
+  display: flex;
+  gap: 4px;
+  margin: 0.75rem 0;
+}
+.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(2)) > img.inserted-img {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  max-height: 66vh;
+  height: auto;
+  object-fit: contain;
+  margin: 0;
+  border-radius: 8px;
+}
+
+/* 縦2×2グリッド */
+.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(4)) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 0.75rem 0;
+}
+.editor-content p:has(> img.portrait-img:nth-child(1):nth-last-child(4)) > img.inserted-img {
+  width: 100%;
+  height: auto;
+  max-height: 66vh;
+  object-fit: contain;
+  margin: 0;
+  border-radius: 8px;
+}
+
 /* 画像リサイズコントロールをブラウザ標準で強制非表示にするハック */
 .editor-content img::-webkit-resizer,
 .editor-content img::-webkit-inner-spin-button {

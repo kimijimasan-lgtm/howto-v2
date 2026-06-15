@@ -2022,11 +2022,9 @@ function renderEditor(container) {
       // 挿入前のHTMLを退避 (Undo用)
       lastDeletedContent = tiptapEditor.getHTML();
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.type.indexOf('image') !== -1) {
-          await handleImageForTipTap(file);
-        }
+      const imageFiles = [...files].filter(f => f.type.indexOf('image') !== -1);
+      if (imageFiles.length > 0) {
+        await handleMultipleImagesForTipTap(imageFiles);
       }
 
       state.savedRange = null;
@@ -2178,14 +2176,18 @@ function renderEditor(container) {
         const items = event.clipboardData?.items;
         if (!items) return false;
 
-        // 画像貼り付けを横取りして圧縮・挿入
+        // 画像貼り付けを横取りして圧縮・グループ挿入
+        const imageFiles = [];
         for (let i = 0; i < items.length; i++) {
           if (items[i].type.indexOf('image') !== -1) {
-            event.preventDefault();
             const file = items[i].getAsFile();
-            if (file) handleImageForTipTap(file);
-            return true;
+            if (file) imageFiles.push(file);
           }
+        }
+        if (imageFiles.length > 0) {
+          event.preventDefault();
+          handleMultipleImagesForTipTap(imageFiles);
+          return true;
         }
 
         const text = event.clipboardData?.getData('text/plain') || '';
@@ -2564,54 +2566,119 @@ function renderEditor(container) {
 
 }
 
-// ── TipTap用画像圧縮・挿入ヘルパー ─────────────────
-function handleImageForTipTap(file) {
-  return new Promise((resolve) => {
+// ── TipTap用画像圧縮・レイアウト挿入ヘルパー群 ───────────────
+
+// 画像ファイルを圧縮して {src, w, h, isPortrait} を返す
+function compressImageForLayout(file) {
+  return new Promise(resolve => {
     const reader = new FileReader();
     reader.onload = evt => {
-      const tempImg = new Image();
-      tempImg.onload = () => {
+      const img = new Image();
+      img.onload = () => {
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
         const MAX_SIZE = 800;
-        let w = tempImg.width, h = tempImg.height;
+        let w = img.width, h = img.height;
         if (w > MAX_SIZE || h > MAX_SIZE) {
           if (w > h) { h = Math.round(h * MAX_SIZE / w); w = MAX_SIZE; }
           else { w = Math.round(w * MAX_SIZE / h); h = MAX_SIZE; }
         }
         canvas.width = w; canvas.height = h;
-        ctx.drawImage(tempImg, 0, 0, w, h);
-        const src = canvas.toDataURL('image/jpeg', 0.75);
-        if (tiptapEditor) {
-          tiptapEditor.chain()
-            .focus()
-            .setImage({ src, class: 'inserted-img' })
-            .command(({ tr, state, dispatch }) => {
-              // 画像の親段落の直後に空段落を追加（続けて入力できるように）
-              // splitBlock() は YouTube ノード境界などで RangeError を起こすため
-              // setImage 後のカーソル位置から親段落末端を求めて挿入する
-              if (!dispatch) return true;
-              try {
-                const { from } = tr.selection;
-                const $from = tr.doc.resolve(from);
-                // 画像の親段落の直後の位置（末尾段落なら content.size と等しくなる）
-                const insertPos = $from.after($from.depth);
-                if (insertPos > 0 && insertPos <= tr.doc.content.size) {
-                  tr.insert(insertPos, state.schema.nodes.paragraph.create());
-                  const $pos = tr.doc.resolve(insertPos + 1);
-                  tr.setSelection(state.selection.constructor.near($pos));
-                }
-              } catch (e) { /* 位置計算失敗時は段落追加をスキップ */ }
-              return true;
-            })
-            .run();
-        }
-        resolve();
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve({ src: canvas.toDataURL('image/jpeg', 0.75), w, h, isPortrait: h > w });
       };
-      tempImg.src = evt.target.result;
+      img.src = evt.target.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+// 1枚の画像をTipTapに挿入（portrait/landscape に応じたクラスを付与）
+function insertSingleImageIntoTipTap(data) {
+  return new Promise(resolve => {
+    if (!tiptapEditor) { resolve(); return; }
+    const cls = data.isPortrait ? 'portrait-img' : 'landscape-img';
+    tiptapEditor.chain()
+      .focus()
+      .setImage({ src: data.src, class: cls })
+      .command(({ tr, state, dispatch }) => {
+        // 画像の親段落の直後に空段落を追加（続けて入力できるように）
+        // splitBlock() は YouTube ノード境界などで RangeError を起こすため
+        // setImage 後のカーソル位置から親段落末端を求めて挿入する
+        if (!dispatch) return true;
+        try {
+          const { from } = tr.selection;
+          const $from = tr.doc.resolve(from);
+          const insertPos = $from.after($from.depth);
+          if (insertPos > 0 && insertPos <= tr.doc.content.size) {
+            tr.insert(insertPos, state.schema.nodes.paragraph.create());
+            const $pos = tr.doc.resolve(insertPos + 1);
+            tr.setSelection(state.selection.constructor.near($pos));
+          }
+        } catch (e) { /* 位置計算失敗時は段落追加をスキップ */ }
+        return true;
+      })
+      .run();
+    resolve();
+  });
+}
+
+// 縦画像をグループ（2枚 or 4枚）として1段落にまとめて挿入
+function insertPortraitGroupIntoTipTap(imageData) {
+  if (!tiptapEditor) return;
+  const imgHtml = imageData.map(d => `<img class="portrait-img" src="${d.src}">`).join('');
+  tiptapEditor.chain()
+    .focus()
+    .insertContent(`<p>${imgHtml}</p>`)
+    .command(({ tr, state, dispatch }) => {
+      if (!dispatch) return true;
+      try {
+        const { from } = tr.selection;
+        const $from = tr.doc.resolve(from);
+        const insertPos = $from.after($from.depth);
+        if (insertPos > 0 && insertPos <= tr.doc.content.size) {
+          tr.insert(insertPos, state.schema.nodes.paragraph.create());
+          const $pos = tr.doc.resolve(insertPos + 1);
+          tr.setSelection(state.selection.constructor.near($pos));
+        }
+      } catch (e) {}
+      return true;
+    })
+    .run();
+}
+
+// 複数画像を向き・枚数に応じてレイアウト分けして挿入
+async function handleMultipleImagesForTipTap(files) {
+  const imageData = await Promise.all(files.map(compressImageForLayout));
+  const count = imageData.length;
+  if (count === 0) return;
+
+  const allPortrait = imageData.every(d => d.isPortrait);
+
+  // 1枚 or 縦横混在: 個別に縦積み
+  if (!allPortrait || count === 1) {
+    for (const d of imageData) {
+      await insertSingleImageIntoTipTap(d);
+    }
+    return;
+  }
+
+  // 縦画像のみ: 枚数に応じたグループレイアウト
+  if (count === 2) {
+    insertPortraitGroupIntoTipTap(imageData);
+  } else if (count === 3) {
+    insertPortraitGroupIntoTipTap(imageData.slice(0, 2));
+    await insertSingleImageIntoTipTap(imageData[2]);
+  } else {
+    insertPortraitGroupIntoTipTap(imageData.slice(0, 4));
+    for (const d of imageData.slice(4)) {
+      await insertSingleImageIntoTipTap(d);
+    }
+  }
+}
+
+// ファイル入力・クリップアイコンからの単体挿入用（後方互換）
+function handleImageForTipTap(file) {
+  return compressImageForLayout(file).then(d => insertSingleImageIntoTipTap(d));
 }
 
 
