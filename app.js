@@ -4068,7 +4068,7 @@ async function saveCurrentDataAsTemplate() {
       const artCount = artData?.[key] ? Object.keys(artData[key]).length : 0;
       return `
         <label style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;border-radius:10px;cursor:pointer;background:rgba(255,255,255,0.04);margin-bottom:0.4rem;">
-          <input type="checkbox" data-key="${key}" checked style="width:18px;height:18px;accent-color:#6366f1;cursor:pointer;flex-shrink:0;">
+          <input type="checkbox" data-key="${key}" style="width:18px;height:18px;accent-color:#6366f1;cursor:pointer;flex-shrink:0;">
           <span style="flex:1;color:#fff;font-size:0.9rem;font-weight:600;">${cat.name}</span>
           <span style="color:rgba(255,255,255,0.4);font-size:0.8rem;">${artCount}枚</span>
         </label>`;
@@ -4078,7 +4078,7 @@ async function saveCurrentDataAsTemplate() {
       <div class="modal-overlay" id="templateSelectModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
         <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:1.75rem 1.5rem;max-width:320px;width:90%;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
           <p style="color:#fff;font-size:0.95rem;font-weight:700;margin-bottom:1rem;text-align:center;">テンプレートに含めるパネルを選択</p>
-          <div style="margin-bottom:1.25rem;">${rows}</div>
+          <div style="max-height:60vh;overflow-y:auto;margin-bottom:1.25rem;padding-right:2px;">${rows}</div>
           <button id="btnTemplateSave" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">保存する</button>
           <button id="btnTemplateCancel" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">キャンセル</button>
         </div>
