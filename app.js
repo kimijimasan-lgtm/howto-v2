@@ -3333,15 +3333,20 @@ function preprocessHTMLForTipTap(html) {
   const logs = [];
   let result = html;
 
-  // img の contenteditable / class を除去
+  // img の contenteditable / inserted-img class を除去（portrait-img / landscape-img は保持）
   let imgCount = 0;
   result = result.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
     imgCount++;
     attrs = attrs.replace(/\s+contenteditable="[^"]*"/gi, '');
-    attrs = attrs.replace(/\s+class="[^"]*"/gi, '');
+    attrs = attrs.replace(/(\s+class="([^"]*)")/gi, (_m, _full, cls) => {
+      const keep = cls.split(/\s+/)
+        .filter(c => c === 'portrait-img' || c === 'landscape-img')
+        .join(' ');
+      return keep ? ` class="${keep}"` : '';
+    });
     return '<img' + attrs + '>';
   });
-  if (imgCount) logs.push('[img] ' + imgCount + ' 件: contenteditable / class 除去');
+  if (imgCount) logs.push('[img] ' + imgCount + ' 件: contenteditable / class 処理（portrait-img/landscape-img 保持）');
 
   // <p class="..."> の class を除去
   result = result.replace(/<p(\s[^>]*)>/gi, (match, attrs) => {
@@ -3362,7 +3367,7 @@ function preprocessHTMLForTipTap(html) {
   });
 
   // <p>内にimgとテキストが混在している場合、imgを別<p>に分割
-  // 例: <p><img>テキスト</p> → <p><img></p><p>テキスト</p>
+  // portrait-img は連続するものを同一<p>にまとめる（グループを維持）
   {
     const splitDiv = document.createElement('div');
     splitDiv.innerHTML = result;
@@ -3377,26 +3382,47 @@ function preprocessHTMLForTipTap(html) {
       );
       if (!hasOther) return;
       const newPs = [];
-      let cur = null;
+      let curPortraits = [];
+      let curText = null;
+      const flushPortraits = () => {
+        if (curPortraits.length === 0) return;
+        const imgP = document.createElement('p');
+        curPortraits.forEach(img => imgP.appendChild(img.cloneNode(true)));
+        newPs.push(imgP);
+        curPortraits = [];
+      };
+      const flushText = () => {
+        if (!curText) return;
+        newPs.push(curText);
+        curText = null;
+      };
       childNodes.forEach(node => {
         if (node.nodeType === 1 && node.tagName === 'IMG') {
-          if (cur) { newPs.push(cur); cur = null; }
-          const imgP = document.createElement('p');
-          imgP.appendChild(node.cloneNode(true));
-          newPs.push(imgP);
+          const cls = node.getAttribute('class') || '';
+          flushText();
+          if (cls.includes('portrait-img')) {
+            curPortraits.push(node);
+          } else {
+            flushPortraits();
+            const imgP = document.createElement('p');
+            imgP.appendChild(node.cloneNode(true));
+            newPs.push(imgP);
+          }
         } else {
-          if (!cur) cur = document.createElement('p');
-          cur.appendChild(node.cloneNode(true));
+          flushPortraits();
+          if (!curText) curText = document.createElement('p');
+          curText.appendChild(node.cloneNode(true));
         }
       });
-      if (cur) newPs.push(cur);
+      flushPortraits();
+      flushText();
       newPs.forEach(np => p.parentNode.insertBefore(np, p));
       p.parentNode.removeChild(p);
       splitCount++;
     });
     if (splitCount > 0) {
       result = splitDiv.innerHTML;
-      logs.push('[split] img混在段落を ' + splitCount + ' 件分割');
+      logs.push('[split] img混在段落を ' + splitCount + ' 件分割（portrait-img グループ維持）');
     }
   }
 
