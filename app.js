@@ -61,18 +61,21 @@ const THEMES = [
   { id: 'rose',     label: 'ローズ',         swatch: '#fce0ec' },
   { id: 'lavender', label: 'ラベンダー',     swatch: '#ddd6fe' },
   { id: 'coral',    label: 'コーラル',       swatch: '#ffd4bf' },
+  { id: 'gold',     label: 'ゴールド',       swatch: '#c9930a' },
+  { id: 'charcoal', label: 'チャコール',     swatch: '#3a3a3c' },
+  { id: 'forest',   label: 'フォレスト',     swatch: '#0d2010' },
 ];
 
 function applyTheme(name) {
   const html = document.documentElement;
-  ['dark', 'ocean', 'purple', 'mint', 'sepia', 'light', 'rose', 'lavender', 'coral']
+  ['dark', 'ocean', 'purple', 'mint', 'sepia', 'light', 'rose', 'lavender', 'coral', 'gold', 'charcoal', 'forest']
     .forEach(id => html.classList.remove('theme-' + id));
   if (name && name !== 'dark') html.classList.add('theme-' + name);
   localStorage.setItem('app-theme', name || 'dark');
 }
 
 function getCurrentTheme() {
-  return localStorage.getItem('app-theme') || 'dark';
+  return localStorage.getItem('app-theme') || 'rose';
 }
 
 function showThemePicker() {
@@ -81,7 +84,7 @@ function showThemePicker() {
   overlay.className = 'theme-picker-overlay';
   overlay.innerHTML = `
     <div class="theme-picker-sheet">
-      <div class="theme-picker-title">テーマ</div>
+      <div class="theme-picker-title">テーマ色を選んでください</div>
       <div class="theme-picker-grid">
         ${THEMES.map(t => `
           <button class="theme-swatch-btn${t.id === current ? ' active' : ''}" data-theme="${t.id}">
@@ -784,14 +787,18 @@ function renderHome(container) {
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
         fallbackClass: 'sortable-fallback-simple', // 拡大・ズレのない極めてシンプルな指追従スタイル
+        scroll: true,          // ドラッグ中のオートスクロール有効
+        scrollEl: grid,        // スクロール対象を grid に明示（overflow-y:auto を維持したまま追従）
+        scrollSensitivity: 60,
+        scrollSpeed: 12,
         onStart: (evt) => {
-          grid.style.overflow = 'visible';
+          // overflow を変えずにスクロール位置を保持したまま drag を開始する
+          // （'visible' にするとスクロール量がリセットされてパネルがトップに飛ぶため）
           if (evt.item) {
             evt.item.classList.add('category-drag-start-flash');
           }
         },
         onEnd: async evt => {
-          grid.style.overflow = '';
           if (evt.item) {
             evt.item.classList.remove('category-drag-start-flash');
             evt.item.classList.add('category-drag-end-flash');
@@ -1090,7 +1097,7 @@ function renderCategory(container) {
   document.getElementById('btnExportAll').onclick = () => showExportAllModal(state.categoryId);
 
   // ─── ソート状態 ───
-  let sortField = null; // 'name' | 'date' | null
+  let sortField = 'name'; // 'name' | 'date' | null（デフォルト: 名前昇順）
   let sortDir   = 'asc';
   let lastArtsData = null;
   let rerenderArts = null;
@@ -1389,6 +1396,7 @@ function renderCategory(container) {
       if (rerenderArts) rerenderArts();
     };
   });
+  updateSortUI(); // デフォルトソート状態をUIに反映
 }
 
 // カードを別カテゴリへ移動するモーダル
@@ -2315,8 +2323,22 @@ function renderEditor(container) {
     },
   });
 
+  // blurイベント: フォーカスが外れたとき（iOSキーボードの「完了/承認」ボタン押下など）に
+  // 編集モードなら閲覧モードへ自動切替する。
+  // ヘッダーボタン操作で一時的に blur が起きても focus が戻れば切替をキャンセルする。
+  let _blurToViewTimer = null;
+  tiptapEditor.on('blur', () => {
+    _blurToViewTimer = setTimeout(() => {
+      _blurToViewTimer = null;
+      if (state.editorMode !== 'edit') return;
+      if (!tiptapEditor || tiptapEditor.isDestroyed || tiptapEditor.isFocused) return;
+      setEditorMode('view');
+    }, 300);
+  });
+
   // focusイベント: iOSキーボード表示完了を待って（500ms）カーソルを見える位置にスクロール
   tiptapEditor.on('focus', () => {
+    if (_blurToViewTimer) { clearTimeout(_blurToViewTimer); _blurToViewTimer = null; }
     setTimeout(() => {
       if (!tiptapEditor || tiptapEditor.isDestroyed) return;
       try {

@@ -137,6 +137,51 @@ html.theme-coral {
   --accent-dim:    rgba(234,88,12,0.15);
 }
 
+/* ── テーマ: ゴールド ── */
+html.theme-gold {
+  --bg-outer:      #0f0b00;
+  --bg:            #1e1500;
+  --bg-card:       rgba(212,160,10,0.09);
+  --bg-card-hover: rgba(212,160,10,0.16);
+  --bg-header:     rgba(30,21,0,0.93);
+  --border:        rgba(212,160,10,0.20);
+  --text-primary:  #f5d060;
+  --text-sub:      #b09030;
+  --text-muted:    #604800;
+  --accent:        #d4a017;
+  --accent-dim:    rgba(212,160,23,0.18);
+}
+
+/* ── テーマ: チャコール ── */
+html.theme-charcoal {
+  --bg-outer:      #0a0a0c;
+  --bg:            #1c1c1e;
+  --bg-card:       rgba(160,160,170,0.07);
+  --bg-card-hover: rgba(160,160,170,0.13);
+  --bg-header:     rgba(28,28,30,0.93);
+  --border:        rgba(200,200,210,0.12);
+  --text-primary:  #d1d5db;
+  --text-sub:      #6b7280;
+  --text-muted:    #374151;
+  --accent:        #9ca3af;
+  --accent-dim:    rgba(156,163,175,0.15);
+}
+
+/* ── テーマ: フォレスト ── */
+html.theme-forest {
+  --bg-outer:      #040f06;
+  --bg:            #0a1a0c;
+  --bg-card:       rgba(34,197,94,0.08);
+  --bg-card-hover: rgba(34,197,94,0.14);
+  --bg-header:     rgba(10,26,12,0.93);
+  --border:        rgba(34,197,94,0.16);
+  --text-primary:  #86efac;
+  --text-sub:      #16a34a;
+  --text-muted:    #0a4020;
+  --accent:        #22c55e;
+  --accent-dim:    rgba(34,197,94,0.18);
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -1523,6 +1568,14 @@ body {
   cursor: zoom-in; /* タップで拡大できることを視覚的に示す */
 }
 
+/* 縦画像: 2枚横並び時と同じ基準サイズ（50%幅）で統一 */
+img.inserted-img.portrait-img {
+  width: calc(50% - 2px);
+  height: auto;
+  max-height: 66vh;
+  display: block;
+}
+
 /* 横画像: 高さ制限なし・幅100% */
 img.inserted-img.landscape-img {
   max-height: none;
@@ -1542,9 +1595,8 @@ img.inserted-img.landscape-img {
   flex: 1 1 0;
   min-width: 0;
   width: 0;
-  max-height: 66vh;
   height: auto;
-  object-fit: contain;
+  max-height: 66vh;
   margin: 0;
   border-radius: 8px;
 }
@@ -1560,7 +1612,6 @@ img.inserted-img.landscape-img {
   width: 100%;
   height: auto;
   max-height: 66vh;
-  object-fit: contain;
   margin: 0;
   border-radius: 8px;
 }
