@@ -2614,32 +2614,52 @@ function compressImageForLayout(file) {
   });
 }
 
+// 画像HTMLをエディターに独立した段落として挿入するコアヘルパー
+// ・カーソルが空段落 → その段落を置換（split で余分な空段落を作らない）
+// ・カーソルが文字段落 → 段落末尾の直後に挿入（テキストと混在しない）
+// ・挿入後のカーソルは「直後のブロック（なければ新規空段落）」へ移動
+function _insertImageBlock(imgHtml) {
+  if (!tiptapEditor) return;
+  const { state } = tiptapEditor;
+  const $from    = state.doc.resolve(state.selection.from);
+  if ($from.depth < 1) return;
+
+  const paraStart = $from.before(1);
+  const paraEnd   = $from.after(1);
+  const curPara   = $from.node(1);
+  const isEmpty   = curPara.type.name === 'paragraph' &&
+    (curPara.childCount === 0 ||
+     (curPara.childCount === 1 && curPara.firstChild.type.name === 'hardBreak'));
+
+  tiptapEditor.chain()
+    .focus()
+    .insertContentAt(isEmpty ? { from: paraStart, to: paraEnd } : paraEnd, imgHtml)
+    .command(({ tr, state: st, dispatch }) => {
+      if (!dispatch) return true;
+      try {
+        const { from } = tr.selection;
+        const $f  = tr.doc.resolve(from);
+        const nxt = $f.after($f.depth >= 1 ? 1 : 0);
+        if (nxt < tr.doc.content.size) {
+          // 直後に既存ブロックがあれば余分な空段落を追加せずそこへ移動
+          tr.setSelection(st.selection.constructor.near(tr.doc.resolve(nxt + 1)));
+        } else {
+          // ドキュメント末尾のときだけ空段落を1つ追加
+          tr.insert(nxt, st.schema.nodes.paragraph.create());
+          tr.setSelection(st.selection.constructor.near(tr.doc.resolve(nxt + 1)));
+        }
+      } catch (e) {}
+      return true;
+    })
+    .run();
+}
+
 // 1枚の画像をTipTapに挿入（portrait/landscape に応じたクラスを付与）
 function insertSingleImageIntoTipTap(data) {
   return new Promise(resolve => {
     if (!tiptapEditor) { resolve(); return; }
     const cls = data.isPortrait ? 'portrait-img' : 'landscape-img';
-    tiptapEditor.chain()
-      .focus()
-      .setImage({ src: data.src, class: cls })
-      .command(({ tr, state, dispatch }) => {
-        // 画像の親段落の直後に空段落を追加（続けて入力できるように）
-        // splitBlock() は YouTube ノード境界などで RangeError を起こすため
-        // setImage 後のカーソル位置から親段落末端を求めて挿入する
-        if (!dispatch) return true;
-        try {
-          const { from } = tr.selection;
-          const $from = tr.doc.resolve(from);
-          const insertPos = $from.after($from.depth);
-          if (insertPos > 0 && insertPos <= tr.doc.content.size) {
-            tr.insert(insertPos, state.schema.nodes.paragraph.create());
-            const $pos = tr.doc.resolve(insertPos + 1);
-            tr.setSelection(state.selection.constructor.near($pos));
-          }
-        } catch (e) { /* 位置計算失敗時は段落追加をスキップ */ }
-        return true;
-      })
-      .run();
+    _insertImageBlock(`<p><img class="${cls}" src="${data.src}"></p>`);
     resolve();
   });
 }
@@ -2648,24 +2668,7 @@ function insertSingleImageIntoTipTap(data) {
 function insertPortraitGroupIntoTipTap(imageData) {
   if (!tiptapEditor) return;
   const imgHtml = imageData.map(d => `<img class="portrait-img" src="${d.src}">`).join('');
-  tiptapEditor.chain()
-    .focus()
-    .insertContent(`<p>${imgHtml}</p>`)
-    .command(({ tr, state, dispatch }) => {
-      if (!dispatch) return true;
-      try {
-        const { from } = tr.selection;
-        const $from = tr.doc.resolve(from);
-        const insertPos = $from.after($from.depth);
-        if (insertPos > 0 && insertPos <= tr.doc.content.size) {
-          tr.insert(insertPos, state.schema.nodes.paragraph.create());
-          const $pos = tr.doc.resolve(insertPos + 1);
-          tr.setSelection(state.selection.constructor.near($pos));
-        }
-      } catch (e) {}
-      return true;
-    })
-    .run();
+  _insertImageBlock(`<p>${imgHtml}</p>`);
 }
 
 // 複数画像を向き・枚数に応じてレイアウト分けして挿入
