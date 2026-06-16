@@ -952,6 +952,13 @@ body {
   border: 1px solid transparent;
 }
 
+/* 1行目（タイトル）を見出しサイズで表示 */
+.editor-content .ProseMirror > p:first-child:not(:has(> img)) {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 /* チェック選択された段落のプレミアムなハイライト表示 */
 .editor-content p.para-selected,
 .editor-content .ProseMirror p.para-selected {

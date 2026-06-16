@@ -141,7 +141,7 @@ const COLORS = [
 const DEFAULT_GRAD = COLORS[0].grad;
 
 // ── 状態管理 ─────────────────────────────────
-let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view' };
+let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view', isPremium: false, isAnonymous: false };
 let activePasteMarkerP = null;
 let activePasteLocation = null;
 let isComposing = false;
@@ -277,7 +277,7 @@ function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
   if (saveTimer) clearTimeout(saveTimer);
   if (tiptapEditor) { tiptapEditor.destroy(); tiptapEditor = null; }
 
-  state = { screen, categoryId, articleId, uid: state.uid };
+  state = { screen, categoryId, articleId, uid: state.uid, isPremium: state.isPremium, isAnonymous: state.isAnonymous };
 
   const app = document.getElementById('app');
   app.classList.remove('visible');
@@ -314,7 +314,7 @@ function goBack(skipSave = false) {
   if (saveTimer) clearTimeout(saveTimer);
   if (tiptapEditor) { tiptapEditor.destroy(); tiptapEditor = null; }
 
-  state = { screen: prev.screen, categoryId: prev.categoryId, articleId: prev.articleId, uid: state.uid };
+  state = { screen: prev.screen, categoryId: prev.categoryId, articleId: prev.articleId, uid: state.uid, isPremium: state.isPremium, isAnonymous: state.isAnonymous };
 
   const app = document.getElementById('app');
   app.classList.remove('visible');
@@ -346,8 +346,8 @@ function addSwipeBack(el, onSwipe) {
 
     const dx = e.changedTouches[0].clientX - sx;
     const dy = Math.abs(e.changedTouches[0].clientY - sy);
-    // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべてホームへ
-    if (dx > 30 && dy < dx * 3) onSwipe();
+    // 右方向ジェスチャーは甘めに判定（戻し漏れを防ぐ）
+    if (dx > 20 && dy < dx * 5) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
   el.addEventListener('touchend',   onEnd,   { passive: true });
@@ -390,14 +390,14 @@ function addPullToCreate(el) {
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
 
-    // 右方向に20px以上動いたら即時キャンセル（右スワイプでのホーム戻りを妨げない）
-    if (dx > 20) {
+    // 右方向に10px以上動いたら即時キャンセル（右スワイプでのホーム戻りを確実に優先）
+    if (dx > 10) {
       isCancelled = true;
       if (indicator) { indicator.remove(); indicator = null; }
       return;
     }
-    // 横ブレを監視：横スワイプ等の動作（横移動が15pxを超え、かつ縦移動の40%以上）を検知したら即時キャンセル
-    if (Math.abs(dx) > 15 && Math.abs(dx) > dy * 0.4) {
+    // 横ブレを監視：横スワイプ等の動作（横移動が10pxを超え、かつ縦移動の40%以上）を検知したら即時キャンセル
+    if (Math.abs(dx) > 10 && Math.abs(dx) > dy * 0.4) {
       isCancelled = true;
       if (indicator) { indicator.remove(); indicator = null; }
       return;
@@ -421,8 +421,8 @@ function addPullToCreate(el) {
     const dy = e.changedTouches[0].clientY - startY;
     if (indicator) { indicator.remove(); indicator = null; }
     
-    // 最終判定：真下方向（右への移動が20px以下かつ横ブレが縦の20%未満）のみ新規作成
-    if (dy >= THRESHOLD && dx <= 20 && Math.abs(dx) < dy * 0.2) {
+    // 最終判定：真下方向（右への移動が10px以下かつ横ブレが縦の15%未満）のみ新規作成
+    if (dy >= THRESHOLD && dx <= 10 && Math.abs(dx) < dy * 0.15) {
       createArticle(true);
     }
     startY = -1;
@@ -1020,13 +1020,13 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
     if (catId) {
       await db.ref(`users/${state.uid}/categories/${catId}`).update({ name, color: selectedGrad });
     } else {
-      // 無料ユーザーのパネル上限チェック（3個まで）
-      if (!catId && !state.isPremium) {
+      // ゲストのパネル上限チェック（3個まで）
+      if (!catId && state.isAnonymous) {
         const snapshot = await db.ref(`users/${state.uid}/categories`).once('value');
         const currentCount = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
         if (currentCount >= 3) {
           close();
-          showLimitModal('無料プランはカテゴリ3つまでです。\nアップグレードしてさらに追加できます。');
+          showLimitModal('ゲストはパネル3つまでです。\nGoogleアカウントでログインすると無制限になります。');
           return;
         }
       }
@@ -1739,12 +1739,12 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
 }
 
 async function createArticle(noTransition = false) {
-  // 無料プランのカード上限チェック（10枚まで）
-  if (!state.isPremium) {
+  // ゲストのカード上限チェック（6枚まで）
+  if (state.isAnonymous) {
     const snap = await db.ref(`users/${state.uid}/articles/${state.categoryId}`).once('value');
     const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-    if (count >= 10) {
-      showLimitModal('無料プランはカテゴリ内のメモが10枚までです。\nアップグレードしてさらに追加できます。');
+    if (count >= 6) {
+      showLimitModal('ゲストはパネルごとに6枚までです。\nGoogleアカウントでログインすると無制限になります。');
       return;
     }
   }
@@ -1770,7 +1770,7 @@ async function createArticle(noTransition = false) {
     listeners = [];
     if (saveTimer) clearTimeout(saveTimer);
     navHistory.push({ screen: state.screen, categoryId: state.categoryId, articleId: state.articleId });
-    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true, _isNewCard: true };
+    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true, _isNewCard: true, isPremium: state.isPremium, isAnonymous: state.isAnonymous };
     
     const appEl = document.getElementById('app');
     appEl.classList.remove('visible');
@@ -1796,13 +1796,13 @@ function renderEditor(container) {
         </button>
         <span class="save-status editing" id="saveStatus">読み込み中…</span>
         <div class="editor-header-actions">
-          <button class="btn-icon" id="btnBulkCopy" title="選択した段落をコピー" style="display: none; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #3b82f6; transition: transform 0.2s; align-items: center; justify-content: center;">
+          <button class="btn-icon" id="btnBulkCopy" title="選択した段落をコピー" style="display: none; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; width: 42px; height: 42px; margin-right: 0.75rem; border-radius: 12px; color: #3b82f6; transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
           </button>
-          <button class="btn-icon danger" id="btnBulkDelete" title="選択した段落をカット" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--danger); transition: transform 0.2s; align-items: center; justify-content: center;">
+          <button class="btn-icon danger" id="btnBulkDelete" title="選択した段落をカット" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); width: 42px; height: 42px; margin-right: 0.75rem; border-radius: 12px; color: var(--danger); transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
               <circle cx="6" cy="6" r="3"></circle>
               <circle cx="6" cy="18" r="3"></circle>
@@ -2110,6 +2110,18 @@ function renderEditor(container) {
       setTimeout(() => {
         selectedParas.forEach(p => p.remove());
 
+        // カット後に残った孤立した空段落を除去して上に詰める
+        Array.from(pm.querySelectorAll('p')).forEach(p => {
+          if (!p.querySelector('img') &&
+              (p.childNodes.length === 0 ||
+               (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR'))) {
+            p.remove();
+          }
+        });
+        if (!pm.querySelector('p, [data-youtube-video]')) {
+          pm.appendChild(document.createElement('p'));
+        }
+
         if (isEditorEmpty()) {
           deleteArticleSilently();
           return;
@@ -2212,11 +2224,13 @@ function renderEditor(container) {
 
         if (!cleaned.trim()) return true;
 
-        // 改行ごとに段落へ変換（空行は空の<p>として保持）
+        // 改行ごとに段落へ変換（空行は除去して詰める）
         const lines = cleaned.split('\n');
-        const html = lines.map(l =>
-          l.trim() === '' ? '<p></p>' : `<p>${esc(l)}</p>`
-        ).join('');
+        const html = lines
+          .filter(l => l.trim() !== '')
+          .map(l => `<p>${esc(l)}</p>`)
+          .join('');
+        if (!html) return true;
         tiptapEditor.commands.insertContent(html);
         return true;
       },
@@ -4275,6 +4289,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (user) {
       // ログイン済み — 購入状態を読み取り
       state.uid = user.uid;
+      state.isAnonymous = user.isAnonymous;
       try {
         const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
         state.isPremium = premSnap.val() === true;
