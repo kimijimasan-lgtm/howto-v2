@@ -4079,8 +4079,12 @@ function showLimitModal(message) {
           if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
             await currentUser.linkWithRedirect(provider).catch(() => {});
           } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
-            // このGoogleアカウントはすでに登録済み → そのアカウントでシームレス切替
-            await firebase.auth().signInWithCredential(err.credential).catch(() => {});
+            // このGoogleアカウントはすでに別ユーザーとして登録済み
+            // → データ引き継ぎはできずそのアカウントに切り替わる
+            const ok = confirm('このGoogleアカウントはすでに登録済みです。\nゲストのデータは引き継がれません。\nそのままログインしますか？');
+            if (ok) {
+              await firebase.auth().signInWithCredential(err.credential).catch(() => {});
+            }
           }
         }
       }
@@ -4281,41 +4285,53 @@ window.addEventListener('DOMContentLoaded', () => {
   app.innerHTML = '<div class="auth-init-loading"><div class="loading-spinner">読み込み中…</div></div>';
   app.classList.add('visible');
 
-  // signInWithRedirect 後に onAuthStateChanged が null で先発火するのを防ぐため、
-  // リダイレクト結果の処理を先に開始し Promise として保持する
-  const redirectResultPromise = firebase.auth().getRedirectResult().catch(() => null);
+  // async IIFE でラップして authStateReady() を await できるようにする
+  (async () => {
+    // signInWithRedirect 後の結果取得 Promise を先行開始
+    const redirectResultPromise = firebase.auth().getRedirectResult().catch(() => null);
 
-  firebase.auth().onAuthStateChanged(async (user) => {
-    if (user) {
-      // ログイン済み — 購入状態を読み取り
-      state.uid = user.uid;
-      state.isAnonymous = user.isAnonymous;
-      try {
-        const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
-        state.isPremium = premSnap.val() === true;
-      } catch (e) {
-        state.isPremium = false;
+    // authStateReady() はセッション復元（IndexedDB 読み込み）が完了するまで待つ。
+    // これがないと null→user の二重発火でログイン画面が一瞬表示される。
+    // Firebase SDK v10 では利用可能。フォールバックとして短い遅延を挟む。
+    try {
+      if (typeof firebase.auth().authStateReady === 'function') {
+        await firebase.auth().authStateReady();
+      } else {
+        await new Promise(r => setTimeout(r, 400));
       }
-      // 新規ユーザー: カテゴリが1件もなければテンプレートをコピー（開発者は除外）
-      try {
-        const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
-        if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
-          await copyTemplateToUser(user.uid);
+    } catch (_) {}
+
+    firebase.auth().onAuthStateChanged(async (user) => {
+      if (user) {
+        // ログイン済み — 購入状態を読み取り
+        state.uid = user.uid;
+        state.isAnonymous = user.isAnonymous;
+        try {
+          const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
+          state.isPremium = premSnap.val() === true;
+        } catch (e) {
+          state.isPremium = false;
         }
-      } catch (e) { /* 非致命的 */ }
-      goTo('home');
-    } else {
-      // null で来た場合、リダイレクト処理の完了を待ってから再確認する
-      // （redirect ログイン直後は処理完了前に null で発火するため）
-      await redirectResultPromise;
-      if (!firebase.auth().currentUser) {
-        state.uid = null;
-        state.isPremium = false;
-        goTo('login');
+        // 新規ユーザー: カテゴリが1件もなければテンプレートをコピー（開発者は除外）
+        try {
+          const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
+          if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
+            await copyTemplateToUser(user.uid);
+          }
+        } catch (e) { /* 非致命的 */ }
+        goTo('home');
+      } else {
+        // null の場合: redirect 結果を確認してから判断する
+        await redirectResultPromise;
+        if (!firebase.auth().currentUser) {
+          state.uid = null;
+          state.isPremium = false;
+          goTo('login');
+        }
+        // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
       }
-      // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
-    }
-  });
+    });
+  })();
 });
 
 // ── 添付ファイル（写真・書類）関連の補助関数 ────────────────
