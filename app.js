@@ -643,7 +643,7 @@ function renderHome(container) {
             <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
           </svg>
         </button>` : ''}
-        ${_homeUser?.isAnonymous ? `<button class="btn-icon" id="btnGuestUpgradeHint" title="プレミアムにアップグレード" style="color:#f97316;">
+        ${_homeUser?.isAnonymous ? `<button class="btn-icon" id="btnGuestUpgradeHint" title="Googleアカウントでログイン" style="color:#f97316;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
@@ -680,7 +680,7 @@ function renderHome(container) {
 
   const guestUpgradeBtn = document.getElementById('btnGuestUpgradeHint');
   if (guestUpgradeBtn) {
-    guestUpgradeBtn.onclick = () => showLimitModal('プレミアムにアップグレードすると\nカテゴリ・メモが無制限になります。\nデータはGoogleアカウントに引き継げます。');
+    guestUpgradeBtn.onclick = () => showLimitModal('Googleアカウントでログインすると\nパネル・メモが無制限に使えます。\nゲストのデータはそのまま引き継がれます。');
   }
 
   const signoutBtn = document.getElementById('btnSignOut');
