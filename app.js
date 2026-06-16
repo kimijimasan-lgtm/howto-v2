@@ -344,10 +344,11 @@ function addSwipeBack(el, onSwipe) {
     const duration = Date.now() - startTime;
     if (duration > 300) return;
 
-    const dx = e.changedTouches[0].clientX - sx;
-    const dy = Math.abs(e.changedTouches[0].clientY - sy);
-    // 右方向ジェスチャーは甘めに判定（戻し漏れを防ぐ）
-    if (dx > 20 && dy < dx * 5) onSwipe();
+    const dx    = e.changedTouches[0].clientX - sx;
+    const rawDy = e.changedTouches[0].clientY - sy; // 符号付き（上が負）
+    const dy    = Math.abs(rawDy);
+    // 上方向への移動が 30px 超の場合はスクロール操作とみなして戻らない
+    if (dx > 20 && dy < dx * 5 && rawDy > -30) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
   el.addEventListener('touchend',   onEnd,   { passive: true });
@@ -3525,8 +3526,9 @@ function bindParagraphSwipeEvents(editor) {
 
     // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべて戻る
     const isStraightDown = dy >= 80 && dx < dy * 0.2;
-    // 上方向への移動量が右方向の2倍を超える場合は上フリックとみなし戻らない
-    const isStronglyUp = rawDy < 0 && dy > dx * 2;
+    // 上方向への移動量が右方向の半分を超えたら上スクロールとみなし戻らない
+    // （dy > dx * 2 は閾値が厳しすぎ、斜め上フリップが誤ってgoBackを発火させていた）
+    const isStronglyUp = rawDy < 0 && dy > dx * 0.5;
     if (dx > 30 && !isStraightDown && !isStronglyUp) {
       // 右フリップで前の画面に戻る（緩いルール）
       goBack();
@@ -4285,53 +4287,41 @@ window.addEventListener('DOMContentLoaded', () => {
   app.innerHTML = '<div class="auth-init-loading"><div class="loading-spinner">読み込み中…</div></div>';
   app.classList.add('visible');
 
-  // async IIFE でラップして authStateReady() を await できるようにする
-  (async () => {
-    // signInWithRedirect 後の結果取得 Promise を先行開始
-    const redirectResultPromise = firebase.auth().getRedirectResult().catch(() => null);
-
-    // authStateReady() はセッション復元（IndexedDB 読み込み）が完了するまで待つ。
-    // これがないと null→user の二重発火でログイン画面が一瞬表示される。
-    // Firebase SDK v10 では利用可能。フォールバックとして短い遅延を挟む。
-    try {
-      if (typeof firebase.auth().authStateReady === 'function') {
-        await firebase.auth().authStateReady();
-      } else {
-        await new Promise(r => setTimeout(r, 400));
+  // getRedirectResult() を onAuthStateChanged の外で呼ぶと
+  // Firebase のセッション復元前に null が先発火してログイン画面が瞬間表示される。
+  // null ハンドラ内で初めて呼ぶことで、正常な初期化フローを妨げない。
+  firebase.auth().onAuthStateChanged(async (user) => {
+    if (user) {
+      // ログイン済み — 購入状態を読み取り
+      state.uid = user.uid;
+      state.isAnonymous = user.isAnonymous;
+      try {
+        const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
+        state.isPremium = premSnap.val() === true;
+      } catch (e) {
+        state.isPremium = false;
       }
-    } catch (_) {}
-
-    firebase.auth().onAuthStateChanged(async (user) => {
-      if (user) {
-        // ログイン済み — 購入状態を読み取り
-        state.uid = user.uid;
-        state.isAnonymous = user.isAnonymous;
-        try {
-          const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
-          state.isPremium = premSnap.val() === true;
-        } catch (e) {
-          state.isPremium = false;
+      // 新規ユーザー: カテゴリが1件もなければテンプレートをコピー（開発者は除外）
+      try {
+        const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
+        if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
+          await copyTemplateToUser(user.uid);
         }
-        // 新規ユーザー: カテゴリが1件もなければテンプレートをコピー（開発者は除外）
-        try {
-          const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
-          if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
-            await copyTemplateToUser(user.uid);
-          }
-        } catch (e) { /* 非致命的 */ }
-        goTo('home');
-      } else {
-        // null の場合: redirect 結果を確認してから判断する
-        await redirectResultPromise;
-        if (!firebase.auth().currentUser) {
-          state.uid = null;
-          state.isPremium = false;
-          goTo('login');
-        }
-        // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
+      } catch (e) { /* 非致命的 */ }
+      goTo('home');
+    } else {
+      // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
+      // getRedirectResult() で結果を確認してから判断する
+      await firebase.auth().getRedirectResult().catch(() => null);
+      if (!firebase.auth().currentUser) {
+        state.uid = null;
+        state.isPremium = false;
+        state.isAnonymous = false;
+        goTo('login');
       }
-    });
-  })();
+      // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
+    }
+  });
 });
 
 // ── 添付ファイル（写真・書類）関連の補助関数 ────────────────
