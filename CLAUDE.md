@@ -146,34 +146,57 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
 ## 認証フロー
 
-### ログイン画面（`renderLogin`）— シンプル化済み
+### ログイン画面（`renderLogin`）
 - 「Googleでログイン」ボタン（メイン・白背景）
 - 「ゲストとして試す」ボタン（サブ・半透明）→ `firebase.auth().signInAnonymously()`
 - メール/パスワード認証は削除済み
+- 説明文（`.login-desc`）は **黄色（`#f5c400`）・太字**
 
 ### 起動シーケンス（`onAuthStateChanged`）
+
+**ログインフラッシュ修正済み（2026-06）**:  
+`getRedirectResult()` を `onAuthStateChanged` の外で呼ぶと、セッション復元前に `null` が先発火してログイン画面が一瞬表示される問題があった。`null` ハンドラの**内部**で呼ぶよう修正。
+
 ```
 起動
- ├─ getRedirectResult() を先行実行（Promise保持）
  └─ onAuthStateChanged
       ├─ user あり
+      │   ├─ state.isAnonymous = user.isAnonymous をセット
       │   ├─ isPremium フラグを Firebase から取得
       │   ├─ categories が 0件 かつ 開発者でない → copyTemplateToUser()
       │   └─ goTo('home')
-      └─ user なし → await redirectResultPromise
+      └─ user なし
+           ├─ await getRedirectResult()  ← ここで初めて呼ぶ（外で呼ばない）
            ├─ currentUser が非 null → 何もしない（再発火される）
            └─ currentUser が null → goTo('login')
 ```
 
+### state オブジェクト
+```js
+let state = {
+  screen, categoryId, articleId,
+  uid,
+  isPremium,    // Firebase の isPremium フラグ（課金済みのみ true）
+  isAnonymous,  // firebase.auth().currentUser.isAnonymous
+  editorMode,   // 'view' | 'edit'
+};
+```
+- `goTo()` / `goBack()` / `createArticle()` でも `isPremium` と `isAnonymous` を引き継ぐよう修正済み
+
 ### ゲストのサインアウト（`btnSignOut`）
 - ゲスト: 「サインアウトするとゲストデータが失われます。よろしいですか？」確認 → `signOut()`
 - 通常ユーザー: 「サインアウトしますか？」確認 → `signOut()`
-- Google連携のオファーはサインアウト時には行わない（アップグレードボタン経由に統一）
+
+### ★アイコン（ゲストのみ表示）
+- ホーム画面ヘッダーに表示（`_homeUser?.isAnonymous` の場合）
+- `title="Googleアカウントでログイン"`
+- クリック → `showLimitModal('Googleアカウントでログインすると\nパネル・メモが無制限に使えます。\nゲストのデータはそのまま引き継がれます。')`
 
 ### アップグレードボタン（`showLimitModal` 内）の動作
-- **ゲスト**: 「ゲストのデータをGoogleアカウントに引き継ぎます…」確認 → `linkWithPopup(GoogleAuthProvider)`
-  - `auth/credential-already-in-use` → `signInWithCredential(err.credential)` でシームレス切替
-- **通常ユーザー（非課金）**: Stripe 課金ページを開く（URL は現在プレースホルダー）
+- **ゲスト**: confirm「ゲストのデータをGoogleアカウントに引き継ぎます…」→ `linkWithPopup(GoogleAuthProvider)`
+  - `auth/credential-already-in-use` → **データ引き継ぎ不可の警告**ダイアログ → 確認後 `signInWithCredential`
+- **正規ユーザー**: `https://buy.stripe.com/YOUR_PAYMENT_LINK_ID` を開く（現在プレースホルダー）
+  - ただし正規ユーザーには上限がないため、このルートに到達するケースは事実上ない
 
 ## 新規ユーザーの初期テンプレート機能
 
@@ -206,22 +229,25 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 
 ## 制限・課金
 
-### ユーザー種別と制限
-| 種別 | カテゴリ上限 | カード上限/カテゴリ |
-|------|------------|------------------|
-| ゲスト（匿名）| 3つ | 10枚 |
-| Google（非課金）| 3つ | 10枚 |
+### ユーザー種別と制限（2026-06 改定）
+
+| 種別 | パネル上限 | カード上限/パネル |
+|------|-----------|----------------|
+| ゲスト（匿名・`isAnonymous`）| 3つ | 6枚 |
+| 正規ログイン（Google）| **無制限** | **無制限** |
 | 課金済み（`isPremium: true`）| 無制限 | 無制限 |
-| 開発者（Firebase で `isPremium: true` 設定）| 無制限 | 無制限 |
+
+- 制限チェックの判定条件は `!state.isPremium` から **`state.isAnonymous`** に変更
+- 正規ログイン（Google）ユーザーは課金不要で完全無制限
 
 ### 制限チェックの実装箇所
-- **カテゴリ**: `showCategoryModal` の保存ボタン → `categories` 件数 >= 3 で `showLimitModal()`
-- **カード**: `createArticle()` 冒頭（async）→ `articles/{catId}` 件数 >= 10 で `showLimitModal()`
-- 判定条件: `if (!state.isPremium)`
+- **パネル**: `showCategoryModal` の保存ボタン → `state.isAnonymous && categories >= 3` で `showLimitModal()`
+- **カード**: `createArticle()` 冒頭 → `state.isAnonymous && articles >= 6` で `showLimitModal()`
 
 ### `showLimitModal(message)`
 オレンジ→ピンクの「アップグレードする」ボタン + 「閉じる」ボタン。  
-Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホルダー（後で差し替え）。
+**Stripe 課金は未実装**（`paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` のプレースホルダー）。  
+正規ユーザーに上限がないため、Stripe経路に到達するケースは現在ない。
 
 ## UI詳細
 
@@ -232,6 +258,19 @@ Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホ�
 ### カード一覧の並び替え
 - **デフォルト**: 名前の昇順（`sortField = 'name'`, `sortDir = 'asc'`）
 - 起動時に `updateSortUI()` を呼んでデフォルト状態をUIに反映
+
+### カード編集（エディター）1行目の見出しスタイル
+```css
+.editor-content .ProseMirror > p:first-child:not(:has(> img)) {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+```
+- 画像段落が1行目の場合は適用しない（`:not(:has(> img))`）
+
+### コピー＆カットボタンの間隔
+`#btnBulkCopy` / `#btnBulkDelete` の `margin-right: 0.75rem`（戻す・編ボタンの間隔と統一）
 
 ### テーマ管理
 現在のテーマ一覧（`THEMES` 配列）:
@@ -259,18 +298,33 @@ Stripe URL は `'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` プレースホ�
 
 ### `addSwipeBack`（右スワイプ → 前の画面へ）
 ```js
-if (dx > 30 && dy < dx * 2) onSwipe();
+const rawDy = e.changedTouches[0].clientY - sy; // 符号付き
+const dy    = Math.abs(rawDy);
+if (dx > 20 && dy < dx * 5 && rawDy > -30) onSwipe();
 ```
-- 水平から約63度以内の右方向ジェスチャーで「前の画面へ戻る」（一定の緩い角度で安定）
+- 右方向ジェスチャーは甘めに判定（`dx > 20`、角度制限を `dx * 5`）
+- **上方向への移動が 30px 超の場合はスクロール操作とみなして発火しない**（`rawDy > -30`）
 - カード一覧→ホーム、エディター→カード一覧の両方に適用
 
 ### `bindParagraphSwipeEvents`（エディター内スワイプ）
-- 右フリップ（緩いルール）: `dx > 30 && !isStraightDown` → `goBack()`
+```js
+const isStraightDown = dy >= 80 && dx < dy * 0.2;
+const isStronglyUp   = rawDy < 0 && dy > dx * 0.5; // 上成分が右成分の半分超でスクロール扱い
+if (dx > 30 && !isStraightDown && !isStronglyUp) goBack();
+```
+- 右フリップで前の画面に戻る（閲覧モードのみ）
+- `isStronglyUp` の閾値を `dy > dx * 2` → `dy > dx * 0.5` に緩和（斜め上フリップの誤発火を防止）
 - 左フリップ（厳しいルール）: `dx < -50 && dy < 40` → 段落選択
 
 ### `addPullToCreate`（真下プル → 新規カード作成）
-- `onMove`: `dx > 20` で即キャンセル（右方向への動きで中断）
-- `onEnd`: `dy >= 80 && dx <= 20 && |dx| < dy * 0.2`（ほぼ垂直のみ）
+```js
+// onMove: 右方向10px超で即キャンセル（右スワイプを確実に優先）
+if (dx > 10) { isCancelled = true; ... }
+
+// onEnd: 真下方向のみ（右移動10px以下 + 横ブレが縦の15%未満）
+if (dy >= 80 && dx <= 10 && Math.abs(dx) < dy * 0.15) createArticle(true);
+```
+- 右フリップとの誤判定を防ぐため、キャンセル閾値を `20px → 10px`、判定を `0.2 → 0.15` に厳格化
 
 ## ホーム画面パネルドラッグ（`catSortable`）
 - **スクロールジャンプ修正済み**: `onStart` で `grid.style.overflow = 'visible'` を設定していた行を削除
@@ -287,11 +341,15 @@ if (dx > 30 && dy < dx * 2) onSwipe();
 - 画像: 常に横取りして圧縮・挿入（縦画像は `max-height: 66vh` でiPhone画面2/3以下に表示）
 - テキスト: 常に横取りして `cleanMarkdownForPaste()` を通す
   - Markdown記法（`##`, `**`, `` ` ``, `-`, `>` 等）を除去
-  - 連続する空行を最大1行に圧縮
+  - 連続する空行を最大1行に圧縮（`cleanMarkdownForPaste` 内）
+  - **空行は段落として挿入しない**（`filter(l => l.trim() !== '')` でスキップ）→ GeminiやClaude貼り付け時の余分な空行を排除
 - 罫線テーブル文字（`│`, `┼` 等が3つ以上）: `cleanAndFormatBorderLines()` で整形
   - 縦罫線（`│`, `├`, `└` 等）および後続の `─` を `\n` に変換（行ごとに分離）
   - 横罫線のみの行（3文字以上）は削除
   - 連続する空行は1行に圧縮
+
+### カット後の空行詰め（修正済み）
+`btnBulkDelete.onclick` で段落を削除した後、孤立した空段落（`<p></p>` / `<p><br></p>`）を一括削除してから TipTap に同期する。画像を含む段落は除外。
 
 ## 画像レイアウト
 
@@ -358,9 +416,9 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=756, tiptap.bundle.js?v=2）
-app.js              — アプリ全体（約4,000行）
-style.css           — スタイル（v=679）
+index.html          — エントリポイント（app.js?v=760, tiptap.bundle.js?v=2）
+app.js              — アプリ全体（約4,200行）
+style.css           — スタイル（v=681）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -369,16 +427,30 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=679`
+- `style.css?v=681`
 - `tiptap.bundle.js?v=2`
-- `app.js?v=756`
+- `app.js?v=760`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
-## 次のステップ
-- 解説カード10枚の内容を充実させる（`TEMPLATE_EXPLANATION_CARDS` 定数を編集 → 「テンプレートを更新」ボタンで反映）
-- 残っているバグの修正を続ける
-- Stripe Payment Link URL を `showLimitModal` の `paymentUrl` に設定
+## 次のステップ：Stripe課金実装
+
+### 準備タスク
+1. **問い合わせ用Gmail作成**（例: `pcsmartmemo.support@gmail.com`）
+2. **メインアドレスへの転送設定**
+3. **Stripeアカウント作成**（メインアドレスで登録）
+4. **APIキー・価格IDの取得**
+
+### 実装箇所
+- `showLimitModal` 内の `paymentUrl` を実際の Stripe Payment Link URL に置き換える
+  ```js
+  const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'; // ← ここ
+  ```
+- 課金完了後に Firebase の `users/{uid}/isPremium: true` を書き込む Webhook または Cloud Functions が必要
+
+### 課金対象ユーザー
+現状では正規ログイン（Google）ユーザーは無制限なので、課金メリットを設計し直す必要がある。  
+例：正規ユーザーに上限を設けて（例：パネル10・カード30）、課金で無制限にするなど。
