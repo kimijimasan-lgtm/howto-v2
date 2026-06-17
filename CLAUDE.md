@@ -12,14 +12,15 @@ GitHub Pages でホスティング: `https://kimijimasan-lgtm.github.io/howto-v2
 ## TipTap 移行（完了）
 
 ### バンドル
-- `tiptap.bundle.js`（294KB、IIFE、`window.TipTapBundle` に export）
+- `tiptap.bundle.js`（296KB、IIFE、`window.TipTapBundle` に export）
 - ビルド元: `.tiptap-build/entry.js`（esbuild）
-- エクスポート: `Editor`, `StarterKit`, `ImageExtension`, `YoutubeExtension`, `TaskList`, `TaskItem`
+- エクスポート: `Editor`, `StarterKit`, `ImageExtension`, `YoutubeExtension`, `TaskList`, `TaskItem`, `TextStyleExtension`
 - `ImageExtension` は `CustomImageExtension`（`class` 属性を per-image で保持できるよう extend 済み）
+- `TextStyleExtension` は `@tiptap/extension-text-style` を extend し、`color` 属性（inline style）を追加
 
 ### 初期化（`renderEditor` 内）
 ```js
-const { Editor: TiptapEditor, StarterKit, ImageExtension, ... } = window.TipTapBundle;
+const { Editor: TiptapEditor, StarterKit, ImageExtension, ..., TextStyleExtension } = window.TipTapBundle;
 tiptapEditor = new TiptapEditor({
   element: document.getElementById('edContent'),
   extensions: [
@@ -28,6 +29,7 @@ tiptapEditor = new TiptapEditor({
     YoutubeExtension.configure({ controls: true, nocookie: true }),
     TaskList,
     TaskItem.configure({ nested: true }),
+    TextStyleExtension,
   ],
   editable: false,
   editorProps: { handlePaste(...) { ... } },
@@ -272,6 +274,20 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 ### コピー＆カットボタンの間隔
 `#btnBulkCopy` / `#btnBulkDelete` の `margin-right: 0.75rem`（戻す・編ボタンの間隔と統一）
 
+### 段落書式アクションボタン（`#btnTextFormat`）
+- `btnBulkDelete` の右隣に配置（紫系：`#8b5cf6`）
+- 段落が選択されているとき（`para-selected` > 0）のみ表示（`updateBulkDeleteButtonState` で制御）
+- タップで `#textFormatMenu` を表示（ボタン直下に位置合わせ）
+- `#textFormatMenuBackdrop`（z-index: 5）でエディターコンテンツ外のクリックを拾って閉じる
+  - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
+- **メニュー項目:**
+  - `#btnApplyH1` → `tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level: 1 }).run()`
+  - `#btnApplyH2` → `tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level: 2 }).run()`
+  - `#colorPickerRow` / `#textColorPicker` → `setMark('textStyle', { color })` でテキスト色を適用
+  - `#btnResetFormat` → `unsetMark('textStyle')` で文字色を除去
+- 見出し適用後は `cleanupAllSwipedParagraphs` で段落選択状態をリセット
+- **注意**: 見出しノード（`<h1>`/`<h2>`）はスワイプ選択の対象外（`p.para-selected` のみ対応）
+
 ### テーマ管理
 現在のテーマ一覧（`THEMES` 配列）:
 
@@ -302,6 +318,7 @@ const rawDy = e.changedTouches[0].clientY - sy; // 符号付き
 const dy    = Math.abs(rawDy);
 if (dx > 20 && dy < dx * 5 && rawDy > -30) onSwipe();
 ```
+- **速度・時間判定を廃止**（旧: duration > 300ms を除外）→ **方向角度のみで判定**
 - 右方向ジェスチャーは甘めに判定（`dx > 20`、角度制限を `dx * 5`）
 - **上方向への移動が 30px 超の場合はスクロール操作とみなして発火しない**（`rawDy > -30`）
 - カード一覧→ホーム、エディター→カード一覧の両方に適用
@@ -339,6 +356,7 @@ if (dy >= 80 && dx <= 10 && Math.abs(dx) < dy * 0.15) createArticle(true);
 
 ## テキスト貼り付け処理（`handlePaste`）
 - 画像: 常に横取りして圧縮・挿入（縦画像は `max-height: 66vh` でiPhone画面2/3以下に表示）
+- **YouTube URL（`youtu.be/`, `youtube.com/watch?v=`, `youtube.com/shorts/`）: TipTapのパスルールに委ねる**（`return false`）→ `YoutubeExtension` の `addPasteRules` が自動でノード変換
 - テキスト: 常に横取りして `cleanMarkdownForPaste()` を通す
   - Markdown記法（`##`, `**`, `` ` ``, `-`, `>` 等）を除去
   - 連続する空行を最大1行に圧縮（`cleanMarkdownForPaste` 内）
@@ -416,9 +434,9 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=760, tiptap.bundle.js?v=2）
-app.js              — アプリ全体（約4,200行）
-style.css           — スタイル（v=681）
+index.html          — エントリポイント（app.js?v=761, tiptap.bundle.js?v=3）
+app.js              — アプリ全体（約4,300行）
+style.css           — スタイル（v=682）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -427,9 +445,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=681`
-- `tiptap.bundle.js?v=2`
-- `app.js?v=760`
+- `style.css?v=682`
+- `tiptap.bundle.js?v=3`
+- `app.js?v=761`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

@@ -330,24 +330,18 @@ function goBack(skipSave = false) {
 // ── 右スワイプで戻る ─────────────────────
 function addSwipeBack(el, onSwipe) {
   let sx = 0, sy = 0;
-  let startTime = 0;
   const onStart = e => {
     sx = e.touches[0].clientX;
     sy = e.touches[0].clientY;
-    startTime = Date.now();
   };
   const onEnd = e => {
     // 文字選択（範囲選択）中である場合は絶対に無効化する
     if (window.getSelection().toString() !== '') return;
 
-    // タッチ時間（フリックの素早さ）を判定（300ms以上かかるゆっくりしたドラッグ選択などは除外）
-    const duration = Date.now() - startTime;
-    if (duration > 300) return;
-
     const dx    = e.changedTouches[0].clientX - sx;
     const rawDy = e.changedTouches[0].clientY - sy; // 符号付き（上が負）
     const dy    = Math.abs(rawDy);
-    // 上方向への移動が 30px 超の場合はスクロール操作とみなして戻らない
+    // 速度・時間を除外し方向角度のみで判定: 右方向20px以上、かつ上への移動が30px以内
     if (dx > 20 && dy < dx * 5 && rawDy > -30) onSwipe();
   };
   el.addEventListener('touchstart', onStart, { passive: true });
@@ -1812,6 +1806,13 @@ function renderEditor(container) {
               <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
             </svg>
           </button>
+          <button class="btn-icon" id="btnTextFormat" title="書式を変更" style="display: none; background: rgba(139, 92, 246, 0.2); border: 1px solid #8b5cf6; width: 42px; height: 42px; margin-right: 0.75rem; border-radius: 12px; color: #8b5cf6; transition: transform 0.2s; align-items: center; justify-content: center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
+              <polyline points="4 7 4 4 20 4 20 7"/>
+              <line x1="9" y1="20" x2="15" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+          </button>
           <button class="btn-icon accent" id="btnPaste" title="段落を貼り付け" style="display: none; background: rgba(249, 115, 22, 0.2); border: 1px solid var(--accent); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--accent); transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
@@ -1845,6 +1846,23 @@ function renderEditor(container) {
         <span class="undo-label">戻す</span>
       </div>
       <div id="pasteHintBar" class="paste-hint-bar" style="display:none">貼り付け位置をタップしてください</div>
+      <div id="textFormatMenu" style="display:none; position:fixed; z-index:10000; background:var(--card-bg,#1e1e1e); border:1px solid var(--border,#333); border-radius:14px; padding:10px 8px; box-shadow:0 6px 24px rgba(0,0,0,0.4); min-width:160px;">
+        <button id="btnApplyH1" style="display:flex; align-items:center; width:100%; padding:10px 12px; border:none; background:transparent; color:var(--text,#fff); font-size:1rem; font-weight:700; cursor:pointer; border-radius:8px; text-align:left; gap:10px;">
+          <span style="font-size:1.3rem; font-weight:900; line-height:1; color:#8b5cf6">H1</span> 大見出し
+        </button>
+        <button id="btnApplyH2" style="display:flex; align-items:center; width:100%; padding:10px 12px; border:none; background:transparent; color:var(--text,#fff); font-size:0.95rem; font-weight:600; cursor:pointer; border-radius:8px; text-align:left; gap:10px;">
+          <span style="font-size:1.1rem; font-weight:800; line-height:1; color:#8b5cf6">H2</span> 中見出し
+        </button>
+        <div style="margin:4px 0; border-top:1px solid var(--border,#333);"></div>
+        <div style="display:flex; align-items:center; padding:10px 12px; gap:10px; cursor:pointer;" id="colorPickerRow">
+          <span style="font-size:0.9rem; color:var(--text,#fff); flex:1;">文字色</span>
+          <input type="color" id="textColorPicker" value="#ffffff" style="width:32px; height:32px; border:none; border-radius:50%; cursor:pointer; padding:0; background:none;">
+        </div>
+        <button id="btnResetFormat" style="display:flex; align-items:center; width:100%; padding:10px 12px; border:none; background:transparent; color:var(--text-muted,#888); font-size:0.85rem; cursor:pointer; border-radius:8px; text-align:left; gap:10px;">
+          <span style="font-size:0.9rem;">↩</span> 書式をリセット
+        </button>
+      </div>
+      <div id="textFormatMenuBackdrop" style="display:none; position:fixed; inset:0; z-index:5;"></div>
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
@@ -2151,6 +2169,120 @@ function renderEditor(container) {
     };
   }
 
+  // ── テキスト書式メニュー ────────────────────────────
+  const textFmtBtn = document.getElementById('btnTextFormat');
+  const textFmtMenu = document.getElementById('textFormatMenu');
+  const textFmtBackdrop = document.getElementById('textFormatMenuBackdrop');
+
+  function closeTextFormatMenu() {
+    if (textFmtMenu) textFmtMenu.style.display = 'none';
+    if (textFmtBackdrop) textFmtBackdrop.style.display = 'none';
+  }
+
+  // ヘルパー: 選択中段落のPM内テキスト範囲を取得
+  function getParaTextRange(p) {
+    try {
+      const insidePos = tiptapEditor.view.posAtDOM(p, 0);
+      const $pos = tiptapEditor.state.doc.resolve(insidePos);
+      const nodeStart = $pos.before($pos.depth);
+      const node = tiptapEditor.state.doc.nodeAt(nodeStart);
+      if (!node) return null;
+      return { from: nodeStart + 1, to: nodeStart + node.nodeSize - 1 };
+    } catch (_) { return null; }
+  }
+
+  if (textFmtBtn && textFmtMenu) {
+    textFmtBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (textFmtMenu.style.display !== 'none') { closeTextFormatMenu(); return; }
+      const rect = textFmtBtn.getBoundingClientRect();
+      textFmtMenu.style.top = (rect.bottom + 6) + 'px';
+      textFmtMenu.style.right = (window.innerWidth - rect.right) + 'px';
+      textFmtMenu.style.left = 'auto';
+      textFmtMenu.style.display = 'block';
+      if (textFmtBackdrop) textFmtBackdrop.style.display = 'block';
+    };
+  }
+
+  if (textFmtBackdrop) textFmtBackdrop.onclick = closeTextFormatMenu;
+
+  // H1 / H2 適用
+  function applyHeadingToSelected(level) {
+    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+    if (!pm) return;
+    const selected = Array.from(pm.querySelectorAll('p.para-selected'));
+    if (selected.length === 0) return;
+    // 下から上に適用してPM位置ずれを防ぐ
+    [...selected].reverse().forEach(p => {
+      try {
+        const insidePos = tiptapEditor.view.posAtDOM(p, 0);
+        tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level }).run();
+      } catch (_) {}
+    });
+    const pm2 = tiptapEditor.view.dom;
+    cleanupAllSwipedParagraphs(pm2);
+    updateBulkDeleteButtonState(pm2);
+    closeTextFormatMenu();
+  }
+
+  const btnH1 = document.getElementById('btnApplyH1');
+  if (btnH1) btnH1.onclick = (e) => { e.stopPropagation(); applyHeadingToSelected(1); };
+
+  const btnH2 = document.getElementById('btnApplyH2');
+  if (btnH2) btnH2.onclick = (e) => { e.stopPropagation(); applyHeadingToSelected(2); };
+
+  // 書式リセット（段落に戻す + 文字色除去）
+  const btnResetFmt = document.getElementById('btnResetFormat');
+  if (btnResetFmt) {
+    btnResetFmt.onclick = (e) => {
+      e.stopPropagation();
+      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+      if (!pm) return;
+      const ranges = Array.from(pm.querySelectorAll('p.para-selected'))
+        .map(p => getParaTextRange(p))
+        .filter(r => r && r.from < r.to);
+      ranges.forEach(range => {
+        tiptapEditor.chain()
+          .setTextSelection(range)
+          .unsetMark('textStyle')
+          .run();
+      });
+      cleanupAllSwipedParagraphs(pm);
+      updateBulkDeleteButtonState(pm);
+      closeTextFormatMenu();
+    };
+  }
+
+  // 文字色ピッカー
+  const colorPicker = document.getElementById('textColorPicker');
+  const colorPickerRow = document.getElementById('colorPickerRow');
+  if (colorPickerRow && colorPicker) {
+    colorPickerRow.onclick = (e) => {
+      if (e.target !== colorPicker) colorPicker.click();
+    };
+    colorPicker.oninput = () => {
+      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+      if (!pm) return;
+      const color = colorPicker.value;
+      // 先にすべての位置を収集してからDOMを変更（再レンダリング後のステールノードを避ける）
+      const ranges = Array.from(pm.querySelectorAll('p.para-selected'))
+        .map(p => getParaTextRange(p))
+        .filter(r => r && r.from < r.to);
+      ranges.forEach(range => {
+        tiptapEditor.chain()
+          .setTextSelection(range)
+          .setMark('textStyle', { color })
+          .run();
+      });
+    };
+    colorPicker.onchange = () => {
+      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+      if (pm) cleanupAllSwipedParagraphs(pm);
+      updateBulkDeleteButtonState(tiptapEditor ? tiptapEditor.view.dom : null);
+      closeTextFormatMenu();
+    };
+  }
+
   addSwipeBack(container, () => {
     if (state.editorMode === 'view') {
       goBack();
@@ -2179,7 +2311,7 @@ function renderEditor(container) {
   const edEl = document.getElementById('edContent');
   const status = document.getElementById('saveStatus');
 
-  const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem } = window.TipTapBundle;
+  const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem, TextStyleExtension } = window.TipTapBundle;
 
   tiptapEditor = new TiptapEditor({
     element: edEl,
@@ -2189,6 +2321,7 @@ function renderEditor(container) {
       YoutubeExtension.configure({ controls: true, nocookie: true }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      TextStyleExtension,
     ],
     editable: false,
     content: '<p></p>',
@@ -2213,6 +2346,10 @@ function renderEditor(container) {
 
         const text = event.clipboardData?.getData('text/plain') || '';
         if (!text) return false;
+
+        // YouTube URLはTipTapのパスルール（YoutubeExtension）に委ねる
+        const ytUrlTest = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([^#\&\?\s]+)/i;
+        if (ytUrlTest.test(text.trim())) return false;
 
         event.preventDefault();
 
@@ -3282,6 +3419,7 @@ function toggleYoutubeSelect(ytDiv, editor) {
 function updateBulkDeleteButtonState(editor) {
   const bulkDelBtn = document.getElementById('btnBulkDelete');
   const bulkCopyBtn = document.getElementById('btnBulkCopy');
+  const textFmtBtn = document.getElementById('btnTextFormat');
   if (!editor) return;
 
   const selectedCount = editor.querySelectorAll('p.para-selected, [data-youtube-video].para-selected').length;
@@ -3296,6 +3434,10 @@ function updateBulkDeleteButtonState(editor) {
       bulkCopyBtn.style.transform = 'scale(1.15)';
       bulkCopyBtn.classList.add('pulse-delete-active');
     }
+    if (textFmtBtn) {
+      textFmtBtn.style.display = 'flex';
+      textFmtBtn.style.transform = 'scale(1.15)';
+    }
   } else {
     if (bulkDelBtn) {
       bulkDelBtn.style.display = 'none';
@@ -3306,6 +3448,10 @@ function updateBulkDeleteButtonState(editor) {
       bulkCopyBtn.style.display = 'none';
       bulkCopyBtn.style.transform = 'scale(1)';
       bulkCopyBtn.classList.remove('pulse-delete-active');
+    }
+    if (textFmtBtn) {
+      textFmtBtn.style.display = 'none';
+      textFmtBtn.style.transform = 'scale(1)';
     }
   }
 }

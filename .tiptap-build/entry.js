@@ -4,6 +4,27 @@ export { default as YoutubeExtension } from '@tiptap/extension-youtube';
 export { default as TaskList } from '@tiptap/extension-task-list';
 export { default as TaskItem } from '@tiptap/extension-task-item';
 
+import { TextStyle } from '@tiptap/extension-text-style';
+
+// 文字色（color）属性付きTextStyle
+const ColorTextStyle = TextStyle.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      color: {
+        default: null,
+        parseHTML: element => element.style.color || null,
+        renderHTML: attributes => {
+          if (!attributes.color) return {};
+          return { style: `color: ${attributes.color}` };
+        },
+      },
+    };
+  },
+});
+
+export { ColorTextStyle as TextStyleExtension };
+
 import ImageExtension from '@tiptap/extension-image';
 
 // 画像ごとに class 属性を保持できるよう拡張
