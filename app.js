@@ -1831,7 +1831,7 @@ function renderEditor(container) {
             </svg>
           </button>
           <button class="btn-icon" id="btnTextFormat" title="書式を変更" style="display: none; background: rgba(139, 92, 246, 0.2); border: 1px solid #8b5cf6; width: 42px; height: 42px; margin-right: 0.75rem; border-radius: 12px; color: #8b5cf6; transition: transform 0.2s; align-items: center; justify-content: center;">
-            <span style="font-size:1.25rem; line-height:1; pointer-events:none;">⚡</span>
+            <span style="font-size:1.6rem; line-height:1; pointer-events:none;">🚀</span>
           </button>
           <button class="btn-icon accent" id="btnPaste" title="段落を貼り付け" style="display: none; background: rgba(249, 115, 22, 0.2); border: 1px solid var(--accent); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--accent); transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
@@ -1871,14 +1871,14 @@ function renderEditor(container) {
           <button id="btnApplyH1" title="大見出し" style="padding:9px 16px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:1.05rem; font-weight:900; cursor:pointer; border-radius:8px; letter-spacing:-0.5px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">H1</button>
           <button id="btnApplyH2" title="中見出し" style="padding:9px 14px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.95rem; font-weight:800; cursor:pointer; border-radius:8px; letter-spacing:-0.5px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">H2</button>
           <div style="width:1px; height:26px; background:var(--border,#444); flex-shrink:0;"></div>
-          <label for="textColorPicker" id="btnApplyColor" title="文字色" style="display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid #555; border-radius:8px; cursor:pointer; white-space:nowrap; transition:background 0.15s,border-color 0.15s; user-select:none; color:var(--text,#fff); font-size:0.85rem; position:relative; overflow:hidden;">
+          <button id="btnApplyColor" title="文字色" style="display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.85rem; cursor:pointer; border-radius:8px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">
             <span id="colorSwatch" style="width:14px; height:14px; border-radius:50%; background:#ffffff; border:1.5px solid rgba(255,255,255,0.35); flex-shrink:0; display:inline-block;"></span>
             文字色
-            <input type="color" id="textColorPicker" value="#ffffff" style="position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; border:none; padding:0;">
-          </label>
+          </button>
         </div>
       </div>
       <div id="textFormatMenuBackdrop" style="display:none; position:fixed; inset:0; z-index:5;"></div>
+      <input type="color" id="textColorPicker" value="#ffffff" style="position:fixed; bottom:0; right:0; opacity:0; width:1px; height:1px; border:none; padding:0;">
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
@@ -2224,6 +2224,8 @@ function renderEditor(container) {
     cleanupAllSwipedParagraphs(pm2);
     updateBulkDeleteButtonState(pm2);
     closeTextFormatMenu();
+    // 変換後の見出し要素にドラッグハンドルを再注入（TipTapがDOMノードを置き換えるため）
+    if (state.editorMode === 'view') refreshYoutubeDeleteButtons('view');
   }
 
   if (textFmtBtn && textFmtMenu) {
@@ -2263,24 +2265,41 @@ function renderEditor(container) {
   // 文字色ピッカー（段落・見出し両対応）
   const colorPicker = document.getElementById('textColorPicker');
   const colorSwatch = document.getElementById('colorSwatch');
-  if (colorPicker) {
-    colorPicker.oninput = () => {
-      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-      if (!pm) return;
-      const color = colorPicker.value;
-      if (colorSwatch) colorSwatch.style.background = color;
-      // 先にすべての位置を収集してからDOMを変更（再レンダリング後のステールノードを避ける）
-      const ranges = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'))
-        .map(el => getParaTextRange(el))
-        .filter(r => r && r.from < r.to);
-      ranges.forEach(range => {
-        tiptapEditor.chain()
-          .setTextSelection(range)
-          .setMark('textStyle', { color })
-          .run();
-      });
+  const btnColor = document.getElementById('btnApplyColor');
+
+  // ProseMirrorトランザクションを直接ディスパッチ（閲覧モード=非編集状態でも動作）
+  const applyColorToSelected = (color) => {
+    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+    if (!pm) return;
+    if (colorSwatch) colorSwatch.style.background = color;
+    const ranges = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'))
+      .map(el => getParaTextRange(el))
+      .filter(r => r && r.from < r.to);
+    if (ranges.length === 0) return;
+    const markType = tiptapEditor.schema.marks.textStyle;
+    if (!markType) return;
+    let tr = tiptapEditor.state.tr;
+    ranges.forEach(({ from, to }) => {
+      tr = tr.addMark(from, to, markType.create({ color }));
+    });
+    tiptapEditor.view.dispatch(tr);
+  };
+
+  if (btnColor && colorPicker) {
+    // ボタンタップ → ネイティブカラーピッカーを開く
+    btnColor.onclick = (e) => {
+      e.stopPropagation();
+      // ピッカーをボタン付近に位置合わせして起動
+      const rect = btnColor.getBoundingClientRect();
+      colorPicker.style.top  = rect.top  + 'px';
+      colorPicker.style.left = rect.left + 'px';
+      colorPicker.click();
     };
+    // ドラッグ中のリアルタイムプレビュー
+    colorPicker.oninput = () => applyColorToSelected(colorPicker.value);
+    // 確定時: 色適用 + 選択解除 + メニューを閉じる
     colorPicker.onchange = () => {
+      applyColorToSelected(colorPicker.value);
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
       if (pm) cleanupAllSwipedParagraphs(pm);
       updateBulkDeleteButtonState(tiptapEditor ? tiptapEditor.view.dom : null);
@@ -3490,7 +3509,7 @@ function cleanupSingleParagraph(p) {
   const chk = p.querySelector('.para-checkbox');
   if (chk) chk.remove();
   p.classList.remove('para-selected');
-  p.removeAttribute('class');
+  if (!p.classList.length) p.removeAttribute('class');
 }
 
 // すべての段落の選択状態をクリーンアップ
