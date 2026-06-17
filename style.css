@@ -959,12 +959,30 @@ body {
   line-height: 1.6;
 }
 
-/* チェック選択された段落のプレミアムなハイライト表示 */
+/* チェック選択された段落・見出しのプレミアムなハイライト表示 */
 .editor-content p.para-selected,
-.editor-content .ProseMirror p.para-selected {
+.editor-content .ProseMirror p.para-selected,
+.editor-content h1.para-selected,
+.editor-content .ProseMirror h1.para-selected,
+.editor-content h2.para-selected,
+.editor-content .ProseMirror h2.para-selected {
   background: rgba(249, 115, 22, 0.08) !important;
   border: 1px dashed rgba(249, 115, 22, 0.3) !important;
   color: #fff;
+}
+
+/* エディター内の見出しデフォルトスタイル */
+.editor-content .ProseMirror h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.4;
+  margin: 0.25em 0;
+}
+.editor-content .ProseMirror h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0.2em 0;
 }
 
 /* 段落スワイプ時のプレミアム赤レ点チェックUI */

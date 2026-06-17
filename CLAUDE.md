@@ -275,18 +275,21 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 `#btnBulkCopy` / `#btnBulkDelete` の `margin-right: 0.75rem`（戻す・編ボタンの間隔と統一）
 
 ### 段落書式アクションボタン（`#btnTextFormat`）
-- `btnBulkDelete` の右隣に配置（紫系：`#8b5cf6`）
-- 段落が選択されているとき（`para-selected` > 0）のみ表示（`updateBulkDeleteButtonState` で制御）
+- `btnBulkDelete` の右隣に配置（紫系：`#8b5cf6`）、アイコンは `⚡` 絵文字
+- 段落・見出しが選択されているとき（`para-selected` > 0）のみ表示（`updateBulkDeleteButtonState` で制御）
 - タップで `#textFormatMenu` を表示（ボタン直下に位置合わせ）
 - `#textFormatMenuBackdrop`（z-index: 5）でエディターコンテンツ外のクリックを拾って閉じる
   - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
-- **メニュー項目:**
-  - `#btnApplyH1` → `tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level: 1 }).run()`
-  - `#btnApplyH2` → `tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level: 2 }).run()`
-  - `#colorPickerRow` / `#textColorPicker` → `setMark('textStyle', { color })` でテキスト色を適用
-  - `#btnResetFormat` → `unsetMark('textStyle')` で文字色を除去
-- 見出し適用後は `cleanupAllSwipedParagraphs` で段落選択状態をリセット
-- **注意**: 見出しノード（`<h1>`/`<h2>`）はスワイプ選択の対象外（`p.para-selected` のみ対応）
+- **メニューUI**: H1・H2・文字色を横並び3ボタン、タップ即時適用
+  - `#btnApplyH1` → `toggleHeading({ level: 1 })` ← 選択中の要素が全部H1のとき紫ハイライト
+  - `#btnApplyH2` → `toggleHeading({ level: 2 })` ← 選択中の要素が全部H2のとき紫ハイライト
+  - `#btnApplyColor`（label） / `#textColorPicker`（input type=color） → `setMark('textStyle', { color })`
+    - カラースウォッチ（`#colorSwatch`）が選択した色に追従
+    - `onchange` でカラーピッカーを閉じると段落選択を解除してメニューを閉じる
+- **見出し選択の対応**: `h1.para-selected`, `h2.para-selected` もスワイプ左フリップで選択可能
+  - `toggleParagraphSelect` は `<h1>`,`<h2>` 要素でも呼び出せる
+  - ドラッグハンドル・SortableJS・一括コピー・カット・すべての選択処理が見出しに対応
+  - `updateBulkDeleteButtonState` のセレクターに `h1.para-selected, h2.para-selected` を追加
 
 ### テーマ管理
 現在のテーマ一覧（`THEMES` 配列）:
@@ -321,7 +324,8 @@ if (dx > 20 && dy < dx * 5 && rawDy > -30) onSwipe();
 - **速度・時間判定を廃止**（旧: duration > 300ms を除外）→ **方向角度のみで判定**
 - 右方向ジェスチャーは甘めに判定（`dx > 20`、角度制限を `dx * 5`）
 - **上方向への移動が 30px 超の場合はスクロール操作とみなして発火しない**（`rawDy > -30`）
-- カード一覧→ホーム、エディター→カード一覧の両方に適用
+- エディター→カード一覧に適用（`container` レベル）
+- カード一覧→ホームには **artList直接バインド版**も追加（SortableJSのバブル消費を迂回）: `dx > 30 && !isStraightDown && !isStronglyUp`（`bindParagraphSwipeEvents`と同一閾値）
 
 ### `bindParagraphSwipeEvents`（エディター内スワイプ）
 ```js
@@ -434,9 +438,9 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=761, tiptap.bundle.js?v=3）
+index.html          — エントリポイント（app.js?v=763, tiptap.bundle.js?v=3）
 app.js              — アプリ全体（約4,300行）
-style.css           — スタイル（v=682）
+style.css           — スタイル（v=683）
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -445,9 +449,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=682`
+- `style.css?v=683`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=761`
+- `app.js?v=763`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
