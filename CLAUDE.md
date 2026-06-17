@@ -271,11 +271,28 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 ```
 - 画像段落が1行目の場合は適用しない（`:not(:has(> img))`）
 
+### カード1行目の自動H1（`_firstLineWasEmpty` / `_autoH1Done`）
+- カードを開いたとき、1行目が空段落なら `_firstLineWasEmpty = true` にセット（`setContent` 後に判定）
+- 既存カードで1行目にすでに内容があれば `_firstLineWasEmpty = false` → 自動H1不適用
+- `onUpdate` で「1行目が空 → テキスト入力」を検出したら `setTimeout(0)` 後に H1 を自動適用
+  ```js
+  if (!_autoH1Done && _firstLineWasEmpty && state.editorMode === 'edit') {
+    const firstNode = editor.state.doc.firstChild;
+    if (firstNode && firstNode.type.name === 'paragraph' && firstNode.textContent.trim() !== '') {
+      _autoH1Done = true;
+      setTimeout(() => {
+        tiptapEditor.chain().setTextSelection(1).setHeading({ level: 1 }).run();
+      }, 0);
+    }
+  }
+  ```
+- `_autoH1Done = true` にして再適用を防ぐ（ユーザーが手動で H1 を解除しても再適用しない）
+
 ### コピー＆カットボタンの間隔
 `#btnBulkCopy` / `#btnBulkDelete` の `margin-right: 0.75rem`（戻す・編ボタンの間隔と統一）
 
 ### 段落書式アクションボタン（`#btnTextFormat`）
-- `btnBulkDelete` の右隣に配置（紫系：`#8b5cf6`）、アイコンは `⚡` 絵文字
+- `btnBulkDelete` の右隣に配置（紫系：`#8b5cf6`）、アイコンは `🚀` 絵文字（`font-size: 1.6rem`・最大サイズ）
 - 段落・見出しが選択されているとき（`para-selected` > 0）のみ表示（`updateBulkDeleteButtonState` で制御）
 - タップで `#textFormatMenu` を表示（ボタン直下に位置合わせ）
 - `#textFormatMenuBackdrop`（z-index: 5）でエディターコンテンツ外のクリックを拾って閉じる
@@ -283,13 +300,20 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - **メニューUI**: H1・H2・文字色を横並び3ボタン、タップ即時適用
   - `#btnApplyH1` → `toggleHeading({ level: 1 })` ← 選択中の要素が全部H1のとき紫ハイライト
   - `#btnApplyH2` → `toggleHeading({ level: 2 })` ← 選択中の要素が全部H2のとき紫ハイライト
-  - `#btnApplyColor`（label） / `#textColorPicker`（input type=color） → `setMark('textStyle', { color })`
+  - `#btnApplyColor`（button）タップ → `#textColorPicker`（input type=color・メニュー外に独立配置）を `.click()` で起動
     - カラースウォッチ（`#colorSwatch`）が選択した色に追従
-    - `onchange` でカラーピッカーを閉じると段落選択を解除してメニューを閉じる
+    - 色適用は `tiptapEditor.view.dispatch(tr)` で ProseMirror トランザクションを直接発行（閲覧モード＝非編集状態でも動作）
+    - `oninput` でリアルタイムプレビュー、`onchange` で確定＋選択解除＋メニューを閉じる
 - **見出し選択の対応**: `h1.para-selected`, `h2.para-selected` もスワイプ左フリップで選択可能
   - `toggleParagraphSelect` は `<h1>`,`<h2>` 要素でも呼び出せる
   - ドラッグハンドル・SortableJS・一括コピー・カット・すべての選択処理が見出しに対応
   - `updateBulkDeleteButtonState` のセレクターに `h1.para-selected, h2.para-selected` を追加
+- **H1/H2設定後のドラッグハンドル再注入**:
+  - `applyHeadingToSelected` の末尾で `refreshYoutubeDeleteButtons('view')` を呼ぶ
+  - TipTap が DOM ノードを置換するため、変換後の見出し要素に新たにハンドルを inject
+- **`cleanupSingleParagraph` の修正**:
+  - 旧: `p.removeAttribute('class')` → 全クラス強制削除
+  - 新: `if (!p.classList.length) p.removeAttribute('class')` → 空のときだけ属性削除（h1/h2 の残余クラスを保護）
 
 ### テーマ管理
 現在のテーマ一覧（`THEMES` 配列）:
