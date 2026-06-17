@@ -225,6 +225,7 @@ let lastDeletedContent = null;   // 削除直前のエディタHTML（Undo用）
 let pasteAutoHideTimer = null;   // カット後5秒で貼り付けボタンを自動非表示
 let tiptapEditor = null;         // TipTapエディターインスタンス
 let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列
+let _multiTouchActive = false;   // 2本指以上の操作中はスワイプ戻る/段落選択ジェスチャーを無効化（画像ピンチとの競合防止）
 
 // ── エディター内容の即時強制保存 ─────────────────
 function forceSaveEditorContent() {
@@ -331,10 +332,15 @@ function goBack(skipSave = false) {
 function addSwipeBack(el, onSwipe) {
   let sx = 0, sy = 0;
   const onStart = e => {
+    if (e.touches.length > 1) { _multiTouchActive = true; return; } // 画像ピンチ等の2本指操作はスワイプ判定対象外
     sx = e.touches[0].clientX;
     sy = e.touches[0].clientY;
   };
   const onEnd = e => {
+    // 2本指以上の操作（画像ピンチ等）に伴うタッチ終了はスワイプ判定しない
+    if (e.touches.length > 0) return;
+    if (_multiTouchActive) { _multiTouchActive = false; return; }
+
     // 文字選択（範囲選択）中である場合は絶対に無効化する
     if (window.getSelection().toString() !== '') return;
 
@@ -2301,40 +2307,45 @@ function renderEditor(container) {
   const colorSwatch = document.getElementById('colorSwatch');
   const btnColor = document.getElementById('btnApplyColor');
 
-  // ネイティブカラーピッカーはタップした瞬間にフォーカス/選択が失われるため、
-  // 開く前に適用対象の範囲を確定して保持しておく
-  let _pendingColorRanges = null;
+  // ネイティブカラーピッカーを開くとフォーカス/テキスト選択が失われるため、
+  // 段落（ブロック）未選択時のみ、ボタンタップ時点のテキスト選択範囲を保持しておく
+  let _pendingTextRange = null;
 
   // ProseMirrorトランザクションを直接ディスパッチ（閲覧モード=非編集状態でも動作）
-  const applyPendingColor = (color) => {
-    if (!tiptapEditor || !_pendingColorRanges || _pendingColorRanges.length === 0) return;
+  const applyColorToSelected = (color) => {
+    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+    if (!pm || !tiptapEditor) return;
     if (colorSwatch) colorSwatch.style.background = color;
     const markType = tiptapEditor.schema.marks.textStyle;
     if (!markType) return;
+
+    const ranges = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'))
+      .map(el => getParaTextRange(el))
+      .filter(r => r && r.from < r.to);
+
+    // ブロック選択が無ければ、ボタンタップ時に保持したテキスト選択範囲を使う（見出し設定とは独立して動作）
+    if (ranges.length === 0 && _pendingTextRange) ranges.push(_pendingTextRange);
+    if (ranges.length === 0) return;
+
     let tr = tiptapEditor.state.tr;
-    _pendingColorRanges.forEach(({ from, to }) => {
+    ranges.forEach(({ from, to }) => {
       tr = tr.addMark(from, to, markType.create({ color }));
     });
     tiptapEditor.view.dispatch(tr);
   };
 
   if (btnColor && colorPicker) {
-    // ボタンタップ → 適用対象の範囲を確定 → ネイティブカラーピッカーを開く
+    // ボタンタップ → ネイティブカラーピッカーを開く
     btnColor.onclick = (e) => {
       e.stopPropagation();
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-      const selectedEls = pm ? Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected')) : [];
-      if (selectedEls.length > 0) {
-        // ブロック選択あり: 選択された段落・見出し全体に適用
-        _pendingColorRanges = selectedEls.map(getParaTextRange).filter(r => r && r.from < r.to);
-      } else if (tiptapEditor) {
-        // ブロック未選択: 現在のテキスト選択範囲のみに適用（見出し設定とは独立）
+      const hasBlockSelection = !!(pm && pm.querySelector('p.para-selected, h1.para-selected, h2.para-selected'));
+      if (!hasBlockSelection && tiptapEditor) {
         const { from, to, empty } = tiptapEditor.state.selection;
-        _pendingColorRanges = empty ? null : [{ from, to }];
+        _pendingTextRange = empty ? null : { from, to };
       } else {
-        _pendingColorRanges = null;
+        _pendingTextRange = null;
       }
-      if (!_pendingColorRanges || _pendingColorRanges.length === 0) return;
       // ピッカーをボタン付近に位置合わせして起動
       const rect = btnColor.getBoundingClientRect();
       colorPicker.style.top  = rect.top  + 'px';
@@ -2342,11 +2353,11 @@ function renderEditor(container) {
       colorPicker.click();
     };
     // ドラッグ中のリアルタイムプレビュー
-    colorPicker.oninput = () => applyPendingColor(colorPicker.value);
+    colorPicker.oninput = () => applyColorToSelected(colorPicker.value);
     // 確定時: 色適用 + 選択解除 + メニューを閉じる
     colorPicker.onchange = () => {
-      applyPendingColor(colorPicker.value);
-      _pendingColorRanges = null;
+      applyColorToSelected(colorPicker.value);
+      _pendingTextRange = null;
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
       if (pm) cleanupAllSwipedParagraphs(pm);
       updateBulkDeleteButtonState(tiptapEditor ? tiptapEditor.view.dom : null);
@@ -3746,6 +3757,7 @@ function bindParagraphSwipeEvents(editor) {
   let txStart = 0, tyStart = 0;
   const touchStartHandler = e => {
     if (state.editorMode === 'edit') return; // 編集モード時はスワイプ無効
+    if (e.touches.length > 1) { _multiTouchActive = true; return; } // 画像ピンチ等の2本指操作はスワイプ判定対象外
     txStart = e.touches[0].clientX;
     tyStart = e.touches[0].clientY;
 
@@ -3766,6 +3778,10 @@ function bindParagraphSwipeEvents(editor) {
   };
   const touchEndHandler = e => {
     if (state.editorMode === 'edit') return; // 編集モード時はスワイプ無効
+
+    // 2本指以上の操作（画像ピンチ等）に伴うタッチ終了はスワイプ/選択判定しない
+    if (e.touches.length > 0) return;
+    if (_multiTouchActive) { _multiTouchActive = false; return; }
 
     // 文字選択（範囲選択）中はフリップ動作をキャンセル
     if (window.getSelection().toString() !== '') return;
