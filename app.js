@@ -1870,7 +1870,8 @@ function renderEditor(container) {
         <div style="display:flex; align-items:center; gap:6px;">
           <button id="btnApplyH1" title="大見出し" style="padding:9px 16px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:1.05rem; font-weight:900; cursor:pointer; border-radius:8px; letter-spacing:-0.5px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">H1</button>
           <button id="btnApplyH2" title="中見出し" style="padding:9px 14px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.95rem; font-weight:800; cursor:pointer; border-radius:8px; letter-spacing:-0.5px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">H2</button>
-          <div style="width:1px; height:26px; background:var(--border,#444); flex-shrink:0;"></div>
+          <button id="btnApplyParagraph" title="地の文（通常サイズ）" style="padding:9px 14px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.85rem; font-weight:600; cursor:pointer; border-radius:8px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">地の文</button>
+          <div id="textFormatDivider" style="width:1px; height:26px; background:var(--border,#444); flex-shrink:0;"></div>
           <button id="btnApplyColor" title="文字色" style="display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.85rem; cursor:pointer; border-radius:8px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">
             <span id="colorSwatch" style="width:14px; height:14px; border-radius:50%; background:#ffffff; border:1.5px solid rgba(255,255,255,0.35); flex-shrink:0; display:inline-block;"></span>
             文字色
@@ -2228,6 +2229,25 @@ function renderEditor(container) {
     if (state.editorMode === 'view') refreshYoutubeDeleteButtons('view');
   }
 
+  // 地の文（通常段落）に戻す
+  function applyParagraphToSelected() {
+    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+    if (!pm) return;
+    const selected = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'));
+    if (selected.length === 0) return;
+    [...selected].reverse().forEach(el => {
+      try {
+        const insidePos = tiptapEditor.view.posAtDOM(el, 0);
+        tiptapEditor.chain().setTextSelection(insidePos).setParagraph().run();
+      } catch (_) {}
+    });
+    const pm2 = tiptapEditor.view.dom;
+    cleanupAllSwipedParagraphs(pm2);
+    updateBulkDeleteButtonState(pm2);
+    closeTextFormatMenu();
+    if (state.editorMode === 'view') refreshYoutubeDeleteButtons('view');
+  }
+
   if (textFmtBtn && textFmtMenu) {
     textFmtBtn.onclick = (e) => {
       e.stopPropagation();
@@ -2236,14 +2256,25 @@ function renderEditor(container) {
       // 選択中の要素タグからアクティブ状態を検出
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
       const allSelected = pm ? Array.from(pm.querySelectorAll('.para-selected')) : [];
-      const allH1 = allSelected.length > 0 && allSelected.every(el => el.tagName === 'H1');
-      const allH2 = allSelected.length > 0 && allSelected.every(el => el.tagName === 'H2');
+      const blockMode = allSelected.length > 0;
+      const allH1 = blockMode && allSelected.every(el => el.tagName === 'H1');
+      const allH2 = blockMode && allSelected.every(el => el.tagName === 'H2');
+      const allP  = blockMode && allSelected.every(el => el.tagName === 'P');
       const activeStyle = 'rgba(139,92,246,0.35)';
       const activeBorder = '#8b5cf6';
       const h1Btn = document.getElementById('btnApplyH1');
       const h2Btn = document.getElementById('btnApplyH2');
+      const pBtn  = document.getElementById('btnApplyParagraph');
+      const divider = document.getElementById('textFormatDivider');
       if (h1Btn) { h1Btn.style.background = allH1 ? activeStyle : 'transparent'; h1Btn.style.borderColor = allH1 ? activeBorder : '#555'; }
       if (h2Btn) { h2Btn.style.background = allH2 ? activeStyle : 'transparent'; h2Btn.style.borderColor = allH2 ? activeBorder : '#555'; }
+      if (pBtn)  { pBtn.style.background  = allP  ? activeStyle : 'transparent'; pBtn.style.borderColor  = allP  ? activeBorder : '#555'; }
+
+      // 見出し関連ボタンはブロック（段落）選択時のみ表示。文字色は単独テキスト選択でも常に使える
+      if (h1Btn) h1Btn.style.display = blockMode ? '' : 'none';
+      if (h2Btn) h2Btn.style.display = blockMode ? '' : 'none';
+      if (pBtn) pBtn.style.display = blockMode ? '' : 'none';
+      if (divider) divider.style.display = blockMode ? '' : 'none';
 
       const rect = textFmtBtn.getBoundingClientRect();
       textFmtMenu.style.top = (rect.bottom + 6) + 'px';
@@ -2262,33 +2293,48 @@ function renderEditor(container) {
   const btnH2 = document.getElementById('btnApplyH2');
   if (btnH2) btnH2.onclick = (e) => { e.stopPropagation(); applyHeadingToSelected(2); };
 
-  // 文字色ピッカー（段落・見出し両対応）
+  const btnP = document.getElementById('btnApplyParagraph');
+  if (btnP) btnP.onclick = (e) => { e.stopPropagation(); applyParagraphToSelected(); };
+
+  // 文字色ピッカー（段落・見出しの一括選択、または通常のテキスト選択の両方に対応）
   const colorPicker = document.getElementById('textColorPicker');
   const colorSwatch = document.getElementById('colorSwatch');
   const btnColor = document.getElementById('btnApplyColor');
 
+  // ネイティブカラーピッカーはタップした瞬間にフォーカス/選択が失われるため、
+  // 開く前に適用対象の範囲を確定して保持しておく
+  let _pendingColorRanges = null;
+
   // ProseMirrorトランザクションを直接ディスパッチ（閲覧モード=非編集状態でも動作）
-  const applyColorToSelected = (color) => {
-    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-    if (!pm) return;
+  const applyPendingColor = (color) => {
+    if (!tiptapEditor || !_pendingColorRanges || _pendingColorRanges.length === 0) return;
     if (colorSwatch) colorSwatch.style.background = color;
-    const ranges = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'))
-      .map(el => getParaTextRange(el))
-      .filter(r => r && r.from < r.to);
-    if (ranges.length === 0) return;
     const markType = tiptapEditor.schema.marks.textStyle;
     if (!markType) return;
     let tr = tiptapEditor.state.tr;
-    ranges.forEach(({ from, to }) => {
+    _pendingColorRanges.forEach(({ from, to }) => {
       tr = tr.addMark(from, to, markType.create({ color }));
     });
     tiptapEditor.view.dispatch(tr);
   };
 
   if (btnColor && colorPicker) {
-    // ボタンタップ → ネイティブカラーピッカーを開く
+    // ボタンタップ → 適用対象の範囲を確定 → ネイティブカラーピッカーを開く
     btnColor.onclick = (e) => {
       e.stopPropagation();
+      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+      const selectedEls = pm ? Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected')) : [];
+      if (selectedEls.length > 0) {
+        // ブロック選択あり: 選択された段落・見出し全体に適用
+        _pendingColorRanges = selectedEls.map(getParaTextRange).filter(r => r && r.from < r.to);
+      } else if (tiptapEditor) {
+        // ブロック未選択: 現在のテキスト選択範囲のみに適用（見出し設定とは独立）
+        const { from, to, empty } = tiptapEditor.state.selection;
+        _pendingColorRanges = empty ? null : [{ from, to }];
+      } else {
+        _pendingColorRanges = null;
+      }
+      if (!_pendingColorRanges || _pendingColorRanges.length === 0) return;
       // ピッカーをボタン付近に位置合わせして起動
       const rect = btnColor.getBoundingClientRect();
       colorPicker.style.top  = rect.top  + 'px';
@@ -2296,10 +2342,11 @@ function renderEditor(container) {
       colorPicker.click();
     };
     // ドラッグ中のリアルタイムプレビュー
-    colorPicker.oninput = () => applyColorToSelected(colorPicker.value);
+    colorPicker.oninput = () => applyPendingColor(colorPicker.value);
     // 確定時: 色適用 + 選択解除 + メニューを閉じる
     colorPicker.onchange = () => {
-      applyColorToSelected(colorPicker.value);
+      applyPendingColor(colorPicker.value);
+      _pendingColorRanges = null;
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
       if (pm) cleanupAllSwipedParagraphs(pm);
       updateBulkDeleteButtonState(tiptapEditor ? tiptapEditor.view.dom : null);
@@ -2526,6 +2573,17 @@ function renderEditor(container) {
       if (!tiptapEditor || tiptapEditor.isDestroyed || tiptapEditor.isFocused) return;
       setEditorMode('view');
     }, 300);
+  });
+
+  // selectionUpdateイベント: 段落スワイプ選択なしでも、通常のテキスト選択（範囲選択）が
+  // あれば書式メニュー（文字色のみ）を使えるようにボタンを表示する
+  tiptapEditor.on('selectionUpdate', ({ editor }) => {
+    if (state.editorMode !== 'edit') return;
+    const pm = editor.view.dom;
+    if (pm.querySelectorAll('.para-selected').length > 0) return; // ブロック選択中はそちら優先
+    const btn = document.getElementById('btnTextFormat');
+    if (!btn) return;
+    btn.style.display = editor.state.selection.empty ? 'none' : 'flex';
   });
 
   // focusイベント: iOSキーボード表示完了を待って（500ms）カーソルを見える位置にスクロール
@@ -4718,6 +4776,8 @@ function showLightbox(src) {
   `;
   document.body.appendChild(overlay);
 
+  const img = overlay.querySelector('.lightbox-img');
+
   // iOS Safari: visualViewport.height でオーバーレイの高さを正確に設定
   // position:fixed + inset:0 は layoutViewport 基準になりアドレスバー分が切れるため
   const applyLightboxSize = () => {
@@ -4731,13 +4791,104 @@ function showLightbox(src) {
     window.visualViewport.addEventListener('resize', applyLightboxSize);
   }
 
-  overlay.onclick = () => {
+  const closeLightbox = () => {
     overlay.classList.add('fade-out');
     if (window.visualViewport) {
       window.visualViewport.removeEventListener('resize', applyLightboxSize);
     }
     setTimeout(() => overlay.remove(), 250);
   };
+
+  // モーダル外（背景）タップで閉じる。画像自体のタップはピンチ/ダブルタップ操作のため無視
+  overlay.onclick = (e) => {
+    if (e.target === overlay) closeLightbox();
+  };
+
+  // ── ピンチズーム ────────────────────────────
+  let scale = 1;
+  let originX = 0, originY = 0; // 画像中心からの平行移動量(px)
+  let pinchStartDist = 0;
+  let pinchStartScale = 1;
+  let panStartX = 0, panStartY = 0;
+  let panStartOriginX = 0, panStartOriginY = 0;
+  let isPanning = false;
+
+  const applyTransform = () => {
+    img.style.transform = `translate(${originX}px, ${originY}px) scale(${scale})`;
+  };
+
+  const resetZoom = () => {
+    scale = 1;
+    originX = 0;
+    originY = 0;
+    img.classList.remove('zooming');
+    applyTransform();
+  };
+
+  const dist = (t0, t1) => Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+
+  img.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      pinchStartDist = dist(e.touches[0], e.touches[1]);
+      pinchStartScale = scale;
+      img.classList.add('zooming');
+    } else if (e.touches.length === 1 && scale > 1) {
+      isPanning = true;
+      panStartX = e.touches[0].clientX;
+      panStartY = e.touches[0].clientY;
+      panStartOriginX = originX;
+      panStartOriginY = originY;
+      img.classList.add('zooming');
+    }
+  }, { passive: false });
+
+  img.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && pinchStartDist > 0) {
+      e.preventDefault();
+      const newDist = dist(e.touches[0], e.touches[1]);
+      scale = Math.min(4, Math.max(1, pinchStartScale * (newDist / pinchStartDist)));
+      applyTransform();
+    } else if (e.touches.length === 1 && isPanning) {
+      e.preventDefault();
+      originX = panStartOriginX + (e.touches[0].clientX - panStartX);
+      originY = panStartOriginY + (e.touches[0].clientY - panStartY);
+      applyTransform();
+    }
+  }, { passive: false });
+
+  const onTouchEnd = (e) => {
+    if (e.touches.length < 2) pinchStartDist = 0;
+    if (e.touches.length === 0) {
+      isPanning = false;
+      img.classList.remove('zooming');
+      if (scale <= 1) resetZoom();
+    }
+  };
+  img.addEventListener('touchend', onTouchEnd);
+  img.addEventListener('touchcancel', onTouchEnd);
+
+  // ダブルタップで元のサイズに戻す
+  let lastTapTime = 0;
+  img.addEventListener('touchend', (e) => {
+    if (e.touches.length > 0) return;
+    const now = Date.now();
+    if (now - lastTapTime < 300) {
+      resetZoom();
+      lastTapTime = 0;
+    } else {
+      lastTapTime = now;
+    }
+  });
+
+  // PC（マウス）でのダブルクリックでも同様に戻せるようにする
+  img.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    resetZoom();
+  });
+
+  // 画像自体のクリックでオーバーレイが閉じないようにする
+  img.addEventListener('click', (e) => e.stopPropagation());
 }
 
 // トーストメッセージをキュー管理で順次表示する関数

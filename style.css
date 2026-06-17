@@ -968,7 +968,6 @@ body {
 .editor-content .ProseMirror h2.para-selected {
   background: rgba(249, 115, 22, 0.08) !important;
   border: 1px dashed rgba(249, 115, 22, 0.3) !important;
-  color: #fff;
 }
 
 /* エディター内の見出しデフォルトスタイル */
@@ -1881,6 +1880,15 @@ body.yt-fullscreen-active {
   object-fit: contain;
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  touch-action: none;
+  will-change: transform;
+  cursor: zoom-in;
+}
+.lightbox-img.zooming {
+  transition: none;
+}
+.lightbox-img:not(.zooming) {
+  transition: transform 0.2s ease;
 }
 
 .lightbox-overlay.fade-out {
