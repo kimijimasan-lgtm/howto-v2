@@ -4603,6 +4603,51 @@ async function saveCurrentDataAsTemplate() {
   showToast(`テンプレートを更新しました（${selectedKeys.length}パネル）`);
 }
 
+// ── TipTapエディターの事前ウォームアップ ─────────────────────
+// 編集画面を開いた瞬間に new Editor() でスキーマ構築・拡張機能初期化のコストを
+// 払うと初回が重く感じるため、ホーム画面表示後の空き時間に画面外で1回だけ
+// 使い捨てインスタンスを構築→即破棄しておき、実際の初期化コストを先払いする。
+let _tiptapWarmedUp = false;
+function warmUpTipTap() {
+  if (_tiptapWarmedUp) return;
+  if (!window.TipTapBundle) return;
+  _tiptapWarmedUp = true;
+  try {
+    const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem, TextStyleExtension } = window.TipTapBundle;
+    const hidden = document.createElement('div');
+    hidden.style.position = 'fixed';
+    hidden.style.top = '-9999px';
+    hidden.style.left = '-9999px';
+    hidden.style.width = '1px';
+    hidden.style.height = '1px';
+    hidden.style.overflow = 'hidden';
+    hidden.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(hidden);
+
+    const warmEditor = new TiptapEditor({
+      element: hidden,
+      extensions: [
+        StarterKit,
+        ImageExtension.configure({ allowBase64: true, inline: true, HTMLAttributes: { class: 'inserted-img' } }),
+        YoutubeExtension.configure({ controls: true, nocookie: true }),
+        TaskList,
+        TaskItem.configure({ nested: true }),
+        TextStyleExtension,
+      ],
+      editable: false,
+      content: '<p></p>',
+    });
+
+    // 構築コストを払うことが目的なので、初期レンダリングが済んだら即破棄する
+    setTimeout(() => {
+      try { warmEditor.destroy(); } catch (_) {}
+      hidden.remove();
+    }, 0);
+  } catch (_) {
+    // ウォームアップが失敗しても実際のエディター初期化には影響しないため無視する
+  }
+}
+
 // ── 起動と認証の監視 ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   applyTheme(getCurrentTheme());
@@ -4636,6 +4681,10 @@ window.addEventListener('DOMContentLoaded', () => {
         }
       } catch (e) { /* 非致命的 */ }
       goTo('home');
+      // ホーム画面の初期表示が落ち着いたタイミングで、編集画面を開く前に
+      // TipTapエディターの初期化コストを先払いしておく
+      const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
+      idle(() => warmUpTipTap());
     } else {
       // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
       // getRedirectResult() で結果を確認してから判断する
