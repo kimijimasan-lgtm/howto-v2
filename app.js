@@ -1872,20 +1872,26 @@ function renderEditor(container) {
         <span class="undo-label">戻す</span>
       </div>
       <div id="pasteHintBar" class="paste-hint-bar" style="display:none">貼り付け位置をタップしてください</div>
-      <div id="textFormatMenu" style="display:none; position:fixed; z-index:10000; background:var(--card-bg,#1e1e1e); border:1px solid var(--border,#444); border-radius:12px; padding:8px; box-shadow:0 4px 24px rgba(0,0,0,0.5);">
+      <div id="textFormatMenu" style="display:none; position:fixed; z-index:10000; background:var(--card-bg,#1e1e1e); border:1px solid var(--border,#444); border-radius:12px; padding:8px; box-shadow:0 4px 24px rgba(0,0,0,0.5); max-width:90vw;">
         <div style="display:flex; align-items:center; gap:6px;">
           <button id="btnApplyH1" title="大見出し" style="padding:9px 16px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:1.05rem; font-weight:900; cursor:pointer; border-radius:8px; letter-spacing:-0.5px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">H1</button>
           <button id="btnApplyH2" title="中見出し" style="padding:9px 14px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.95rem; font-weight:800; cursor:pointer; border-radius:8px; letter-spacing:-0.5px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">H2</button>
           <button id="btnApplyParagraph" title="地の文（通常サイズ）" style="padding:9px 14px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.85rem; font-weight:600; cursor:pointer; border-radius:8px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">地の文</button>
           <div id="textFormatDivider" style="width:1px; height:26px; background:var(--border,#444); flex-shrink:0;"></div>
-          <button id="btnApplyColor" title="文字色" style="display:flex; align-items:center; gap:6px; padding:9px 12px; border:1px solid #555; background:transparent; color:var(--text,#fff); font-size:0.85rem; cursor:pointer; border-radius:8px; white-space:nowrap; transition:background 0.15s,border-color 0.15s;">
-            <span id="colorSwatch" style="width:14px; height:14px; border-radius:50%; background:#ffffff; border:1.5px solid rgba(255,255,255,0.35); flex-shrink:0; display:inline-block;"></span>
-            文字色
-          </button>
+        </div>
+        <div id="colorPaletteRow" style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button class="color-swatch-btn" data-color="#ef4444" title="赤" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#ef4444; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#f97316" title="オレンジ" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#f97316; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#eab308" title="黄" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#eab308; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#22c55e" title="緑" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#22c55e; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#3b82f6" title="青" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#3b82f6; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#a855f7" title="紫" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#a855f7; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#000000" title="黒" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#000000; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#ffffff" title="白" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#ffffff; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="" title="デフォルトに戻す" style="width:28px; height:28px; border-radius:50%; border:2px dashed rgba(255,255,255,0.4); background:transparent; color:#fff; font-size:0.7rem; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
       </div>
       <div id="textFormatMenuBackdrop" style="display:none; position:fixed; inset:0; z-index:5;"></div>
-      <input type="color" id="textColorPicker" value="#ffffff" style="position:fixed; bottom:0; right:0; opacity:0; width:1px; height:1px; border:none; padding:0;">
       <input type="file" id="fileInput" style="display: none;" multiple />
     </div>`;
 
@@ -1935,6 +1941,8 @@ function renderEditor(container) {
         const marker = edContent.querySelector('.paste-insert-line');
         if (marker) marker.remove();
       }
+      // 編集モードで表示していた画像削除ボタンが残らないように消す
+      if (window._removeImageDeleteBtn) window._removeImageDeleteBtn();
     }
     refreshParaSortable(mode);
     refreshYoutubeDeleteButtons(mode);
@@ -2302,20 +2310,13 @@ function renderEditor(container) {
   const btnP = document.getElementById('btnApplyParagraph');
   if (btnP) btnP.onclick = (e) => { e.stopPropagation(); applyParagraphToSelected(); };
 
-  // 文字色ピッカー（段落・見出しの一括選択、または通常のテキスト選択の両方に対応）
-  const colorPicker = document.getElementById('textColorPicker');
-  const colorSwatch = document.getElementById('colorSwatch');
-  const btnColor = document.getElementById('btnApplyColor');
-
-  // ネイティブカラーピッカーを開くとフォーカス/テキスト選択が失われるため、
-  // 段落（ブロック）未選択時のみ、ボタンタップ時点のテキスト選択範囲を保持しておく
-  let _pendingTextRange = null;
-
-  // ProseMirrorトランザクションを直接ディスパッチ（閲覧モード=非編集状態でも動作）
+  // 文字色パレット（段落・見出しの一括選択、または通常のテキスト選択の両方に対応）
+  // iOS Safariで input type="color" を繰り返しタップすると誤ってダブルタップズームが
+  // 発動し画面全体が拡大される不具合があったため、ネイティブピッカーは使わず
+  // あらかじめ用意した色のボタンをタップした瞬間に即時反映する方式にしている。
   const applyColorToSelected = (color) => {
     const pm = tiptapEditor ? tiptapEditor.view.dom : null;
     if (!pm || !tiptapEditor) return;
-    if (colorSwatch) colorSwatch.style.background = color;
     const markType = tiptapEditor.schema.marks.textStyle;
     if (!markType) return;
 
@@ -2323,47 +2324,30 @@ function renderEditor(container) {
       .map(el => getParaTextRange(el))
       .filter(r => r && r.from < r.to);
 
-    // ブロック選択が無ければ、ボタンタップ時に保持したテキスト選択範囲を使う（見出し設定とは独立して動作）
-    if (ranges.length === 0 && _pendingTextRange) ranges.push(_pendingTextRange);
+    // ブロック選択が無ければ、現在のテキスト選択範囲に適用する（見出し設定とは独立して動作）
+    if (ranges.length === 0) {
+      const { from, to, empty } = tiptapEditor.state.selection;
+      if (!empty) ranges.push({ from, to });
+    }
     if (ranges.length === 0) return;
 
     let tr = tiptapEditor.state.tr;
     ranges.forEach(({ from, to }) => {
-      tr = tr.addMark(from, to, markType.create({ color }));
+      tr = color ? tr.addMark(from, to, markType.create({ color })) : tr.removeMark(from, to, markType);
     });
     tiptapEditor.view.dispatch(tr);
   };
 
-  if (btnColor && colorPicker) {
-    // ボタンタップ → ネイティブカラーピッカーを開く
-    btnColor.onclick = (e) => {
+  document.querySelectorAll('.color-swatch-btn').forEach(btn => {
+    btn.onclick = (e) => {
       e.stopPropagation();
-      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-      const hasBlockSelection = !!(pm && pm.querySelector('p.para-selected, h1.para-selected, h2.para-selected'));
-      if (!hasBlockSelection && tiptapEditor) {
-        const { from, to, empty } = tiptapEditor.state.selection;
-        _pendingTextRange = empty ? null : { from, to };
-      } else {
-        _pendingTextRange = null;
-      }
-      // ピッカーをボタン付近に位置合わせして起動
-      const rect = btnColor.getBoundingClientRect();
-      colorPicker.style.top  = rect.top  + 'px';
-      colorPicker.style.left = rect.left + 'px';
-      colorPicker.click();
-    };
-    // ドラッグ中のリアルタイムプレビュー
-    colorPicker.oninput = () => applyColorToSelected(colorPicker.value);
-    // 確定時: 色適用 + 選択解除 + メニューを閉じる
-    colorPicker.onchange = () => {
-      applyColorToSelected(colorPicker.value);
-      _pendingTextRange = null;
+      applyColorToSelected(btn.dataset.color || null);
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
       if (pm) cleanupAllSwipedParagraphs(pm);
       updateBulkDeleteButtonState(tiptapEditor ? tiptapEditor.view.dom : null);
       closeTextFormatMenu();
     };
-  }
+  });
 
   addSwipeBack(container, () => {
     if (state.editorMode === 'view') {
@@ -4544,9 +4528,10 @@ window.addEventListener('DOMContentLoaded', () => {
   // 🔍 貼られた画像をタップした際の拡大表示（ライトボックス）イベント
   // 編集モード中はライトボックスを開かない
   document.body.addEventListener('click', e => {
+    if (_multiTouchActive) return; // ピンチ操作の延長で誤発火させない
     if (e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
       const pm = e.target.closest('.ProseMirror');
-      if (pm && !pm.classList.contains('mode-view')) return;
+      if (pm && !pm.classList.contains('mode-view')) return; // 編集モード中はライトボックスを開かない（削除ボタンが優先）
       showLightbox(e.target.src);
     }
   });
@@ -5200,7 +5185,8 @@ function setupImageDragAndDrop(editor) {
   });
 }
 
-// PC用の画像削除ボタン（ゴミ箱アイコン）の表示・制御
+// 画像削除ボタン（ゴミ箱アイコン）の表示・制御
+// 編集モードでのみ表示する（閲覧モードでの画像タップは拡大モーダルを優先するため）
 function setupImageDeleteButtons(editor) {
   if (!editor) return;
   let activeDeleteBtn = null;
@@ -5213,60 +5199,76 @@ function setupImageDeleteButtons(editor) {
       activeImg = null;
     }
   };
+  // 画面遷移（閲覧モードへの切替）時に外部から削除ボタンを消せるように公開
+  window._removeImageDeleteBtn = removeDeleteBtn;
 
-  // 画像の上にホバーしたときに削除ボタンを表示
+  const showDeleteBtnFor = (img) => {
+    if (activeImg === img) return;
+    removeDeleteBtn();
+    activeImg = img;
+
+    const screenEditor = editor.closest('.screen-editor');
+    if (!screenEditor) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'img-delete-btn';
+    btn.innerHTML = '✖';
+    btn.title = '画像を削除';
+    btn.contentEditable = 'false';
+    btn.style.position = 'absolute';
+
+    // screenEditor を基準とした相対座標を計算して配置を安定させる
+    const rect = img.getBoundingClientRect();
+    const parentRect = screenEditor.getBoundingClientRect();
+    const top = rect.top - parentRect.top;
+    const left = rect.left - parentRect.left;
+
+    btn.style.top = `${top + 8}px`;
+    btn.style.left = `${left + 8}px`;
+    btn.style.zIndex = '150';
+
+    // mousedownでフォーカスがエディタから移動するのを防ぎ、blurイベントによるボタン消滅を防ぐ
+    btn.onmousedown = (event) => {
+      event.preventDefault();
+    };
+
+    btn.onclick = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      if (confirm('この画像を削除しますか？')) {
+        lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+        img.remove();
+        removeDeleteBtn();
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(getCleanPMHTML());
+        }
+      }
+    };
+
+    screenEditor.appendChild(btn);
+    activeDeleteBtn = btn;
+  };
+
+  // PC: 画像の上にホバーしたときに削除ボタンを表示（編集モードのみ）
   editor.addEventListener('mouseover', e => {
     const img = e.target;
-    if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
-      if (activeImg === img) return;
+    if (state.editorMode === 'edit' && img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
+      showDeleteBtnFor(img);
+    } else if (!(activeDeleteBtn && (e.target === activeDeleteBtn || activeDeleteBtn.contains(e.target)))) {
       removeDeleteBtn();
-      activeImg = img;
+    }
+  });
 
-      const screenEditor = editor.closest('.screen-editor');
-      if (!screenEditor) return;
-
-      const btn = document.createElement('button');
-      btn.className = 'img-delete-btn';
-      btn.innerHTML = '✖';
-      btn.title = '画像を削除';
-      btn.contentEditable = 'false';
-      btn.style.position = 'absolute';
-
-      // screenEditor を基準とした相対座標を計算して配置を安定させる
-      const rect = img.getBoundingClientRect();
-      const parentRect = screenEditor.getBoundingClientRect();
-      const top = rect.top - parentRect.top;
-      const left = rect.left - parentRect.left;
-
-      btn.style.top = `${top + 8}px`;
-      btn.style.left = `${left + 8}px`;
-      btn.style.zIndex = '150';
-
-      // mousedownでフォーカスがエディタから移動するのを防ぎ、blurイベントによるボタン消滅を防ぐ
-      btn.onmousedown = (event) => {
-        event.preventDefault();
-      };
-
-      btn.onclick = (event) => {
-        event.stopPropagation();
-        event.preventDefault();
-        if (confirm('この画像を削除しますか？')) {
-          lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-          img.remove();
-          removeDeleteBtn();
-          if (tiptapEditor) {
-            tiptapEditor.commands.setContent(getCleanPMHTML());
-          }
-        }
-      };
-
-      screenEditor.appendChild(btn);
-      activeDeleteBtn = btn;
-    } else {
-      // ホバー対象が画像以外で、ボタン自体でもない場合
-      if (activeDeleteBtn && (e.target === activeDeleteBtn || activeDeleteBtn.contains(e.target))) {
-        return;
-      }
+  // スマホ: 編集モード中に画像をタップしたら削除ボタンを表示
+  // （閲覧モードのタップは document.body の click リスナーが拡大モーダルを開く）
+  editor.addEventListener('click', e => {
+    if (_multiTouchActive) return; // ピンチ操作の延長で誤発火させない
+    if (state.editorMode !== 'edit') return;
+    const img = e.target;
+    if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
+      e.stopPropagation();
+      showDeleteBtnFor(img);
+    } else if (!(activeDeleteBtn && (e.target === activeDeleteBtn || activeDeleteBtn.contains(e.target)))) {
       removeDeleteBtn();
     }
   });
