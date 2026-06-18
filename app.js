@@ -227,6 +227,14 @@ let tiptapEditor = null;         // TipTapエディターインスタンス
 let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列
 let _multiTouchActive = false;   // 2本指以上の操作中はスワイプ戻る/段落選択ジェスチャーを無効化（画像ピンチとの競合防止）
 
+// ── 画面切り替え高速化用キャッシュ ──────────────────────
+// 一度読んだFirebaseデータを保持し、再訪問時はキャッシュから即座に描画してから
+// バックグラウンドで最新データを取得・反映する（読み込み中…の表示を減らす）
+let _categoriesCache = null;        // ホーム画面: カテゴリ一覧データ
+let _allArticlesCountCache = null;  // ホーム画面: カテゴリ別カード数バッジ用（全カテゴリの記事データ）
+let _categoryMetaCache = {};        // カテゴリ画面: catId -> { name, color }
+let _categoryArticlesCache = {};    // カテゴリ画面: catId -> 記事データ
+
 // ── エディター内容の即時強制保存 ─────────────────
 function forceSaveEditorContent() {
   if (state.screen !== 'editor' || !state.articleId || !state.categoryId || !state.uid) return;
@@ -700,11 +708,11 @@ function renderHome(container) {
   }
 
   const ref = db.ref(`users/${state.uid}/categories`);
-  const handler = ref.on('value', snap => {
+
+  function renderCategoryGrid(data) {
     const grid = document.getElementById('catGrid');
     if (!grid) return;
 
-    const data = snap.val();
     if (!data) {
       grid.innerHTML = `
         <div class="empty-state" style="grid-column:1/-1">
@@ -765,15 +773,20 @@ function renderHome(container) {
       grid.appendChild(card);
     });
 
-    // カテゴリごとのカード数を非同期取得してバッジ更新（"…" → 実数値）
-    db.ref(`users/${state.uid}/articles`).once('value').then(artSnap => {
-      const allArts = artSnap.val() || {};
+    // カテゴリごとのカード数バッジを更新（キャッシュがあれば即時反映 → 裏で最新値を取得）
+    const applyCardCountBadges = (allArts) => {
       grid.querySelectorAll('.category-card[data-id]').forEach(cardEl => {
         const arts = allArts[cardEl.dataset.id];
         const count = arts ? Object.keys(arts).length : 0;
         const badge = cardEl.querySelector('.cat-card-count');
         if (badge) badge.textContent = count;
       });
+    };
+    if (_allArticlesCountCache) applyCardCountBadges(_allArticlesCountCache);
+    db.ref(`users/${state.uid}/articles`).once('value').then(artSnap => {
+      const allArts = artSnap.val() || {};
+      _allArticlesCountCache = allArts;
+      applyCardCountBadges(allArts);
     }).catch(() => {});
 
     // ドラッグ並び替え初期化
@@ -814,6 +827,15 @@ function renderHome(container) {
         }
       });
     }
+  }
+
+  // キャッシュがあれば即座に描画（読み込み中…の表示を回避）。最新データはこの直後の.onで上書きされる
+  if (_categoriesCache) renderCategoryGrid(_categoriesCache);
+
+  const handler = ref.on('value', snap => {
+    const data = snap.val();
+    _categoriesCache = data;
+    renderCategoryGrid(data);
   });
   listeners.push(() => {
     ref.off('value', handler);
@@ -1142,9 +1164,7 @@ function renderCategory(container) {
 
   // カテゴリ名・色
   let catColor = DEFAULT_GRAD;
-  const cRef = db.ref(`users/${state.uid}/categories/${state.categoryId}`);
-  const cHandler = cRef.on('value', snap => {
-    const val = snap.val();
+  function applyCategoryMeta(val) {
     if (!val) return;
     const titleEl = document.getElementById('catTitle');
     if (titleEl) titleEl.textContent = val.name;
@@ -1152,6 +1172,14 @@ function renderCategory(container) {
     // article-listにCSS変数としてセット → CSSで自動継承
     const artList = document.getElementById('artList');
     if (artList) artList.style.setProperty('--cat-color', catColor);
+  }
+  // キャッシュがあれば即座に反映（読み込み中…の表示を回避）
+  if (_categoryMetaCache[state.categoryId]) applyCategoryMeta(_categoryMetaCache[state.categoryId]);
+  const cRef = db.ref(`users/${state.uid}/categories/${state.categoryId}`);
+  const cHandler = cRef.on('value', snap => {
+    const val = snap.val();
+    _categoryMetaCache[state.categoryId] = val;
+    applyCategoryMeta(val);
   });
   listeners.push(() => cRef.off('value', cHandler));
 
@@ -1182,7 +1210,6 @@ function renderCategory(container) {
     bindArticlesListener();
   });
 
-  function bindArticlesListener() {
     function doRender(data) {
       lastArtsData = data;
       const list = document.getElementById('artList');
@@ -1387,8 +1414,16 @@ function renderCategory(container) {
       }
     } // end doRender
 
+  // キャッシュがあれば即座に描画（読み込み中…の表示を回避）。最新データは後続のリスナーで上書きされる
+  if (_categoryArticlesCache[state.categoryId]) doRender(_categoryArticlesCache[state.categoryId]);
+
+  function bindArticlesListener() {
     rerenderArts = () => { if (lastArtsData) doRender(lastArtsData); };
-    const aHandler = aRef.on('value', snap => doRender(snap.val()));
+    const aHandler = aRef.on('value', snap => {
+      const data = snap.val();
+      _categoryArticlesCache[state.categoryId] = data;
+      doRender(data);
+    });
     listeners.push(() => {
       aRef.off('value', aHandler);
       rerenderArts = null;
