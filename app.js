@@ -2444,6 +2444,10 @@ function renderEditor(container) {
   // edContent（ProseMirrorの親要素）のキャプチャフェーズで先取りして停止することで、
   // ProseMirror自身の mousedown/touchstart 処理や他のリスナーに一切イベントを渡さない。
   // 拡大モーダル機能は保留中のため、画像タップは完全に無反応でよい。
+  // 注意: touchstart/mousedown だけを止めて touchend/click を素通りさせると、
+  // スワイプ判定用の txStart/sx が前回の別ジェスチャーの値のまま残り、
+  // touchend側で異常に大きな移動量と誤認識されて goBack() が誤発火する。
+  // タップの開始～終了に関わる全イベントを一貫してブロックする必要がある。
   const blockImageTouchInViewMode = (e) => {
     if (state.editorMode !== 'view') return;
     if (e.target && e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
@@ -2451,10 +2455,12 @@ function renderEditor(container) {
       e.stopPropagation();
     }
   };
-  edEl.addEventListener('mousedown', blockImageTouchInViewMode, true);
-  edEl.addEventListener('touchstart', blockImageTouchInViewMode, { capture: true, passive: false });
-  edEl.addEventListener('pointerdown', blockImageTouchInViewMode, true);
-  edEl.addEventListener('click', blockImageTouchInViewMode, true);
+  ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'pointercancel'].forEach(type => {
+    edEl.addEventListener(type, blockImageTouchInViewMode, true);
+  });
+  ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(type => {
+    edEl.addEventListener(type, blockImageTouchInViewMode, { capture: true, passive: false });
+  });
 
   const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem, TextStyleExtension } = window.TipTapBundle;
 
