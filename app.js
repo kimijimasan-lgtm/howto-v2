@@ -2049,6 +2049,13 @@ function renderEditor(container) {
 
   // 閲覧／編集モード切り替えの制御
   function setEditorMode(mode) {
+    // 根本的なガード: ロック中のカードはどの経路から呼ばれても絶対に編集可能にしない。
+    // ボタンを隠すだけでは将来の機能追加で抜け道ができるため、ここで強制的に
+    // editable を false のまま維持する（TipTap自体をreadonlyにする一番確実な場所）。
+    if (mode === 'edit' && state.cardLocked) {
+      showToast("このカードは編集できません");
+      mode = 'view';
+    }
     state.editorMode = mode;
     const toggleBar = document.getElementById('btnModeToggle');
     if (!toggleBar) return;
@@ -2571,6 +2578,7 @@ function renderEditor(container) {
       // 画像タップ時のカーソル流入対策は edEl のキャプチャフェーズリスナー（blockImageTouchInViewMode）で
       // ProseMirrorに到達する前に止めているため、ここでは何もしない。
       handlePaste(view, event) {
+        if (state.cardLocked) return true; // ロック中のカードへの貼り付けを一切禁止
         const items = event.clipboardData?.items;
         if (!items) return false;
 
@@ -3046,8 +3054,9 @@ function compressImageForLayout(file) {
 // ・挿入後のカーソルは「直後のブロック（なければ新規空段落）」へ移動
 function _insertImageBlock(imgHtml) {
   if (!tiptapEditor) return;
-  const { state } = tiptapEditor;
-  const $from    = state.doc.resolve(state.selection.from);
+  if (state.cardLocked) return; // ロック中のカードへの画像挿入を禁止
+  const pmState = tiptapEditor.state;
+  const $from    = pmState.doc.resolve(pmState.selection.from);
   if ($from.depth < 1) return;
 
   const paraStart = $from.before(1);
@@ -3099,6 +3108,7 @@ function insertPortraitGroupIntoTipTap(imageData) {
 
 // 複数画像を向き・枚数に応じてレイアウト分けして挿入
 async function handleMultipleImagesForTipTap(files) {
+  if (state.cardLocked) return; // ロック中のカードへの画像挿入を禁止
   const imageData = await Promise.all(files.map(compressImageForLayout));
   const count = imageData.length;
   if (count === 0) return;
