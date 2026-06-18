@@ -290,7 +290,7 @@ function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
     else if (screen === 'category') renderCategory(app);
     else if (screen === 'editor')   renderEditor(app);
     app.classList.add('visible');
-  }, 180);
+  }, 90);
 }
 
 // ── 1つ前の画面へ戻る ────────────────────────
@@ -325,7 +325,7 @@ function goBack(skipSave = false) {
     if (state.screen === 'category') renderCategory(app);
     if (state.screen === 'editor')   renderEditor(app);
     app.classList.add('visible');
-  }, 180);
+  }, 90);
 }
 
 // ── 右スワイプで戻る ─────────────────────
@@ -2385,6 +2385,22 @@ function renderEditor(container) {
   const edEl = document.getElementById('edContent');
   const status = document.getElementById('saveStatus');
 
+  // 閲覧モード中、画像タップ/ピンチでProseMirrorがカーソルを置いてフォーカスしてしまう問題への対策。
+  // edContent（ProseMirrorの親要素）のキャプチャフェーズで先取りして停止することで、
+  // ProseMirror自身の mousedown/touchstart 処理や他のリスナーに一切イベントを渡さない。
+  // 拡大モーダル機能は保留中のため、画像タップは完全に無反応でよい。
+  const blockImageTouchInViewMode = (e) => {
+    if (state.editorMode !== 'view') return;
+    if (e.target && e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+  edEl.addEventListener('mousedown', blockImageTouchInViewMode, true);
+  edEl.addEventListener('touchstart', blockImageTouchInViewMode, { capture: true, passive: false });
+  edEl.addEventListener('pointerdown', blockImageTouchInViewMode, true);
+  edEl.addEventListener('click', blockImageTouchInViewMode, true);
+
   const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem, TextStyleExtension } = window.TipTapBundle;
 
   // 1行目auto-H1: 空の1行目に初めてテキストを入力した瞬間にH1を適用するためのフラグ
@@ -2404,29 +2420,8 @@ function renderEditor(container) {
     editable: false,
     content: '<p></p>',
     editorProps: {
-      // 閲覧モード中、画像のタップ/ピンチでProseMirrorがカーソルを置いてフォーカスしてしまう
-      // （editable:falseでも mousedown 自体は処理されてしまう）のを防ぐ。
-      // 拡大モーダルを開く処理は document.body の click リスナー側に任せ、ここではカーソル移動だけを止める。
-      handleDOMEvents: {
-        mousedown(view, event) {
-          if (state.editorMode !== 'view') return false;
-          const target = event.target;
-          if (target && target.tagName === 'IMG' && target.classList.contains('inserted-img')) {
-            event.preventDefault();
-            return true;
-          }
-          return false;
-        },
-        touchstart(view, event) {
-          if (state.editorMode !== 'view') return false;
-          const target = event.target;
-          if (target && target.tagName === 'IMG' && target.classList.contains('inserted-img')) {
-            if (event.cancelable) event.preventDefault();
-            return true;
-          }
-          return false;
-        },
-      },
+      // 画像タップ時のカーソル流入対策は edEl のキャプチャフェーズリスナー（blockImageTouchInViewMode）で
+      // ProseMirrorに到達する前に止めているため、ここでは何もしない。
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
         if (!items) return false;
@@ -4556,16 +4551,9 @@ async function saveCurrentDataAsTemplate() {
 // ── 起動と認証の監視 ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   applyTheme(getCurrentTheme());
-  // 🔍 貼られた画像をタップした際の拡大表示（ライトボックス）イベント
-  // 編集モード中はライトボックスを開かない
-  document.body.addEventListener('click', e => {
-    if (_multiTouchActive) return; // ピンチ操作の延長で誤発火させない
-    if (e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
-      const pm = e.target.closest('.ProseMirror');
-      if (pm && !pm.classList.contains('mode-view')) return; // 編集モード中はライトボックスを開かない（削除ボタンが優先）
-      showLightbox(e.target.src);
-    }
-  });
+  // 🔍 画像タップでの拡大表示（ライトボックス）機能は一旦保留中。
+  // 閲覧モードでの画像タップは何も起きない（無反応）でよい。
+  // カーソルが入り込まないようにする修正（editorProps.handleDOMEvents の mousedown/touchstart）は維持。
 
   const app = document.getElementById('app');
   app.innerHTML = '<div class="auth-init-loading"><div class="loading-spinner">読み込み中…</div></div>';

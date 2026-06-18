@@ -204,13 +204,11 @@ body {
   margin: 0 auto;           /* PC では中央配置 */
   overflow: hidden;
   opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.1s ease;
   background: var(--bg);
 }
 #app.visible {
   opacity: 1;
-  transform: translateY(0);
 }
 
 /* ── Header ── */
