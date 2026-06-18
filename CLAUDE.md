@@ -81,6 +81,7 @@ function _insertImageBlock(imgHtml) {
 ### モード切替
 - `setEditorMode('edit')` → `tiptapEditor.setEditable(true)`
 - `setEditorMode('view')` → `tiptapEditor.setEditable(false)` + `blur()`
+- **`setEditorMode()` 内に解説パネル用のロックガード**: `mode === 'edit' && state.cardLocked` の場合、`mode` を強制的に `'view'` に上書きしてからセットする（→ 詳細は「解説パネルのカードロック」セクション）
 - モード切替UIは右下固定の小ボタン（`position: fixed; bottom: 1.5rem; right: 1rem; 50×50px`）
   - 閲覧モード：「閲」（青）、編集モード：「編」（赤）
   - `#btnModeToggle` の `textContent` を切り替えるだけ（span不使用）
@@ -297,13 +298,15 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - タップで `#textFormatMenu` を表示（ボタン直下に位置合わせ）
 - `#textFormatMenuBackdrop`（z-index: 5）でエディターコンテンツ外のクリックを拾って閉じる
   - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
-- **メニューUI**: H1・H2・文字色を横並び3ボタン、タップ即時適用
+- **メニューUI**: H1・地の文・H2 + 区切り線 + **文字色パレット（17色実装完了）**
   - `#btnApplyH1` → `toggleHeading({ level: 1 })` ← 選択中の要素が全部H1のとき紫ハイライト
   - `#btnApplyH2` → `toggleHeading({ level: 2 })` ← 選択中の要素が全部H2のとき紫ハイライト
-  - `#btnApplyColor`（button）タップ → `#textColorPicker`（input type=color・メニュー外に独立配置）を `.click()` で起動
-    - カラースウォッチ（`#colorSwatch`）が選択した色に追従
-    - 色適用は `tiptapEditor.view.dispatch(tr)` で ProseMirror トランザクションを直接発行（閲覧モード＝非編集状態でも動作）
-    - `oninput` でリアルタイムプレビュー、`onchange` で確定＋選択解除＋メニューを閉じる
+  - `#btnApplyParagraph` → `setParagraph()` で見出しを解除し通常テキストに戻す
+  - **文字色（`.color-swatch-btn` × 17色 + デフォルト解除ボタン）**:
+    - 赤・オレンジ・黄・緑・青・紫・黒・白・ピンク・マゼンタ・ライトブルー・シアン・ライムグリーン・ブラウン・ゴールド・シルバー + デフォルト（`✕`、`removeMark`で解除）
+    - **`input type="color"` のネイティブピッカーは廃止**（iOS Safariで連続タップ時にダブルタップズームが誤発動し画面全体が拡大される不具合があったため）
+    - 各ボタンはタップした瞬間に即時反映（`tiptapEditor.view.dispatch(tr)` で ProseMirror トランザクションを直接発行、閲覧モード＝非編集状態でも動作）
+    - 段落（ブロック）が選択されていればそれら全体に適用、未選択時は現在のテキスト選択範囲に適用（見出し設定と独立して動作）
 - **見出し選択の対応**: `h1.para-selected`, `h2.para-selected` もスワイプ左フリップで選択可能
   - `toggleParagraphSelect` は `<h1>`,`<h2>` 要素でも呼び出せる
   - ドラッグハンドル・SortableJS・一括コピー・カット・すべての選択処理が見出しに対応
@@ -370,6 +373,103 @@ if (dx > 10) { isCancelled = true; ... }
 if (dy >= 80 && dx <= 10 && Math.abs(dx) < dy * 0.15) createArticle(true);
 ```
 - 右フリップとの誤判定を防ぐため、キャンセル閾値を `20px → 10px`、判定を `0.2 → 0.15` に厳格化
+
+## 解説パネルのカードロック（実装完了）
+開発者アカウント以外は解説パネル（テンプレートの「解説」パネル）のカードを編集・削除・カット・コピー・並び替えできない。
+
+### 判定方法
+```js
+function isDeveloperAccount() {
+  return firebase.auth().currentUser?.email === 'kimijimasan@gmail.com';
+}
+function isLockedCategory(catData) {
+  if (!catData) return false;
+  if (isDeveloperAccount()) return false;
+  return catData.locked === true || catData.name === '解説';
+}
+```
+- パネル名が `'解説'` **または** `locked: true` フラグのいずれかでロック（OR条件、開発者は常に除外）
+- `createSampleData()` で作る解説パネルには `locked: true` を明示的に付与
+- `saveCurrentDataAsTemplate()`（テンプレート更新）でも `locked: true` は消えずに引き継がれる
+
+### 根本的な実装：`setEditorMode()` でブラウザレベルにロック
+ボタンを隠すだけでは将来の機能追加で抜け道ができるため、**`setEditorMode()` 自体**にガードを入れて、どの経路から呼ばれても編集可能にならないようにしている。
+```js
+function setEditorMode(mode) {
+  if (mode === 'edit' && state.cardLocked) {
+    showToast("このカードは編集できません");
+    mode = 'view';
+  }
+  state.editorMode = mode;
+  // mode === 'edit' のときのみ tiptapEditor.setEditable(true) が呼ばれるため、
+  // ロック中は editable が絶対に true にならない
+  ...
+}
+```
+`editable: false`（=`contentEditable="false"`）はブラウザレベルの制約なので、これだけで以下がすべて自動的に不可能になる:
+- テキスト入力・編集・IME変換
+- ペーストによる画像挿入・YouTubeリンク挿入（ペーストイベント自体、非編集要素には配送されない）
+
+### 多重ガード（個別の入口も明示的にブロック）
+| 場所 | 内容 |
+|------|------|
+| `refreshYoutubeDeleteButtons()` | `state.cardLocked` なら `.para-drag-handle`（6点ドット移動ハンドル）・YouTube削除ボタンの注入自体をスキップ |
+| `refreshParaSortable()` | `state.cardLocked` なら段落のSortableJSインスタンスを作成しない |
+| `_insertImageBlock()` / `handleMultipleImagesForTipTap()` | 画像挿入の共通コア関数に `state.cardLocked` チェック |
+| `handlePaste`（editorProps） | ロック中は貼り付け処理を一切実行しない |
+| モード切替ボタン・本文タップでの自動編集モード移行 | `state.cardLocked` で早期return + トースト表示 |
+| `btnDel`（カード削除）・`btnBulkCopy`・`btnBulkDelete`（一括コピー/カット） | `state.cardLocked` で早期return + トースト表示 |
+| 左スワイプでの段落選択・カットバッファのタップ貼り付け | `bindParagraphSwipeEvents` 内で `state.cardLocked` チェック |
+| カテゴリ一覧画面のスワイプ操作（ピン留め・複写・移動・削除）・並び替え | `renderCategory` 内の `categoryLocked`（`isLockedCategory()`で判定）でチェック |
+
+### ロック中のUI
+`applyCardLockUI()` で編集系ボタン（`btnModeToggle`, `btnDel`, `btnTextFormat`, `btnPaste`, `btnPasteCancel`, `btnAttach`, `btnUndo`, `btnBulkCopy`, `btnBulkDelete`）を `display:none` で非表示化。判定が非同期（Firebaseキャッシュ/読み取り）のため、確定後に `refreshYoutubeDeleteButtons('view')` / `refreshParaSortable('view')` を再実行し、確定前に注入されてしまったハンドルを確実に除去する。
+
+## 閲覧モードでの画像タップ（修正完了）
+閲覧モード中、画像をタップしてもカーソルが点滅したり一覧へ戻ったりしないよう完全に無反応にしている。拡大モーダル機能（`showLightbox`）は実装済みだが呼び出しを停止中（保留）。
+
+### 実装
+`renderEditor` 内、`edEl`（ProseMirrorの親要素 `#edContent`）に**キャプチャフェーズ**でタップ関連イベントを先取りしてブロック:
+```js
+const blockImageTouchInViewMode = (e) => {
+  if (state.editorMode !== 'view') return;
+  if (e.target?.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
+  }
+};
+['mousedown','mouseup','click','pointerdown','pointerup','pointercancel'].forEach(t => edEl.addEventListener(t, blockImageTouchInViewMode, true));
+['touchstart','touchmove','touchend','touchcancel'].forEach(t => edEl.addEventListener(t, blockImageTouchInViewMode, { capture: true, passive: false }));
+```
+- **重要**: タップの開始から終了に関わる全イベント種別を一貫してブロックする必要がある。`touchstart`だけ止めて`touchend`を素通りさせると、スワイプ判定用の`txStart`/`sx`が前回の別ジェスチャーの値のまま残り、`touchend`側で異常な移動量と誤認識されて`goBack()`が誤発火する不具合があった
+- `setupImageDeleteButtons()` のPC用ホバー削除ボタンは `state.editorMode === 'edit'` の場合のみ表示（以前は閲覧モードでも出てしまっていた）。スマホでは編集モード中の画像タップで同様に削除ボタンを表示する `click` リスナーを追加
+
+## 画面遷移の二重発火バグ（修正完了・重要）
+**症状**: カードを右/左フリップしているうちに内容が消え、新規カード扱いになることがあった。
+
+**原因**: `goTo()`/`goBack()` を呼ぶスワイプリスナーが、入れ子になった2つの要素（例: `container` と、その内側の `edContent`/`artList`）に重複してバインドされていた。タッチ終了イベントは内側から外側へバブリングするため、1回のスワイプで両方のリスナーが発火し、`goBack()` が2回呼ばれて `navHistory` が二重に`pop`され、`state` が想定外の画面に上書きされていた。
+
+**修正**: `goTo()`/`goBack()` の先頭に `_isNavigating` ガードを追加し、画面遷移中（90ms間）は新たな遷移要求を無視するようにした。加えて、内側のスワイプリスナー（`bindParagraphSwipeEvents`、`artList`直接バインド版）で `goBack()` を呼ぶ際に `e.stopPropagation()` を追加し、そもそも外側へイベントが伝播しないようにした（二重の安全策）。
+
+## 画面切り替えの体感速度改善（実装完了）
+
+### 1. 画面遷移アニメーションの軽量化
+- `#app` のフェード遷移を `opacity 0.2s + translateY(10px)` → **`opacity 0.1s` のみ**に変更
+- `goTo()`/`goBack()` の画面切り替え待機時間を `180ms → 90ms` に短縮
+
+### 2. Firebaseデータのキャッシュ
+一度読んだデータをモジュール変数に保持し、再訪問時はキャッシュから即座に描画 →（裏で）ライブリスナー/`.once`で最新化。
+```js
+let _categoriesCache = null;        // ホーム: カテゴリ一覧
+let _allArticlesCountCache = null;  // ホーム: カテゴリ別カード数バッジ
+let _categoryMetaCache = {};        // カテゴリ画面: catId -> {name, color, locked?}
+let _categoryArticlesCache = {};    // カテゴリ画面: catId -> 記事データ
+```
+- `renderCategoryGrid()`/カード一覧の`doRender()`は、直前に描画したデータと同一内容ならJSON比較で**再描画をスキップ**（点滅防止）
+- 2回目以降の再描画ではエントランスアニメーション（`fadeUp`）を `no-entrance-anim` クラスで止める（初回表示だけアニメーションさせる）。これが無いと「キャッシュ表示→ライブ更新」の2回描画で画面全体が点滅して見える
+
+### 3. TipTapエディターの事前ウォームアップ
+ログイン後ホーム画面が落ち着いたタイミング（`requestIdleCallback`、フォールバック600ms）で、画面外に使い捨てのTipTapインスタンスを1回構築してすぐ破棄し、スキーマ構築等の初期化コストを先払いしておく（`warmUpTipTap()`）。エディター自体は今も画面ごとに `new Editor()` で作り直す設計のまま（常駐インスタンス再利用への変更はリスクが高いため見送り）。
 
 ## ホーム画面パネルドラッグ（`catSortable`）
 - **スクロールジャンプ修正済み**: `onStart` で `grid.style.overflow = 'visible'` を設定していた行を削除
@@ -462,9 +562,9 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=765, tiptap.bundle.js?v=3）
-app.js              — アプリ全体（約4,300行）
-style.css           — スタイル（v=683）
+index.html          — エントリポイント（app.js?v=782, style.css?v=686, tiptap.bundle.js?v=3）
+app.js              — アプリ全体（約5,500行）
+style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 .nojekyll           — GitHub Pages Jekyll無効化
@@ -473,9 +573,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=683`
+- `style.css?v=686`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=765`
+- `app.js?v=782`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
