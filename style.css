@@ -382,6 +382,12 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
+/* キャッシュ表示→最新データ反映の再描画では、画面全体が点滅して見えるフェードインを止める
+   （初回表示のみアニメーションさせ、同一画面内の再描画はサイレントに更新する） */
+.category-grid.no-entrance-anim .category-card {
+  animation: none;
+  opacity: 1;
+}
 /* 3Dハイライトオーバーレイ */
 .category-card::before {
   content: '';
@@ -525,6 +531,12 @@ body {
   transition: background 0.15s;
   animation: fadeUp 0.25s ease forwards;
   opacity: 0;
+}
+/* キャッシュ表示→最新データ反映の再描画では、画面全体が点滅して見えるフェードインを止める
+   （初回表示のみアニメーションさせ、同一画面内の再描画はサイレントに更新する） */
+.article-list.no-entrance-anim .article-item {
+  animation: none;
+  opacity: 1;
 }
 .article-item:hover { background: var(--bg-card-hover); }
 

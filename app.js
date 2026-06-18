@@ -709,15 +709,18 @@ function renderHome(container) {
 
   const ref = db.ref(`users/${state.uid}/categories`);
 
-  // キャッシュ描画→直後のライブ取得が同一データだった場合の再描画（＝点滅）を防ぐ
+  // キャッシュ描画→直後のライブ取得で再描画が起きる際、画面全体が点滅して見える
+  // エントランスアニメーションを2回目以降は止める（初回表示だけアニメーションさせる）
   let _lastCatsSig = null;
   function renderCategoryGrid(data) {
     const sig = JSON.stringify(data);
     if (sig === _lastCatsSig) return;
+    const isFirstRender = (_lastCatsSig === null);
     _lastCatsSig = sig;
 
     const grid = document.getElementById('catGrid');
     if (!grid) return;
+    grid.classList.toggle('no-entrance-anim', !isFirstRender);
 
     if (!data) {
       grid.innerHTML = `
@@ -1222,11 +1225,15 @@ function renderCategory(container) {
       // sortField/sortDirも含めるため、ソート変更時は自然に再描画される
       const sig = JSON.stringify(data) + '|' + sortField + '|' + sortDir;
       if (sig === _lastArtsSig) return;
+      const isFirstRender = (_lastArtsSig === null);
       _lastArtsSig = sig;
 
       lastArtsData = data;
       const list = document.getElementById('artList');
       if (!list) return;
+      // 2回目以降の再描画では、画面全体が点滅して見えるエントランスアニメーションを止める
+      // （編集直後に戻った時など、特定カードの強調表示=just-editedはそのまま機能する）
+      list.classList.toggle('no-entrance-anim', !isFirstRender);
 
       // リスナー内での自動補充（set）は絶対に排除する（ループ・フリーズ防止）
       if (!data || Object.keys(data).length === 0) {
