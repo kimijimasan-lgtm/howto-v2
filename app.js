@@ -1888,6 +1888,14 @@ function renderEditor(container) {
           <button class="color-swatch-btn" data-color="#a855f7" title="紫" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#a855f7; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="#000000" title="黒" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#000000; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="#ffffff" title="白" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#ffffff; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#f472b6" title="ピンク" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#f472b6; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#d946ef" title="マゼンタ" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#d946ef; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#38bdf8" title="ライトブルー" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#38bdf8; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#06b6d4" title="シアン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#06b6d4; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#84cc16" title="ライムグリーン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#84cc16; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#92400e" title="ブラウン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#92400e; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#d4af37" title="ゴールド" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#d4af37; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#c0c0c0" title="シルバー" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#c0c0c0; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="" title="デフォルトに戻す" style="width:28px; height:28px; border-radius:50%; border:2px dashed rgba(255,255,255,0.4); background:transparent; color:#fff; font-size:0.7rem; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
       </div>
@@ -2396,6 +2404,29 @@ function renderEditor(container) {
     editable: false,
     content: '<p></p>',
     editorProps: {
+      // 閲覧モード中、画像のタップ/ピンチでProseMirrorがカーソルを置いてフォーカスしてしまう
+      // （editable:falseでも mousedown 自体は処理されてしまう）のを防ぐ。
+      // 拡大モーダルを開く処理は document.body の click リスナー側に任せ、ここではカーソル移動だけを止める。
+      handleDOMEvents: {
+        mousedown(view, event) {
+          if (state.editorMode !== 'view') return false;
+          const target = event.target;
+          if (target && target.tagName === 'IMG' && target.classList.contains('inserted-img')) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
+        touchstart(view, event) {
+          if (state.editorMode !== 'view') return false;
+          const target = event.target;
+          if (target && target.tagName === 'IMG' && target.classList.contains('inserted-img')) {
+            if (event.cancelable) event.preventDefault();
+            return true;
+          }
+          return false;
+        },
+      },
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
         if (!items) return false;
