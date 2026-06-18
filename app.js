@@ -227,6 +227,11 @@ function showPasteMarker(targetP, location) {
 }
 let listeners   = [];   // Firebase off() 用
 let saveTimer   = null;
+// 1回のスワイプ操作で goBack()/goTo() が二重発火し、navHistory が二重に pop されたり
+// state が想定外の画面に上書きされたりするデータ破損バグへのガード。
+// （bindParagraphSwipeEvents の touchend が editor 内 dom にバブリングし、
+//   container 側の addSwipeBack のハンドラも同じジェスチャーで連続発火していた）
+let _isNavigating = false;
 let catSortable = null;
 let artSortable = null;
 let navHistory  = [];   // 画面履歴スタック
@@ -281,6 +286,11 @@ function forceSaveEditorContent() {
 
 // ── 画面遷移 ─────────────────────────────────
 function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
+  // 1回のジェスチャー/操作内で goTo・goBack が二重発火するとnavHistoryやstateが
+  // 壊れてデータ消失につながるため、遷移中は新たな遷移要求を無視する
+  if (_isNavigating) return;
+  _isNavigating = true;
+
   // エディターから遷移する場合は即座に強制保存
   if (state.screen === 'editor' && !skipSave) {
     justEditedArticleId = state.articleId;
@@ -312,12 +322,17 @@ function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
     else if (screen === 'category') renderCategory(app);
     else if (screen === 'editor')   renderEditor(app);
     app.classList.add('visible');
+    _isNavigating = false;
   }, 90);
 }
 
 // ── 1つ前の画面へ戻る ────────────────────────
 function goBack(skipSave = false) {
+  // 1回のジェスチャー/操作内で goTo・goBack が二重発火するとnavHistoryやstateが
+  // 壊れてデータ消失につながるため、遷移中は新たな遷移要求を無視する
+  if (_isNavigating) return;
   if (navHistory.length === 0) return;
+  _isNavigating = true;
 
   // カテゴリ一覧からホームへ戻る際、カテゴリIDを記憶する
   if (state.screen === 'category') {
@@ -347,6 +362,7 @@ function goBack(skipSave = false) {
     if (state.screen === 'category') renderCategory(app);
     if (state.screen === 'editor')   renderEditor(app);
     app.classList.add('visible');
+    _isNavigating = false;
   }, 90);
 }
 
@@ -1176,7 +1192,12 @@ function renderCategory(container) {
       const dy    = Math.abs(rawDy);
       const isStraightDown = dy >= 80 && dx < dy * 0.2;
       const isStronglyUp   = rawDy < 0 && dy > dx * 0.5;
-      if (dx > 30 && !isStraightDown && !isStronglyUp) goBack();
+      if (dx > 30 && !isStraightDown && !isStronglyUp) {
+        // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
+        // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
+        e.stopPropagation();
+        goBack();
+      }
     };
     _al.addEventListener('touchstart', _alTouchStart, { passive: true });
     _al.addEventListener('touchend',   _alTouchEnd,   { passive: true });
@@ -1992,6 +2013,13 @@ function renderEditor(container) {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
+    // ロック判定が非同期のため、判定が確定する前に初期の setEditorMode('view') が走り、
+    // ドラッグハンドル／YouTube削除ボタンが先に注入されてしまう競合がある。
+    // 判定確定後にもう一度呼び直して、注入済みのハンドルを確実に取り除く。
+    if (state.editorMode === 'view') {
+      refreshYoutubeDeleteButtons('view');
+      refreshParaSortable('view');
+    }
   }
   (async () => {
     let cat = _categoryMetaCache[state.categoryId];
@@ -3929,6 +3957,9 @@ function bindParagraphSwipeEvents(editor) {
     const isStronglyUp = rawDy < 0 && dy > dx * 0.5;
     if (dx > 30 && !isStraightDown && !isStronglyUp) {
       // 右フリップで前の画面に戻る（緩いルール）
+      // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
+      // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
+      e.stopPropagation();
       goBack();
     } else if (dx < -50 && dy < 40) {
       // 左フリップで段落選択（厳しいルールを維持）
@@ -4172,6 +4203,8 @@ function pasteCutParagraphs(editor, targetP = null, location = 'after') {
 function refreshParaSortable(mode) {
   if (paraSortable) { paraSortable.destroy(); paraSortable = null; }
   if (!window.Sortable || !tiptapEditor) return;
+  // ロック中のカードは段落の並び替え（移動）を一切許可しない
+  if (state.cardLocked) return;
   const editor = tiptapEditor.view.dom;
   if (mode === 'view') {
     paraSortable = Sortable.create(editor, {
@@ -4245,6 +4278,9 @@ function refreshYoutubeDeleteButtons(mode) {
     delete yt._ytLeave;
   });
   if (mode !== 'view') return;
+  // ロック中のカードはYouTube削除ボタン・ドラッグハンドルを一切注入しない
+  // （これらは閲覧モードでも動作してしまうため、ロックの抜け道になる）
+  if (state.cardLocked) return;
 
   pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
     const btn = document.createElement('button');
