@@ -709,7 +709,13 @@ function renderHome(container) {
 
   const ref = db.ref(`users/${state.uid}/categories`);
 
+  // キャッシュ描画→直後のライブ取得が同一データだった場合の再描画（＝点滅）を防ぐ
+  let _lastCatsSig = null;
   function renderCategoryGrid(data) {
+    const sig = JSON.stringify(data);
+    if (sig === _lastCatsSig) return;
+    _lastCatsSig = sig;
+
     const grid = document.getElementById('catGrid');
     if (!grid) return;
 
@@ -1124,6 +1130,7 @@ function renderCategory(container) {
   let sortDir   = 'asc';
   let lastArtsData = null;
   let rerenderArts = null;
+  let _lastArtsSig = null; // 同一データでの再描画（点滅）防止用
 
   function updateSortUI() {
     [['btnSortName', 'name'], ['btnSortDate', 'date']].forEach(([id, f]) => {
@@ -1211,6 +1218,12 @@ function renderCategory(container) {
   });
 
     function doRender(data) {
+      // キャッシュ描画→直後のライブ取得が同一データだった場合の再描画（＝点滅）を防ぐ
+      // sortField/sortDirも含めるため、ソート変更時は自然に再描画される
+      const sig = JSON.stringify(data) + '|' + sortField + '|' + sortDir;
+      if (sig === _lastArtsSig) return;
+      _lastArtsSig = sig;
+
       lastArtsData = data;
       const list = document.getElementById('artList');
       if (!list) return;
