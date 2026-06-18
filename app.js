@@ -140,6 +140,20 @@ const COLORS = [
 ];
 const DEFAULT_GRAD = COLORS[0].grad;
 
+// ── 解説パネルのロック判定 ────────────────────────────
+// 開発者アカウント（既存コードと同じ判定方法: メールアドレス一致）以外は、
+// 「解説」という名前のパネル、または明示的に locked:true が付いたパネルを編集不可にする。
+// 名前一致を残しているのは、テンプレート経由で既に作成済みの既存ユーザーデータに
+// locked フラグが付いていない場合の後方互換性のため。
+function isDeveloperAccount() {
+  return firebase.auth().currentUser?.email === 'kimijimasan@gmail.com';
+}
+function isLockedCategory(catData) {
+  if (!catData) return false;
+  if (isDeveloperAccount()) return false;
+  return catData.locked === true || catData.name === '解説';
+}
+
 // ── 状態管理 ─────────────────────────────────
 let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view', isPremium: false, isAnonymous: false };
 let activePasteMarkerP = null;
@@ -1174,11 +1188,14 @@ function renderCategory(container) {
 
   // カテゴリ名・色
   let catColor = DEFAULT_GRAD;
+  // 解説パネル等のロック状態（開発者以外はピン留め・複写・移動・削除を禁止）
+  let categoryLocked = false;
   function applyCategoryMeta(val) {
     if (!val) return;
     const titleEl = document.getElementById('catTitle');
     if (titleEl) titleEl.textContent = val.name;
     catColor = val.color || DEFAULT_GRAD;
+    categoryLocked = isLockedCategory(val);
     // article-listにCSS変数としてセット → CSSで自動継承
     const artList = document.getElementById('artList');
     if (artList) artList.style.setProperty('--cat-color', catColor);
@@ -1340,6 +1357,7 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-pin').onclick = e => {
           e.stopPropagation();
           li.classList.remove('swiped');
+          if (categoryLocked) { showToast("このカードは編集できません"); return; }
           db.ref(`users/${state.uid}/articles/${state.categoryId}/${art.id}`)
             .update({ pinned: !art.pinned });
         };
@@ -1348,6 +1366,7 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-duplicate').onclick = async e => {
           e.stopPropagation();
           li.classList.remove('swiped');
+          if (categoryLocked) { showToast("このカードは複写できません"); return; }
           await duplicateArticle(art.id, state.categoryId);
         };
 
@@ -1355,6 +1374,7 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-move').onclick = e => {
           e.stopPropagation();
           li.classList.remove('swiped');
+          if (categoryLocked) { showToast("このカードは移動できません"); return; }
           showMoveModal(art.id, state.categoryId);
         };
 
@@ -1362,6 +1382,7 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-delete').onclick = e => {
           e.stopPropagation();
           li.classList.remove('swiped');
+          if (categoryLocked) { showToast("このカードは削除できません"); return; }
           deleteArticleById(art.id, state.categoryId);
         };
 
@@ -1403,9 +1424,9 @@ function renderCategory(container) {
         }, 150);
       }
 
-      // ドラッグ並び替え初期化
-      if (window.Sortable) {
-        if (artSortable) artSortable.destroy();
+      // ドラッグ並び替え初期化（ロック中のパネルは並び替え不可）
+      if (artSortable) { artSortable.destroy(); artSortable = null; }
+      if (window.Sortable && !categoryLocked) {
         artSortable = Sortable.create(list, {
           animation: 150,
           delay: 300,
@@ -1960,23 +1981,29 @@ function renderEditor(container) {
 
   document.getElementById('btnBack').onclick   = () => goBack();
 
-  // ── 解説パネルのカードロック（開発者アカウント以外は編集不可） ──────
-  // 判定方法は既存のコード（_isDev = currentUser.email === 'kimijimasan@gmail.com'）に合わせる
-  const _editorIsDev = firebase.auth().currentUser?.email === 'kimijimasan@gmail.com';
-  let _isLockedCard = false;
+  // ── 解説パネルのカードロック（開発者アカウント以外は編集・削除・カット・コピー不可） ──
+  // 判定: isLockedCategory()（パネル名が「解説」または locked:true フラグ。開発者は常に除外）
+  state.cardLocked = false;
+  function applyCardLockUI() {
+    if (!state.cardLocked) return;
+    // 編集系ボタンをすべて非表示にし、タップは閲覧のみ許可する
+    ['btnModeToggle', 'btnDel', 'btnTextFormat', 'btnPaste', 'btnPasteCancel', 'btnAttach', 'btnUndo', 'btnBulkCopy', 'btnBulkDelete']
+      .forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+  }
   (async () => {
-    let catName = _categoryMetaCache[state.categoryId]?.name;
-    if (catName === undefined) {
+    let cat = _categoryMetaCache[state.categoryId];
+    if (cat === undefined) {
       try {
         const snap = await db.ref(`users/${state.uid}/categories/${state.categoryId}`).once('value');
-        const val = snap.val();
-        _categoryMetaCache[state.categoryId] = val;
-        catName = val ? val.name : '';
-      } catch (_) { catName = ''; }
+        cat = snap.val();
+        _categoryMetaCache[state.categoryId] = cat;
+      } catch (_) { cat = null; }
     }
-    _isLockedCard = !_editorIsDev && catName === '解説';
-    const modeBtnEl = document.getElementById('btnModeToggle');
-    if (modeBtnEl && _isLockedCard) modeBtnEl.title = 'このカードは編集できません';
+    state.cardLocked = isLockedCategory(cat);
+    applyCardLockUI();
   })();
 
   // Undoボタン: 編集モード中は常に表示。lastDeletedContent の有無で active/inactive を切替
@@ -2042,7 +2069,7 @@ function renderEditor(container) {
         return;
       }
       if (state.editorMode === 'view') {
-        if (_isLockedCard) {
+        if (state.cardLocked) {
           showToast("このカードは編集できません");
           return;
         }
@@ -2076,7 +2103,7 @@ function renderEditor(container) {
       if (state.editorMode !== 'view') return;
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
-      if (_isLockedCard) {
+      if (state.cardLocked) {
         showToast("このカードは編集できません");
         return;
       }
@@ -2125,7 +2152,10 @@ function renderEditor(container) {
     }
     // refreshYoutubeDeleteButtons は setEditorMode 内で呼ばれる
   }, 50);
-  document.getElementById('btnDel').onclick    = deleteArticle;
+  document.getElementById('btnDel').onclick    = () => {
+    if (state.cardLocked) { showToast("このカードは削除できません"); return; }
+    deleteArticle();
+  };
 
   // 貼り付けキャンセルボタン（カットを元に戻す）
   const pasteCancelBtn = document.getElementById('btnPasteCancel');
@@ -2199,6 +2229,7 @@ function renderEditor(container) {
   const bulkCopyBtn = document.getElementById('btnBulkCopy');
   if (bulkCopyBtn) {
     bulkCopyBtn.onclick = () => {
+      if (state.cardLocked) { showToast("このカードはコピーできません"); return; }
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
@@ -2228,6 +2259,7 @@ function renderEditor(container) {
   const bulkDelBtn = document.getElementById('btnBulkDelete');
   if (bulkDelBtn) {
     bulkDelBtn.onclick = () => {
+      if (state.cardLocked) { showToast("このカードはカットできません"); return; }
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
@@ -3478,6 +3510,7 @@ function initializeNativeParagraphActions(editor) {
     if (state.editorMode !== 'view' || !window.globalCutParagraphs || window.globalCutParagraphs.length === 0) {
       return;
     }
+    if (state.cardLocked) return; // ロック中のカードへの貼り付けは許可しない
     // マーカー自身のクリックは無視
     if (e.target.classList.contains('paste-insert-line') || e.target.closest('.paste-insert-line')) return;
 
@@ -3907,10 +3940,11 @@ function bindParagraphSwipeEvents(editor) {
 
       // YouTubeはスマホではスワイプ選択しない（タップ直接再生を優先）
       // 段落・見出し（H1/H2）を選択対象とする
+      if (state.cardLocked) return; // ロック中のカードは段落選択（→カット/コピー）を許可しない
       if (target.tagName === 'P' || target.tagName === 'H1' || target.tagName === 'H2') {
         toggleParagraphSelect(target, editor);
       }
-    } else if (Math.abs(dx) <= 15 && dy <= 15 && window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
+    } else if (!state.cardLocked && Math.abs(dx) <= 15 && dy <= 15 && window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
       // 短タップ＋カットバッファあり → 貼り付けマーカーを設定
       // e.preventDefault() により合成 click イベントの二重発火を防ぐ
       e.preventDefault();
@@ -4478,6 +4512,7 @@ async function createSampleData(uid) {
     color: 'linear-gradient(135deg,#4f46e5,#6366f1)',
     order: 1,
     createdAt: now,
+    locked: true, // 開発者以外は編集・削除・カット・コピー不可
   });
 
   // カード1が最上部になるよう order を降順に設定（デフォルトソートが b.order - a.order）
@@ -4614,6 +4649,7 @@ async function saveCurrentDataAsTemplate() {
       color: cat.color,
       order: cat.order,
       createdAt: now,
+      ...(cat.locked === true ? { locked: true } : {}),
     };
 
     const catArts = artData?.[oldCatKey];
