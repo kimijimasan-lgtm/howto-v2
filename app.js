@@ -1960,6 +1960,25 @@ function renderEditor(container) {
 
   document.getElementById('btnBack').onclick   = () => goBack();
 
+  // ── 解説パネルのカードロック（開発者アカウント以外は編集不可） ──────
+  // 判定方法は既存のコード（_isDev = currentUser.email === 'kimijimasan@gmail.com'）に合わせる
+  const _editorIsDev = firebase.auth().currentUser?.email === 'kimijimasan@gmail.com';
+  let _isLockedCard = false;
+  (async () => {
+    let catName = _categoryMetaCache[state.categoryId]?.name;
+    if (catName === undefined) {
+      try {
+        const snap = await db.ref(`users/${state.uid}/categories/${state.categoryId}`).once('value');
+        const val = snap.val();
+        _categoryMetaCache[state.categoryId] = val;
+        catName = val ? val.name : '';
+      } catch (_) { catName = ''; }
+    }
+    _isLockedCard = !_editorIsDev && catName === '解説';
+    const modeBtnEl = document.getElementById('btnModeToggle');
+    if (modeBtnEl && _isLockedCard) modeBtnEl.title = 'このカードは編集できません';
+  })();
+
   // Undoボタン: 編集モード中は常に表示。lastDeletedContent の有無で active/inactive を切替
   // TipTapのundo()は使用しない（全消えリスクがあるため）
   function updateUndoButtonVisibility() {
@@ -2023,6 +2042,10 @@ function renderEditor(container) {
         return;
       }
       if (state.editorMode === 'view') {
+        if (_isLockedCard) {
+          showToast("このカードは編集できません");
+          return;
+        }
         setEditorMode('edit');
       } else {
         setEditorMode('view');
@@ -2053,6 +2076,10 @@ function renderEditor(container) {
       if (state.editorMode !== 'view') return;
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
+      if (_isLockedCard) {
+        showToast("このカードは編集できません");
+        return;
+      }
 
       // YouTubeノードはiframeに直接タッチが届くため clickイベントはここまで来ない
       // （overlayを除去済みのため、YouTubeタップはiframeが処理する）
