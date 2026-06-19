@@ -2562,7 +2562,9 @@ function renderEditor(container) {
 
   // ── iOS Safari「ステータスバータップ→先頭へスクロール」をカード本文に流用 ──
   // window自体は overflow:hidden で固定されているため標準動作の対象が無い。
-  // bodyに#app fixed化+1pxのスペーサーを用意してwindowをわずかにスクロール可能にし、
+  // #appのpositionには触れず、1pxのスペーサー（#statusbarScrollSpacer）だけでbodyをわずかにスクロール可能にする
+  // （#appをposition:fixedにすると、document側のスクロール可能状態と衝突し、
+  //  edContent内の手動スクロールがbody側に奪われてしまうため、#appのレイアウトは変更しない）。
   // ステータスバータップで発生する scroll イベント（scrollY が0に戻る）を検知して
   // カード本文（edContent）を先頭へスクロールする。
   document.body.classList.add('statusbar-tap-armed');

@@ -121,8 +121,9 @@ if (rect.bottom > visibleBottom) {
 iOS Safariの「ステータスバー（時計表示部分）タップでwindowを先頭へスクロール」標準動作を、カード本文（`#edContent`）の先頭スクロールに転用。
 - 通常時 `html, body { overflow: hidden }` のため window自体に動かせる範囲がなく、標準動作の対象が存在しない
 - `renderEditor` 内（`edEl` 定義直後）で `document.body` に `statusbar-tap-armed` クラスを付与し、`window.scrollTo(0, 1)` を実行
-  - CSSで `body.statusbar-tap-armed` の間だけ `#app` を `position: fixed`（中央寄せは `left:50%; transform:translateX(-50%)` で再現）に切り替え、`#statusbarScrollSpacer`（`index.html` の `#app` 直後、空のdiv）の高さを `calc(100% + 1px)` にして body に1pxだけスクロール余地を作る
+  - CSSで `body.statusbar-tap-armed` の間だけ `overflow-y: scroll` にし、`#statusbarScrollSpacer`（`index.html` の `#app` 直後、空のdiv）の高さを `1px` にして body に1pxだけスクロール余地を作る
   - これにより window が「わずかにスクロール可能」になり、ステータスバータップが有効になる
+  - **`#app` の `position` には触れない**（`position: fixed` にすると、document側のスクロール可能状態と衝突し、`#edContent` 内の手動スクロールがbody側に奪われて効かなくなる不具合があったため、`#app` は常に通常フローのまま）
 - `window` の `scroll` イベントを監視し、`scrollY === 0` に戻った瞬間（＝ステータスバータップ発生）を検知して `edEl.scrollTo({ top: 0, behavior: 'smooth' })` を実行 → 直後に `window.scrollTo(0, 1)` で再アーム
 - 画面離脱時（`listeners` 配列経由）に `statusbar-tap-armed` クラス除去・リスナー解除・`window.scrollTo(0, 0)` で原状復帰
 
@@ -591,9 +592,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=687`
+- `style.css?v=688`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=784`
+- `app.js?v=785`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
