@@ -298,14 +298,17 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - タップで `#textFormatMenu` を表示（ボタン直下に位置合わせ）
 - `#textFormatMenuBackdrop`（z-index: 5）でエディターコンテンツ外のクリックを拾って閉じる
   - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
-- **メニューUI**: H1・地の文・H2 + 区切り線 + **文字色パレット（17色実装完了）**
-  - `#btnApplyH1` → `toggleHeading({ level: 1 })` ← 選択中の要素が全部H1のとき紫ハイライト
-  - `#btnApplyH2` → `toggleHeading({ level: 2 })` ← 選択中の要素が全部H2のとき紫ハイライト
-  - `#btnApplyParagraph` → `setParagraph()` で見出しを解除し通常テキストに戻す
+- **メニューUI**: H1・地の文・H2 + 区切り線 + **文字色パレット（17色実装完了）** + **実行ボタン**
+  - **選択→実行方式（2026-06改修）**: H1/H2/地の文・文字色のボタンは押しても即時反映されない。タップで「選択中」状態（紫ハイライト/アウトライン）になるだけで、実際の適用は `#btnApplyExecute`（メニュー最下部の「実行」ボタン）を押した時点でまとめて反映される
+    - 同じボタンをもう一度押すと選択解除（`_pendingHeadingChoice = null` / `_pendingColorChoice = undefined`）
+    - メニューを開閉するたびに `_pendingHeadingChoice` / `_pendingColorChoice` はリセットされる
+    - 実行時は見出し変換 → 文字色適用の順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色適用用のテキスト範囲は見出し変換前に確保しておく（`toggleHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
+  - `#btnApplyH1` → 選択トグル（実行時に `toggleHeading({ level: 1 })`） ← 選択中の要素が全部H1のときメニュー初期表示で紫ハイライト
+  - `#btnApplyH2` → 選択トグル（実行時に `toggleHeading({ level: 2 })`） ← 選択中の要素が全部H2のときメニュー初期表示で紫ハイライト
+  - `#btnApplyParagraph` → 選択トグル（実行時に `setParagraph()` で見出しを解除し通常テキストに戻す）
   - **文字色（`.color-swatch-btn` × 17色 + デフォルト解除ボタン）**:
-    - 赤・オレンジ・黄・緑・青・紫・黒・白・ピンク・マゼンタ・ライトブルー・シアン・ライムグリーン・ブラウン・ゴールド・シルバー + デフォルト（`✕`、`removeMark`で解除）
+    - 赤・オレンジ・黄・緑・青・紫・黒・白・ピンク・マゼンタ・ライトブルー・シアン・ライムグリーン・ブラウン・ゴールド・シルバー + デフォルト（`✕`、実行時に `removeMark`で解除）
     - **`input type="color"` のネイティブピッカーは廃止**（iOS Safariで連続タップ時にダブルタップズームが誤発動し画面全体が拡大される不具合があったため）
-    - 各ボタンはタップした瞬間に即時反映（`tiptapEditor.view.dispatch(tr)` で ProseMirror トランザクションを直接発行、閲覧モード＝非編集状態でも動作）
     - 段落（ブロック）が選択されていればそれら全体に適用、未選択時は現在のテキスト選択範囲に適用（見出し設定と独立して動作）
 - **見出し選択の対応**: `h1.para-selected`, `h2.para-selected` もスワイプ左フリップで選択可能
   - `toggleParagraphSelect` は `<h1>`,`<h2>` 要素でも呼び出せる
@@ -575,7 +578,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=686`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=782`
+- `app.js?v=783`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

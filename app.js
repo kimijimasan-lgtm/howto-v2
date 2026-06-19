@@ -1995,6 +1995,9 @@ function renderEditor(container) {
           <button class="color-swatch-btn" data-color="#c0c0c0" title="シルバー" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#c0c0c0; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="" title="デフォルトに戻す" style="width:28px; height:28px; border-radius:50%; border:2px dashed rgba(255,255,255,0.4); background:transparent; color:#fff; font-size:0.7rem; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
+        <div style="margin-top:10px; text-align:center;">
+          <button id="btnApplyExecute" style="width:100%; padding:9px 14px; border:none; background:#8b5cf6; color:#fff; font-size:0.95rem; font-weight:700; cursor:pointer; border-radius:8px;">実行</button>
+        </div>
       </div>
       <div id="textFormatMenuBackdrop" style="display:none; position:fixed; inset:0; z-index:5;"></div>
       <input type="file" id="fileInput" style="display: none;" multiple />
@@ -2362,9 +2365,15 @@ function renderEditor(container) {
   const textFmtMenu = document.getElementById('textFormatMenu');
   const textFmtBackdrop = document.getElementById('textFormatMenuBackdrop');
 
+  // 実行ボタンを押すまで適用を保留する選択状態（null/undefined = 未選択 = 変更しない）
+  let _pendingHeadingChoice = null; // 1 | 2 | 'p' | null
+  let _pendingColorChoice = undefined; // 文字列カラー | '' (デフォルトに戻す) | undefined (変更しない)
+
   function closeTextFormatMenu() {
     if (textFmtMenu) textFmtMenu.style.display = 'none';
     if (textFmtBackdrop) textFmtBackdrop.style.display = 'none';
+    _pendingHeadingChoice = null;
+    _pendingColorChoice = undefined;
   }
 
   // ヘルパー: 選択中段落のPM内テキスト範囲を取得
@@ -2379,50 +2388,37 @@ function renderEditor(container) {
     } catch (_) { return null; }
   }
 
-  // H1 / H2 適用（見出し含む全選択ブロックに対応）
-  function applyHeadingToSelected(level) {
-    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-    if (!pm) return;
-    const selected = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'));
-    if (selected.length === 0) return;
+  // H1 / H2 適用（見出し含む全選択ブロックに対応）。insidePos群はheading/paragraph変換前に取得した位置を使う
+  function applyHeadingCore(level, selectedEls) {
+    if (!selectedEls || selectedEls.length === 0) return;
     // 下から上に適用してPM位置ずれを防ぐ
-    [...selected].reverse().forEach(el => {
+    [...selectedEls].reverse().forEach(el => {
       try {
         const insidePos = tiptapEditor.view.posAtDOM(el, 0);
         tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level }).run();
       } catch (_) {}
     });
-    const pm2 = tiptapEditor.view.dom;
-    cleanupAllSwipedParagraphs(pm2);
-    updateBulkDeleteButtonState(pm2);
-    closeTextFormatMenu();
-    // 変換後の見出し要素にドラッグハンドルを再注入（TipTapがDOMノードを置き換えるため）
-    if (state.editorMode === 'view') refreshYoutubeDeleteButtons('view');
   }
 
   // 地の文（通常段落）に戻す
-  function applyParagraphToSelected() {
-    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-    if (!pm) return;
-    const selected = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'));
-    if (selected.length === 0) return;
-    [...selected].reverse().forEach(el => {
+  function applyParagraphCore(selectedEls) {
+    if (!selectedEls || selectedEls.length === 0) return;
+    [...selectedEls].reverse().forEach(el => {
       try {
         const insidePos = tiptapEditor.view.posAtDOM(el, 0);
         tiptapEditor.chain().setTextSelection(insidePos).setParagraph().run();
       } catch (_) {}
     });
-    const pm2 = tiptapEditor.view.dom;
-    cleanupAllSwipedParagraphs(pm2);
-    updateBulkDeleteButtonState(pm2);
-    closeTextFormatMenu();
-    if (state.editorMode === 'view') refreshYoutubeDeleteButtons('view');
   }
 
   if (textFmtBtn && textFmtMenu) {
     textFmtBtn.onclick = (e) => {
       e.stopPropagation();
       if (textFmtMenu.style.display !== 'none') { closeTextFormatMenu(); return; }
+
+      _pendingHeadingChoice = null;
+      _pendingColorChoice = undefined;
+      document.querySelectorAll('.color-swatch-btn').forEach(b => { b.style.outline = 'none'; });
 
       // 選択中の要素タグからアクティブ状態を検出
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
@@ -2458,53 +2454,83 @@ function renderEditor(container) {
 
   if (textFmtBackdrop) textFmtBackdrop.onclick = closeTextFormatMenu;
 
+  const headingActiveStyle = 'rgba(139,92,246,0.35)';
+  const headingActiveBorder = '#8b5cf6';
+  function highlightPendingHeading() {
+    const map = { 1: document.getElementById('btnApplyH1'), 2: document.getElementById('btnApplyH2'), p: document.getElementById('btnApplyParagraph') };
+    Object.values(map).forEach(b => { if (b) { b.style.background = 'transparent'; b.style.borderColor = '#555'; } });
+    const chosenBtn = map[_pendingHeadingChoice];
+    if (chosenBtn) { chosenBtn.style.background = headingActiveStyle; chosenBtn.style.borderColor = headingActiveBorder; }
+  }
+
+  // H1/H2/地の文ボタンは選択するだけで、実際の適用は実行ボタンを押すまで保留する
   const btnH1 = document.getElementById('btnApplyH1');
-  if (btnH1) btnH1.onclick = (e) => { e.stopPropagation(); applyHeadingToSelected(1); };
+  if (btnH1) btnH1.onclick = (e) => { e.stopPropagation(); _pendingHeadingChoice = _pendingHeadingChoice === 1 ? null : 1; highlightPendingHeading(); };
 
   const btnH2 = document.getElementById('btnApplyH2');
-  if (btnH2) btnH2.onclick = (e) => { e.stopPropagation(); applyHeadingToSelected(2); };
+  if (btnH2) btnH2.onclick = (e) => { e.stopPropagation(); _pendingHeadingChoice = _pendingHeadingChoice === 2 ? null : 2; highlightPendingHeading(); };
 
   const btnP = document.getElementById('btnApplyParagraph');
-  if (btnP) btnP.onclick = (e) => { e.stopPropagation(); applyParagraphToSelected(); };
+  if (btnP) btnP.onclick = (e) => { e.stopPropagation(); _pendingHeadingChoice = _pendingHeadingChoice === 'p' ? null : 'p'; highlightPendingHeading(); };
 
   // 文字色パレット（段落・見出しの一括選択、または通常のテキスト選択の両方に対応）
   // iOS Safariで input type="color" を繰り返しタップすると誤ってダブルタップズームが
   // 発動し画面全体が拡大される不具合があったため、ネイティブピッカーは使わず
-  // あらかじめ用意した色のボタンをタップした瞬間に即時反映する方式にしている。
-  const applyColorToSelected = (color) => {
-    const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-    if (!pm || !tiptapEditor) return;
-    const markType = tiptapEditor.schema.marks.textStyle;
-    if (!markType) return;
-
-    const ranges = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'))
-      .map(el => getParaTextRange(el))
-      .filter(r => r && r.from < r.to);
-
-    // ブロック選択が無ければ、現在のテキスト選択範囲に適用する（見出し設定とは独立して動作）
-    if (ranges.length === 0) {
-      const { from, to, empty } = tiptapEditor.state.selection;
-      if (!empty) ranges.push({ from, to });
-    }
-    if (ranges.length === 0) return;
-
-    let tr = tiptapEditor.state.tr;
-    ranges.forEach(({ from, to }) => {
-      tr = color ? tr.addMark(from, to, markType.create({ color })) : tr.removeMark(from, to, markType);
-    });
-    tiptapEditor.view.dispatch(tr);
-  };
-
+  // あらかじめ用意した色のボタンをタップで選び、実行ボタンを押した時点で反映する方式にしている。
   document.querySelectorAll('.color-swatch-btn').forEach(btn => {
     btn.onclick = (e) => {
       e.stopPropagation();
-      applyColorToSelected(btn.dataset.color || null);
-      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
-      if (pm) cleanupAllSwipedParagraphs(pm);
-      updateBulkDeleteButtonState(tiptapEditor ? tiptapEditor.view.dom : null);
-      closeTextFormatMenu();
+      const color = btn.dataset.color || '';
+      _pendingColorChoice = _pendingColorChoice === color ? undefined : color;
+      document.querySelectorAll('.color-swatch-btn').forEach(b => {
+        b.style.outline = (_pendingColorChoice !== undefined && (b.dataset.color || '') === _pendingColorChoice) ? '3px solid #8b5cf6' : 'none';
+      });
     };
   });
+
+  // 実行ボタン：保留中の見出し選択・文字色選択をまとめて適用する
+  const btnExecute = document.getElementById('btnApplyExecute');
+  if (btnExecute) {
+    btnExecute.onclick = (e) => {
+      e.stopPropagation();
+      const pm = tiptapEditor ? tiptapEditor.view.dom : null;
+      if (!pm || !tiptapEditor) { closeTextFormatMenu(); return; }
+
+      const selectedEls = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'));
+      // 見出し変換でノードタイプが変わってもテキスト範囲のpos自体は変わらないため、先に色適用範囲を確保しておく
+      const colorRanges = _pendingColorChoice !== undefined
+        ? selectedEls.map(el => getParaTextRange(el)).filter(r => r && r.from < r.to)
+        : [];
+
+      if (_pendingHeadingChoice !== null) {
+        if (_pendingHeadingChoice === 'p') applyParagraphCore(selectedEls);
+        else applyHeadingCore(_pendingHeadingChoice, selectedEls);
+      }
+
+      if (_pendingColorChoice !== undefined) {
+        const markType = tiptapEditor.schema.marks.textStyle;
+        let ranges = colorRanges;
+        if (ranges.length === 0) {
+          const { from, to, empty } = tiptapEditor.state.selection;
+          if (!empty) ranges = [{ from, to }];
+        }
+        if (markType && ranges.length > 0) {
+          let tr = tiptapEditor.state.tr;
+          ranges.forEach(({ from, to }) => {
+            tr = _pendingColorChoice ? tr.addMark(from, to, markType.create({ color: _pendingColorChoice })) : tr.removeMark(from, to, markType);
+          });
+          tiptapEditor.view.dispatch(tr);
+        }
+      }
+
+      const pm2 = tiptapEditor.view.dom;
+      cleanupAllSwipedParagraphs(pm2);
+      updateBulkDeleteButtonState(pm2);
+      closeTextFormatMenu();
+      // 変換後の見出し要素にドラッグハンドルを再注入（TipTapがDOMノードを置き換えるため）
+      if (state.editorMode === 'view') refreshYoutubeDeleteButtons('view');
+    };
+  }
 
   addSwipeBack(container, () => {
     if (state.editorMode === 'view') {
