@@ -528,7 +528,7 @@ let _categoryArticlesCache = {};    // カテゴリ画面: catId -> 記事デー
 `btnBulkDelete.onclick` で段落を削除した後、孤立した空段落（`<p></p>` / `<p><br></p>`）を一括削除してから TipTap に同期する。画像を含む段落は除外。
 
 ### 空行削除ボタン（`#btnRemoveEmptyLines`、実装完了）
-エディター上部バーの🪄アイコン。`btnAttach`の左隣に配置。テキスト・画像・YouTubeのいずれも含まない`<p>`（`<p></p>` / `<p><br></p>` / 空白・nbspのみ等）をカード全体から一括削除する（h1/h2、画像入り段落、YouTube埋め込みを含む段落は対象外）。
+エディター上部バーの💥アイコン。`btnAttach`の左隣に配置。テキスト・画像・YouTubeのいずれも含まない`<p>`（`<p></p>` / `<p><br></p>` / 空白・nbspのみ等）をカード全体から一括削除する（h1/h2、画像入り段落、YouTube埋め込みを含む段落は対象外）。
 - 判定: `p.querySelector('img, [data-youtube-video]')` があれば除外、`textContent`を nbsp→半角スペース変換後に `trim()` して空でなければ除外
 - タップ時に `confirm('編集画面の空行をすべて削除します。\nよろしいですか？')` で確認（OK/キャンセル）
 - ロック中のカード（`state.cardLocked`）では他の編集系ボタンと同様 `applyCardLockUI()` で非表示
