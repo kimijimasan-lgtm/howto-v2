@@ -4791,7 +4791,7 @@ function warmUpTipTap() {
 }
 
 // ── 起動と認証の監視 ────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   applyTheme(getCurrentTheme());
   // 🔍 画像タップでの拡大表示（ライトボックス）機能は一旦保留中。
   // 閲覧モードでの画像タップは何も起きない（無反応）でよい。
@@ -4801,20 +4801,25 @@ window.addEventListener('DOMContentLoaded', () => {
   app.innerHTML = '<div class="auth-init-loading"><div class="loading-spinner">読み込み中…</div></div>';
   app.classList.add('visible');
 
-  // getRedirectResult() を onAuthStateChanged の外で呼ぶと
-  // Firebase のセッション復元前に null が先発火してログイン画面が瞬間表示される。
-  // null ハンドラ内で初めて呼ぶことで、正常な初期化フローを妨げない。
+  // ── ログイン画面フラッシュ対策（タイマーでの推測を完全排除） ──
+  // 過去の修正: getRedirectResult() を onAuthStateChanged の外で呼ぶと
+  // セッション復元前に null が先発火する → null ハンドラの内部で呼ぶよう修正。
+  // 過去の修正: それでも「正規ログイン済みで開く」「ゲストログオフ→正規ログイン」の
+  // どちらでもログイン画面が一瞬映り込んだ。固定の待機時間（150ms）で
+  // 「本物のnullか、復元前の仮のnullか」を推測していたが、推測である以上
+  // 復元が遅い環境では取り切れず、根本解決にならなかった。
   //
-  // それでもなお起動直後にログイン画面が一瞬映り込む問題が残っていた根本原因：
-  // signInWithRedirect 以外の通常の「永続化済みセッションの復元」自体にも、
-  // IndexedDB等からの復元が完了する前に onAuthStateChanged が一旦 null で先発火し、
-  // 復元完了後に改めて本来のuserで再発火する、という同種のタイミングずれが起こりうる。
-  // 初回コールバックが null だった場合に限り、再発火を少し待ってから最終判定することで、
-  // 正規ログイン済みユーザーがログイン画面に一瞬遷移してしまうのを防ぐ。
-  let _authFirstCallbackHandled = false;
+  // 根本原因: ゲストログイン（signInAnonymously() を直接 await して結果に従うだけ）
+  // と違い、起動時は「復元が完全に終わったかどうか」をタイマーで当てようとしていた。
+  // → Firebase Auth が提供する authStateReady() は、永続化セッションの復元が
+  //   完全に確定するまで解決しないPromise。これを最初に await することで、
+  //   ゲストログインの「非同期処理の結果を直接 await してから判断する」構造に統一し、
+  //   推測（setTimeout）を一切使わずに済むようにした。
+  if (typeof firebase.auth().authStateReady === 'function') {
+    await firebase.auth().authStateReady();
+  }
+
   firebase.auth().onAuthStateChanged(async (user) => {
-    const isFirstCallback = !_authFirstCallbackHandled;
-    _authFirstCallbackHandled = true;
     if (user) {
       // ログイン済み — 購入状態を読み取り
       state.uid = user.uid;
@@ -4841,11 +4846,6 @@ window.addEventListener('DOMContentLoaded', () => {
       // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
       // getRedirectResult() で結果を確認してから判断する
       await firebase.auth().getRedirectResult().catch(() => null);
-      // 初回コールバックのみ、永続化セッション復元の再発火を少し待ってから最終判定する
-      // （再発火で user が来た場合はそちらの分岐が先に goTo('home') を実行する）
-      if (isFirstCallback) {
-        await new Promise(resolve => setTimeout(resolve, 150));
-      }
       if (!firebase.auth().currentUser) {
         state.uid = null;
         state.isPremium = false;
