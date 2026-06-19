@@ -211,6 +211,26 @@ body {
   opacity: 1;
 }
 
+/* ── iOSステータスバータップ→カード先頭スクロール用 ──
+   iOS Safariは「ウィンドウがわずかにスクロール可能」な場合のみステータスバータップで
+   window を先頭へスクロールする。#app は通常position指定なしで body のレイアウトに従うため、
+   この機能を使う間だけ #app を fixed 化し、代わりに spacer 要素で body に1pxの余白スクロール域を作る。 */
+#statusbarScrollSpacer {
+  height: 0;
+}
+body.statusbar-tap-armed {
+  overflow-y: scroll;
+}
+body.statusbar-tap-armed #app {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+body.statusbar-tap-armed #statusbarScrollSpacer {
+  height: calc(100% + 1px);
+}
+
 /* ── Header ── */
 .app-header {
   position: sticky;

@@ -117,6 +117,15 @@ if (rect.bottom > visibleBottom) {
 - カーソルが隠れているときだけ差分を加算（アニメーションなし・最小限）
 - `scrollIntoView` は上下に無駄な動きが出るため不使用
 
+### iOSステータスバータップ→カード先頭スクロール（実装完了）
+iOS Safariの「ステータスバー（時計表示部分）タップでwindowを先頭へスクロール」標準動作を、カード本文（`#edContent`）の先頭スクロールに転用。
+- 通常時 `html, body { overflow: hidden }` のため window自体に動かせる範囲がなく、標準動作の対象が存在しない
+- `renderEditor` 内（`edEl` 定義直後）で `document.body` に `statusbar-tap-armed` クラスを付与し、`window.scrollTo(0, 1)` を実行
+  - CSSで `body.statusbar-tap-armed` の間だけ `#app` を `position: fixed`（中央寄せは `left:50%; transform:translateX(-50%)` で再現）に切り替え、`#statusbarScrollSpacer`（`index.html` の `#app` 直後、空のdiv）の高さを `calc(100% + 1px)` にして body に1pxだけスクロール余地を作る
+  - これにより window が「わずかにスクロール可能」になり、ステータスバータップが有効になる
+- `window` の `scroll` イベントを監視し、`scrollY === 0` に戻った瞬間（＝ステータスバータップ発生）を検知して `edEl.scrollTo({ top: 0, behavior: 'smooth' })` を実行 → 直後に `window.scrollTo(0, 1)` で再アーム
+- 画面離脱時（`listeners` 配列経由）に `statusbar-tap-armed` クラス除去・リスナー解除・`window.scrollTo(0, 0)` で原状復帰
+
 ### データ保存形式
 Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
@@ -395,6 +404,12 @@ function isLockedCategory(catData) {
 - `createSampleData()` で作る解説パネルには `locked: true` を明示的に付与
 - `saveCurrentDataAsTemplate()`（テンプレート更新）でも `locked: true` は消えずに引き継がれる
 
+### ロックの適用範囲（意図的に限定）
+`isLockedCategory()` / `state.cardLocked` は **パネル内のカード**（編集・削除・カット・コピー・カード並び替え・ピン留めの切替）にのみ適用される。以下は意図的にロック対象外（ホーム画面のパネル自体の操作は誰でも可能）:
+- **ホーム画面でのパネル並び替え**（`catSortable`, `renderHome`内）: `isLockedCategory()` を一切参照しない。ゲスト・一般ユーザーでも解説パネルをドラッグして好きな位置に移動できる
+- **ピン留めカードの表示順**（`renderCategory`内 `doRender()`）: `pinned` なカードを先頭に並べる処理（`pinned.sort(...) + unpinned`）は `categoryLocked` の値に関係なく常に適用される。ロックされるのはピン留め**状態の切り替え**操作のみで、表示順序ロジック自体はロック有無で分岐しない
+- 上記2点について「直っていないのでは」と感じた場合は大抵 **iPhoneのキャッシュ**（古い`app.js`を読んでいる）が原因。`index.html`の`?v=`を確認すること
+
 ### 根本的な実装：`setEditorMode()` でブラウザレベルにロック
 ボタンを隠すだけでは将来の機能追加で抜け道ができるため、**`setEditorMode()` 自体**にガードを入れて、どの経路から呼ばれても編集可能にならないようにしている。
 ```js
@@ -576,9 +591,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=686`
+- `style.css?v=687`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=783`
+- `app.js?v=784`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
