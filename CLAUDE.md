@@ -160,12 +160,18 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 
 ### 起動シーケンス（`onAuthStateChanged`）
 
-**ログインフラッシュ修正済み（2026-06）**:  
-`getRedirectResult()` を `onAuthStateChanged` の外で呼ぶと、セッション復元前に `null` が先発火してログイン画面が一瞬表示される問題があった。`null` ハンドラの**内部**で呼ぶよう修正。
+**ログインフラッシュ修正（2026-06、複数回対応）**:
+1回目: `getRedirectResult()` を `onAuthStateChanged` の外で呼ぶと、セッション復元前に `null` が先発火してログイン画面が一瞬表示される問題があった。`null` ハンドラの**内部**で呼ぶよう修正。
+
+2回目（根本原因）: それでもフラッシュが再発していた。原因は `signInWithRedirect` 後の特殊ケースに限らず、**通常の永続化済みセッション復元自体**でも、IndexedDB等からの復元完了前に `onAuthStateChanged` が一旦 `null` で先発火 → 復元完了後に本来の `user` で再発火する、という同種のタイミングずれが起こり得ること。`null` ハンドラ内で `getRedirectResult()` を確認しただけでは、redirectが絡まない通常起動時のこのケースを救えていなかった。
+→ **初回コールバックが `null` だった場合に限り**、150ms待ってから `firebase.auth().currentUser` を再確認し、その間に正しい `user` で再発火していれば（そちらの分岐が先に `goTo('home')` を実行済みのため）ログイン画面には遷移しないよう修正（`_authFirstCallbackHandled` フラグで初回判定）。2回目以降の正規のサインアウト等では待たずに即 `goTo('login')`。
+
+起動時は常に最初にローディング画面（`.auth-init-loading`）を表示し、認証状態の確定後にのみ `goTo('home')` / `goTo('login')` のいずれかへ遷移する（`index.html` の `#app` は空のまま、`DOMContentLoaded` 内で初めてローディングHTMLを挿入するため、静的HTML由来のログイン画面フラッシュは存在しない）。
 
 ```
 起動
- └─ onAuthStateChanged
+ └─ #app に読み込み中…スピナーを表示
+ └─ onAuthStateChanged（isFirstCallback = 初回かどうか）
       ├─ user あり
       │   ├─ state.isAnonymous = user.isAnonymous をセット
       │   ├─ isPremium フラグを Firebase から取得
@@ -173,7 +179,8 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
       │   └─ goTo('home')
       └─ user なし
            ├─ await getRedirectResult()  ← ここで初めて呼ぶ（外で呼ばない）
-           ├─ currentUser が非 null → 何もしない（再発火される）
+           ├─ isFirstCallback なら150ms待って再発火（本来のuser）を待つ
+           ├─ currentUser が非 null → 何もしない（再発火されたuser分岐が処理済み）
            └─ currentUser が null → goTo('login')
 ```
 
@@ -589,9 +596,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=689`
+- `style.css?v=690`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=787`
+- `app.js?v=789`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

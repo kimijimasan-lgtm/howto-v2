@@ -1559,17 +1559,16 @@ body {
 /* ゲストログインボタン（サブボタン） */
 .btn-guest {
   background: transparent;
-  color: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-weight: 700;
+  border: 2px solid #ffffff;
   font-size: 0.85rem;
-  font-weight: 500;
   padding: 0.6rem 1.25rem;
   margin-top: 0.5rem;
   box-shadow: none;
 }
 .btn-guest:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.1);
 }
 .btn-guest:active {
   transform: translateY(1px);

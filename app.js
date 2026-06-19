@@ -4506,8 +4506,8 @@ function showGuestSignoutModal() {
         <p style="color:rgba(255,255,255,0.85);font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;">サインアウトするとゲストデータが失われます</p>
         <p style="color:rgba(255,255,255,0.55);font-size:0.85rem;line-height:1.6;margin-bottom:1.5rem;">課金してデータを引き継ぎますか？</p>
         <button id="btnGuestSignoutUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">課金する</button>
-        <button id="btnGuestSignoutLogoff" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;margin-bottom:0.4rem;font-family:var(--font);">課金しないでログオフする</button>
-        <button id="btnGuestSignoutCancel" style="width:100%;padding:0.6rem;border:none;background:none;color:rgba(255,255,255,0.35);font-size:0.8rem;cursor:pointer;font-family:var(--font);">キャンセル</button>
+        <button id="btnGuestSignoutLogoff" style="width:100%;padding:0.7rem;border:2px solid #ffffff;border-radius:14px;background:transparent;color:#ffffff;font-weight:700;font-size:0.85rem;cursor:pointer;margin-bottom:0.4rem;font-family:var(--font);">課金しないでログオフする</button>
+        <button id="btnGuestSignoutCancel" style="width:100%;padding:0.6rem;border:2px solid #ffffff;border-radius:14px;background:transparent;color:#ffffff;font-weight:700;font-size:0.8rem;cursor:pointer;font-family:var(--font);">キャンセル</button>
       </div>
     </div>
   `;
@@ -4804,7 +4804,17 @@ window.addEventListener('DOMContentLoaded', () => {
   // getRedirectResult() を onAuthStateChanged の外で呼ぶと
   // Firebase のセッション復元前に null が先発火してログイン画面が瞬間表示される。
   // null ハンドラ内で初めて呼ぶことで、正常な初期化フローを妨げない。
+  //
+  // それでもなお起動直後にログイン画面が一瞬映り込む問題が残っていた根本原因：
+  // signInWithRedirect 以外の通常の「永続化済みセッションの復元」自体にも、
+  // IndexedDB等からの復元が完了する前に onAuthStateChanged が一旦 null で先発火し、
+  // 復元完了後に改めて本来のuserで再発火する、という同種のタイミングずれが起こりうる。
+  // 初回コールバックが null だった場合に限り、再発火を少し待ってから最終判定することで、
+  // 正規ログイン済みユーザーがログイン画面に一瞬遷移してしまうのを防ぐ。
+  let _authFirstCallbackHandled = false;
   firebase.auth().onAuthStateChanged(async (user) => {
+    const isFirstCallback = !_authFirstCallbackHandled;
+    _authFirstCallbackHandled = true;
     if (user) {
       // ログイン済み — 購入状態を読み取り
       state.uid = user.uid;
@@ -4831,6 +4841,11 @@ window.addEventListener('DOMContentLoaded', () => {
       // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
       // getRedirectResult() で結果を確認してから判断する
       await firebase.auth().getRedirectResult().catch(() => null);
+      // 初回コールバックのみ、永続化セッション復元の再発火を少し待ってから最終判定する
+      // （再発火で user が来た場合はそちらの分岐が先に goTo('home') を実行する）
+      if (isFirstCallback) {
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
       if (!firebase.auth().currentUser) {
         state.uid = null;
         state.isPremium = false;
