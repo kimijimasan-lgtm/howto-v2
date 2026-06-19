@@ -2560,27 +2560,6 @@ function renderEditor(container) {
   const edEl = document.getElementById('edContent');
   const status = document.getElementById('saveStatus');
 
-  // ── iOS Safari「ステータスバータップ→先頭へスクロール」をカード本文に流用 ──
-  // window自体は overflow:hidden で固定されているため標準動作の対象が無い。
-  // #appのpositionには触れず、1pxのスペーサー（#statusbarScrollSpacer）だけでbodyをわずかにスクロール可能にする
-  // （#appをposition:fixedにすると、document側のスクロール可能状態と衝突し、
-  //  edContent内の手動スクロールがbody側に奪われてしまうため、#appのレイアウトは変更しない）。
-  // ステータスバータップで発生する scroll イベント（scrollY が0に戻る）を検知して
-  // カード本文（edContent）を先頭へスクロールする。
-  document.body.classList.add('statusbar-tap-armed');
-  window.scrollTo(0, 1);
-  const onStatusbarTapScroll = () => {
-    if (window.scrollY !== 0) return;
-    edEl.scrollTo({ top: 0, behavior: 'smooth' });
-    window.scrollTo(0, 1);
-  };
-  window.addEventListener('scroll', onStatusbarTapScroll, { passive: true });
-  listeners.push(() => {
-    window.removeEventListener('scroll', onStatusbarTapScroll);
-    document.body.classList.remove('statusbar-tap-armed');
-    window.scrollTo(0, 0);
-  });
-
   // 閲覧モード中、画像タップ/ピンチでProseMirrorがカーソルを置いてフォーカスしてしまう問題への対策。
   // edContent（ProseMirrorの親要素）のキャプチャフェーズで先取りして停止することで、
   // ProseMirror自身の mousedown/touchstart 処理や他のリスナーに一切イベントを渡さない。

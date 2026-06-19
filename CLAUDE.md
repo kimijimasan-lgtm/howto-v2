@@ -117,15 +117,8 @@ if (rect.bottom > visibleBottom) {
 - カーソルが隠れているときだけ差分を加算（アニメーションなし・最小限）
 - `scrollIntoView` は上下に無駄な動きが出るため不使用
 
-### iOSステータスバータップ→カード先頭スクロール（実装完了）
-iOS Safariの「ステータスバー（時計表示部分）タップでwindowを先頭へスクロール」標準動作を、カード本文（`#edContent`）の先頭スクロールに転用。
-- 通常時 `html, body { overflow: hidden }` のため window自体に動かせる範囲がなく、標準動作の対象が存在しない
-- `renderEditor` 内（`edEl` 定義直後）で `document.body` に `statusbar-tap-armed` クラスを付与し、`window.scrollTo(0, 1)` を実行
-  - CSSで `body.statusbar-tap-armed` の間だけ `overflow-y: scroll` にし、`#statusbarScrollSpacer`（`index.html` の `#app` 直後、空のdiv）の高さを `1px` にして body に1pxだけスクロール余地を作る
-  - これにより window が「わずかにスクロール可能」になり、ステータスバータップが有効になる
-  - **`#app` の `position` には触れない**（`position: fixed` にすると、document側のスクロール可能状態と衝突し、`#edContent` 内の手動スクロールがbody側に奪われて効かなくなる不具合があったため、`#app` は常に通常フローのまま）
-- `window` の `scroll` イベントを監視し、`scrollY === 0` に戻った瞬間（＝ステータスバータップ発生）を検知して `edEl.scrollTo({ top: 0, behavior: 'smooth' })` を実行 → 直後に `window.scrollTo(0, 1)` で再アーム
-- 画面離脱時（`listeners` 配列経由）に `statusbar-tap-armed` クラス除去・リスナー解除・`window.scrollTo(0, 0)` で原状復帰
+### iOSステータスバータップ→カード先頭スクロール（実装を撤回・見送り）
+iOS Safariの「ステータスバータップでwindowを先頭へスクロール」標準動作を `#edContent` の先頭スクロールに転用しようとしたが、bodyを1pxスクロール可能にする方式（`#app`のpositionを変更しない版でも）が原因で `#edContent` 内の手動スクロールが壊れる不具合が発生したため、実装を完全に取り消し済み（`#statusbarScrollSpacer`・`statusbar-tap-armed`関連のCSS/JSは削除）。再実装する場合は手動スクロールとの共存方法を要検討。
 
 ### データ保存形式
 Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
@@ -592,9 +585,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=688`
+- `style.css?v=689`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=785`
+- `app.js?v=786`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
