@@ -1948,6 +1948,9 @@ function renderEditor(container) {
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
+          <button class="btn-icon" id="btnRemoveEmptyLines" title="空行削除" style="background: rgba(20, 184, 166, 0.2); border: 1px solid #14b8a6; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #14b8a6; transition: transform 0.2s; align-items: center; justify-content: center;">
+            <span style="font-size:1.3rem; line-height:1; pointer-events:none;">🧹</span>
+          </button>
           <button class="btn-icon" id="btnAttach" title="画像を添付" style="margin-right: 0.35rem;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -2011,7 +2014,7 @@ function renderEditor(container) {
   function applyCardLockUI() {
     if (!state.cardLocked) return;
     // 編集系ボタンをすべて非表示にし、タップは閲覧のみ許可する
-    ['btnModeToggle', 'btnDel', 'btnTextFormat', 'btnPaste', 'btnPasteCancel', 'btnAttach', 'btnUndo', 'btnBulkCopy', 'btnBulkDelete']
+    ['btnModeToggle', 'btnDel', 'btnTextFormat', 'btnPaste', 'btnPasteCancel', 'btnAttach', 'btnUndo', 'btnBulkCopy', 'btnBulkDelete', 'btnRemoveEmptyLines']
       .forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -2357,6 +2360,38 @@ function renderEditor(container) {
           pasteAutoHideTimer = null;
         }, 5000);
       }, 500);
+    };
+  }
+
+  // 空行削除ボタン
+  const removeEmptyLinesBtn = document.getElementById('btnRemoveEmptyLines');
+  if (removeEmptyLinesBtn) {
+    removeEmptyLinesBtn.onclick = () => {
+      if (state.cardLocked) { showToast("このカードは編集できません"); return; }
+      if (!confirm('編集画面の空行をすべて削除します。\nよろしいですか？')) return;
+
+      const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
+      if (!pm) return;
+
+      lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+
+      // テキスト・画像を含まない空の<p>（<p></p> / <p><br></p>）のみを削除する
+      Array.from(pm.querySelectorAll('p')).forEach(p => {
+        if (!p.querySelector('img') &&
+            (p.childNodes.length === 0 ||
+             (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR'))) {
+          p.remove();
+        }
+      });
+      if (!pm.querySelector('p, h1, h2, [data-youtube-video]')) {
+        pm.appendChild(document.createElement('p'));
+      }
+
+      if (tiptapEditor) {
+        tiptapEditor.commands.setContent(getCleanPMHTML());
+        refreshYoutubeDeleteButtons(state.editorMode);
+      }
+      showToast("空行を削除しました");
     };
   }
 
