@@ -1949,7 +1949,7 @@ function renderEditor(container) {
             </svg>
           </button>
           <button class="btn-icon" id="btnRemoveEmptyLines" title="空行削除" style="background: rgba(20, 184, 166, 0.2); border: 1px solid #14b8a6; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #14b8a6; transition: transform 0.2s; align-items: center; justify-content: center;">
-            <span style="font-size:1.3rem; line-height:1; pointer-events:none;">✂️</span>
+            <span style="font-size:1.3rem; line-height:1; pointer-events:none;">🪄</span>
           </button>
           <button class="btn-icon" id="btnAttach" title="画像を添付" style="margin-right: 0.35rem;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
