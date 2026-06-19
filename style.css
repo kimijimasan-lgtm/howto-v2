@@ -1366,6 +1366,60 @@ body {
   background: var(--bg);
 }
 
+/* スプラッシュ画面（起動直後〜認証確定まで。ログイン画面の一瞬の映り込みを完全に隠す） */
+.splash-screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: linear-gradient(160deg, #131a3d 0%, #090b18 55%, #000000 100%);
+}
+.splash-screen .splash-icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  animation: splashIconIn 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.splash-screen .splash-logo {
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  opacity: 0;
+  animation: splashLogoIn 1s ease-out 0.2s forwards;
+}
+.splash-dots {
+  display: flex;
+  gap: 7px;
+  margin-top: -0.5rem;
+}
+.splash-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  animation: splashDotPulse 1.2s ease-in-out infinite;
+}
+.splash-dots span:nth-child(2) { animation-delay: 0.15s; }
+.splash-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes splashIconIn {
+  from { opacity: 0; transform: scale(0.82) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes splashLogoIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes splashDotPulse {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.7); }
+  40%           { opacity: 1;    transform: scale(1); }
+}
+
 /* ════════════════════════════
    SCREEN: Login (プレミアムデザイン)
    ════════════════════════════ */

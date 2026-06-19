@@ -168,22 +168,27 @@ Firebase: `users/{uid}/articles/{catId}/{artId}.content` にHTML文字列
 3回目（根本解決）: ゲストログイン（`signInAnonymously()` を直接 `await` してその結果に従うだけで、タイマー等の推測を一切使わない）と構造を比較し、正規ログイン側だけがタイマーで「復元完了済みかどうか」を当てようとしていたことが本質的な原因だと判明。
 → Firebase Auth が提供する **`firebase.auth().authStateReady()`**（永続化セッションの復元が完全に確定するまで解決しないPromise）を `DOMContentLoaded` 内で最初に `await` するよう変更。これにより `onAuthStateChanged` を登録する時点で `firebase.auth().currentUser` は既に確定済みとなり、初回コールバックが暫定的な `null` になることがなくなる。`setTimeout` によるタイマー推測は完全に撤廃。
 
-起動時は常に最初にローディング画面（`.auth-init-loading`）を表示し、`authStateReady()` の解決 → `onAuthStateChanged` 登録・確定値での発火 → `goTo('home')` / `goTo('login')` の順で遷移する（`index.html` の `#app` は空のまま、`DOMContentLoaded` 内で初めてローディングHTMLを挿入するため、静的HTML由来のログイン画面フラッシュは存在しない）。signOut等の起動後のライブな状態変化は `onAuthStateChanged` がそのまま即時処理する（起動時点で既に確定済みのため、ここでも推測は不要）。
+4回目（保険として多重防御・2026-06）: `authStateReady()` で根本解決した後も、「万一フラッシュが起きてもユーザーの目に入らないようにする」二重の安全策として、起動直後に**スプラッシュ画面**（`.splash-screen`）を表示するよう変更。認証確定（`goTo('home')`/`goTo('login')`直前）まではスプラッシュ画面が`#app`を占有しているため、内部でどんなタイミングずれが起きてもユーザーには一切見えない。
+最低表示時間（0.8秒固定）は一度導入したが、認証確認が完了しているのに無駄に画面を待たせるだけだったため**撤廃**。`authStateReady()` 完了後は待機ゼロで即座に `goTo('home')` / `goTo('login')` を呼ぶ。
+
+**デザイン**: 背景は紺→黒のグラデーション（`linear-gradient(160deg, #131a3d 0%, #090b18 55%, #000000 100%)`）。中央に `icon.png`（`splashIconIn` で軽くスケール＋フェードインしながら登場）、その下に「PCスマホ連動メモ」を白・細字（`font-weight: 300`、`splashLogoIn` で少し遅れてフェードイン）、さらに下に3つのドットが順番にパルスするローディングアニメーション（`.splash-dots`）。次画面への遷移は `#app` の既存のopacityトランジション（`goTo()`が`visible`クラスを外す処理）でフェードアウトする。
+
+起動時は常に最初にスプラッシュ画面（`.splash-screen`）を表示し、`authStateReady()` の解決 → `onAuthStateChanged` 登録・確定値での発火 → 即座に `goTo('home')` / `goTo('login')` の順で遷移する（`index.html` の `#app` は空のまま、`DOMContentLoaded` 内で初めてスプラッシュHTMLを挿入するため、静的HTML由来のログイン画面フラッシュは存在しない）。
 
 ```
 起動
- └─ #app に読み込み中…スピナーを表示
+ └─ #app にスプラッシュ画面（アイコン＋ロゴ、暗い背景）を表示
  └─ await firebase.auth().authStateReady()  ← 永続化セッション復元の完全確定を待つ（タイマー推測なし）
  └─ onAuthStateChanged を登録（この時点で currentUser は確定済み）
       ├─ user あり
       │   ├─ state.isAnonymous = user.isAnonymous をセット
       │   ├─ isPremium フラグを Firebase から取得
       │   ├─ categories が 0件 かつ 開発者でない → copyTemplateToUser()
-      │   └─ goTo('home')
+      │   └─ goTo('home')  ← 待機なし、即座に呼ぶ
       └─ user なし
            ├─ await getRedirectResult()  ← ここで初めて呼ぶ（外で呼ばない）
            ├─ currentUser が非 null → 何もしない（redirect成功、再発火されたuser分岐が処理済み）
-           └─ currentUser が null → goTo('login')
+           └─ currentUser が null → goTo('login')  ← 待機なし、即座に呼ぶ
 ```
 
 ### state オブジェクト
@@ -598,9 +603,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=690`
+- `style.css?v=692`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=790`
+- `app.js?v=793`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

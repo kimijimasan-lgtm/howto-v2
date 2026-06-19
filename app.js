@@ -4798,7 +4798,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   // カーソルが入り込まないようにする修正（editorProps.handleDOMEvents の mousedown/touchstart）は維持。
 
   const app = document.getElementById('app');
-  app.innerHTML = '<div class="auth-init-loading"><div class="loading-spinner">読み込み中…</div></div>';
+  app.innerHTML = `
+    <div class="splash-screen">
+      <img class="splash-icon" src="icon.png" alt="" />
+      <div class="splash-logo">PCスマホ連動メモ</div>
+      <div class="splash-dots"><span></span><span></span><span></span></div>
+    </div>`;
   app.classList.add('visible');
 
   // ── ログイン画面フラッシュ対策（タイマーでの推測を完全排除） ──
