@@ -4735,6 +4735,7 @@ async function saveCurrentDataAsTemplate() {
           createdAt: now,
           updatedAt: now,
           order: now + (sorted.length - i),
+          ...(art.pinned === true ? { pinned: true } : {}),
         };
       });
     }

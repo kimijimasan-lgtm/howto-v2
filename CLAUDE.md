@@ -223,6 +223,10 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 | `createSampleData(uid)` | フォールバック用静的サンプル。`TEMPLATE_EXPLANATION_CARDS` 定数を使用 |
 | `saveCurrentDataAsTemplate()` | 開発者専用。`TEMPLATE_EXPLANATION_CARDS` 定数から `templates/default` を生成・上書き |
 
+### ピン留め（`pinned`）フラグの引き継ぎ（修正済み）
+`saveCurrentDataAsTemplate()` が記事を再構築する際、`content`/`createdAt`/`updatedAt`/`order` のみを明示的にコピーしていたため `pinned: true` が欠落し、テンプレート経由のコピー先（新規ユーザー・ゲスト）でピン留めが先頭表示されない不具合があった。`art.pinned === true` の場合のみ `pinned: true` を含めるよう修正。
+`copyTemplateToUser(uid)` 側は `{ ...art, ... }` で全フィールドをスプレッドコピーしているため元々問題なし（テンプレート側に `pinned` が無かったことが根本原因）。
+カード一覧の表示順（`renderCategory` 内 `doRender()`）は元々 `categoryLocked` やユーザー種別と無関係に `pinned` を先頭ソートしているため、表示ロジック自体に修正は不要だった。
 ### 「テンプレートを更新」モーダル（開発者専用）
 - 表示条件: `firebase.auth().currentUser?.email === 'kimijimasan@gmail.com'`
 - 場所: ホーム画面ヘッダー（サインアウトボタンの左隣、データベースアイコン）
@@ -587,7 +591,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=689`
 - `tiptap.bundle.js?v=3`
-- `app.js?v=786`
+- `app.js?v=787`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
