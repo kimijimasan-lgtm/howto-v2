@@ -1949,7 +1949,7 @@ function renderEditor(container) {
             </svg>
           </button>
           <button class="btn-icon" id="btnRemoveEmptyLines" title="空行削除" style="background: rgba(20, 184, 166, 0.2); border: 1px solid #14b8a6; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #14b8a6; transition: transform 0.2s; align-items: center; justify-content: center;">
-            <span style="font-size:1.3rem; line-height:1; pointer-events:none;">🧹</span>
+            <span style="font-size:1.3rem; line-height:1; pointer-events:none;">✂️</span>
           </button>
           <button class="btn-icon" id="btnAttach" title="画像を添付" style="margin-right: 0.35rem;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
@@ -2375,13 +2375,12 @@ function renderEditor(container) {
 
       lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
 
-      // テキスト・画像を含まない空の<p>（<p></p> / <p><br></p>）のみを削除する
+      // テキスト・画像・YouTubeのいずれも含まない段落（<p></p> / <p><br></p> / 空白のみ等）を削除する
       Array.from(pm.querySelectorAll('p')).forEach(p => {
-        if (!p.querySelector('img') &&
-            (p.childNodes.length === 0 ||
-             (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR'))) {
-          p.remove();
-        }
+        if (p.querySelector('img, [data-youtube-video]')) return;
+        const text = p.textContent.replace(/ /g, ' ').trim();
+        if (text !== '') return;
+        p.remove();
       });
       if (!pm.querySelector('p, h1, h2, [data-youtube-video]')) {
         pm.appendChild(document.createElement('p'));
