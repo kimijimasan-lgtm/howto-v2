@@ -50,6 +50,39 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// ── グローバルエラーハンドラー（ランタイムエラー時の安全復帰） ──
+let _errorRecoveryInProgress = false;
+function handleGlobalError(errorMsg) {
+  if (_errorRecoveryInProgress) return;
+  _errorRecoveryInProgress = true;
+  console.error('[GlobalError]', errorMsg);
+  try {
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:12px 24px;border-radius:8px;z-index:999999;font-size:0.95rem;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+    toast.textContent = 'エラーが発生しました。ホームに戻ります';
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.remove();
+      _errorRecoveryInProgress = false;
+      if (typeof goTo === 'function' && state && state.uid) {
+        goTo('home');
+      } else {
+        location.reload();
+      }
+    }, 1500);
+  } catch (_) {
+    _errorRecoveryInProgress = false;
+    location.reload();
+  }
+}
+window.onerror = (message, source, lineno, colno, error) => {
+  handleGlobalError(`${message} at ${source}:${lineno}:${colno}`);
+  return true;
+};
+window.onunhandledrejection = (event) => {
+  handleGlobalError(`Unhandled rejection: ${event.reason}`);
+};
+
 // ── テーマ管理 ────────────────────────────────────────────────────────
 const THEMES = [
   { id: 'dark',     label: 'ダーク',         swatch: '#0d1117' },
@@ -664,6 +697,11 @@ function renderHome(container) {
           </svg>
         </button>
         <h1 class="app-title">📋 PCスマホ連動メモ</h1>
+        <button class="btn-icon" id="btnExportAllPanels" title="全パネル一括エクスポート">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
         <button class="btn-icon" id="btnTheme" title="テーマ変更">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -709,6 +747,7 @@ function renderHome(container) {
   document.getElementById('btnAddCat').onclick = () => showCategoryModal();
   document.getElementById('btnTheme').onclick = () => showThemePicker();
   document.getElementById('btnSearchFab').onclick = () => showSearchModal();
+  document.getElementById('btnExportAllPanels').onclick = () => exportAllPanelsToTxt();
   const showQrBtn = document.getElementById('btnShowQR');
   if (showQrBtn) showQrBtn.onclick = () => showQRCodeModal();
 
@@ -1866,6 +1905,106 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
   }
 }
 
+// ── 全パネル一括エクスポート（パネルごとにtxtファイルをダウンロード） ──
+async function exportAllPanelsToTxt() {
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+  try {
+    // 全カテゴリを取得
+    const catSnap = await db.ref(`users/${state.uid}/categories`).once('value');
+    const catData = catSnap.val();
+    if (!catData) { alert('エクスポートするパネルがありません'); return; }
+
+    const categories = Object.entries(catData).map(([id, c]) => ({ id, name: c.name, order: c.order ?? 0 }));
+    categories.sort((a, b) => b.order - a.order);
+
+    // 確認ダイアログ
+    if (!confirm(`${categories.length}個のパネルをそれぞれtxtファイルとしてダウンロードします。\n続行しますか？`)) return;
+
+    let exportedCount = 0;
+    const failedPanels = [];
+
+    for (const cat of categories) {
+      try {
+        // 各パネルの記事を取得
+        const artSnap = await db.ref(`users/${state.uid}/articles/${cat.id}`).once('value');
+        const artData = artSnap.val();
+
+        if (!artData) continue; // 記事がないパネルはスキップ
+
+        const articles = Object.values(artData)
+          .sort((a, b) => {
+            if (a.order !== undefined && b.order !== undefined) return b.order - a.order;
+            return (b.updatedAt || 0) - (a.updatedAt || 0);
+          });
+
+        // テキストデータを生成
+        let textData = `【${cat.name}】\n\n`;
+        textData += articles.map((art, idx) => {
+          const lines = htmlToLines(art.content);
+          const title = lines[0] || '（タイトルなし）';
+          const body = lines.slice(1).join('\n');
+          return `■ ${title}\n${body}`;
+        }).join('\n\n────────────────\n\n');
+
+        // ファイル名から無効な文字を除去
+        const safeFileName = cat.name.replace(/[\\/:*?"<>|]/g, '_');
+
+        if (isIOS) {
+          // iOSではシェアシート経由
+          const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
+          const file = new File([blob], `${safeFileName}.txt`, { type: 'text/plain' });
+
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: `${cat.name}のエクスポート`
+            });
+          } else {
+            // シェアAPIが使えない場合はBlobダウンロード
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${safeFileName}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } else {
+          // PC/Android: 直接ダウンロード
+          const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${safeFileName}.txt`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+
+        exportedCount++;
+
+        // ブラウザが連続ダウンロードをブロックしないよう少し待機
+        await new Promise(r => setTimeout(r, 300));
+
+      } catch (err) {
+        console.error(`Failed to export ${cat.name}:`, err);
+        failedPanels.push(cat.name);
+      }
+    }
+
+    if (failedPanels.length > 0) {
+      alert(`${exportedCount}個のパネルをエクスポートしました。\n以下のパネルは失敗しました：\n${failedPanels.join(', ')}`);
+    } else if (exportedCount > 0) {
+      alert(`${exportedCount}個のパネルをエクスポートしました！\nダウンロードフォルダをご確認ください。`);
+    } else {
+      alert('エクスポートする記事がありませんでした。');
+    }
+
+  } catch (err) {
+    console.error('Export all panels failed:', err);
+    alert('エクスポート中にエラーが発生しました。');
+  }
+}
+
 async function createArticle(noTransition = false) {
   // ゲストのカード上限チェック（6枚まで）
   if (state.isAnonymous) {
@@ -2009,6 +2148,14 @@ function renderEditor(container) {
           <button class="color-swatch-btn" data-color="#92400e" title="ブラウン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#92400e; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="#d4af37" title="ゴールド" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#d4af37; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="#c0c0c0" title="シルバー" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#c0c0c0; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#991b1b" title="ダークレッド" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#991b1b; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#1e3a8a" title="ダークブルー" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#1e3a8a; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#14532d" title="ダークグリーン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#14532d; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#581c87" title="ダークパープル" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#581c87; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#9a3412" title="ダークオレンジ" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#9a3412; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#1e3a5f" title="ネイビー" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#1e3a5f; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#422006" title="ダークブラウン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#422006; cursor:pointer; padding:0;"></button>
+          <button class="color-swatch-btn" data-color="#164e63" title="ダークシアン" style="width:28px; height:28px; border-radius:50%; border:2px solid rgba(255,255,255,0.25); background:#164e63; cursor:pointer; padding:0;"></button>
           <button class="color-swatch-btn" data-color="" title="デフォルトに戻す" style="width:28px; height:28px; border-radius:50%; border:2px dashed rgba(255,255,255,0.4); background:transparent; color:#fff; font-size:0.7rem; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
         </div>
         <div style="margin-top:10px; text-align:center;">
