@@ -2203,6 +2203,32 @@ body.yt-fullscreen-active {
   transform: scale(0.93);
 }
 
+/* キーボード表示中のみ出現する画像添付FAB — ヘッダーがキーボードに隠れて
+   #btnAttach（トップバー）が押せなくなる問題への対策。Undoボタンの左隣に固定 */
+.editor-attach-fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: calc(1rem + 50px + 0.75rem + 50px + 0.75rem);
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: rgba(249, 115, 22, 0.92);
+  box-shadow: 0 4px 16px rgba(249, 115, 22, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 1000;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.editor-attach-fab:active {
+  filter: brightness(0.85);
+  transform: scale(0.93);
+}
+
 /* ボタンが右下に重なるためエディタ末尾に余白を確保 */
 .editor-content {
   padding-bottom: 5rem;

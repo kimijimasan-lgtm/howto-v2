@@ -330,16 +330,18 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
   - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
 - **メニューUI**: H1・地の文・H2 + 区切り線 + **B（ボールド）・U（アンダーライン）** + **文字色パレット（17色実装完了）** + **実行ボタン**
   - **選択→実行方式（2026-06改修）**: H1/H2/地の文・B/U・文字色のボタンは押しても即時反映されない。タップで「選択中」状態（紫ハイライト/アウトライン）になるだけで、実際の適用は `#btnApplyExecute`（メニュー最下部の「実行」ボタン）を押した時点でまとめて反映される
-    - 同じボタンをもう一度押すと選択解除（`_pendingHeadingChoice = null` / `_pendingColorChoice = undefined` / `_pendingBold = false` / `_pendingUnderline = false`）
-    - メニューを開閉するたびに `_pendingHeadingChoice` / `_pendingColorChoice` / `_pendingBold` / `_pendingUnderline` はリセットされる
-    - 実行時は見出し変換 → 文字色適用 → ボールド → アンダーラインの順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色・B・U適用用のテキスト範囲は見出し変換前に確保しておく（`toggleHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
-  - `#btnApplyH1` → 選択トグル（実行時に `toggleHeading({ level: 1 })`） ← 選択中の要素が全部H1のときメニュー初期表示で紫ハイライト
-  - `#btnApplyH2` → 選択トグル（実行時に `toggleHeading({ level: 2 })`） ← 選択中の要素が全部H2のときメニュー初期表示で紫ハイライト
-  - `#btnApplyParagraph` → 選択トグル（実行時に `setParagraph()` で見出しを解除し通常テキストに戻す）
+  - **完全トグル方式（2026-06改修、現在の挙動）**: H1/H2/地の文・B/U のいずれも、メニューを開いた時点で選択中の段落の**現在の状態を検出してON表示**する（`_initialHeadingChoice` / `_initialBold` / `_initialUnderline`、`_pendingXxx` の初期値もこれに合わせる）
+    - ONのボタンをタップしてOFFにしてから実行すると、その書式が**解除**されて地の文・通常テキストに戻る（OFF→ONも同様に有効化される）
+    - 実際にコマンドを発行するのは「実行時の `_pendingXxx` が開いた時点の `_initialXxx` と異なる場合」のみ。何も触らずに実行すれば既存の書式はそのまま変化しない
+    - H1/H2/地の文は内部的には三択のラジオ的トグル（`_pendingHeadingChoice`: `1|2|'p'|null`）。B/Uは独立した boolean トグルで、見出し選択や互いと**同時選択可能**
+    - 見出しの初期検出は選択中の要素タグ（`allH1`/`allH2`/`allP`、全部一致のときのみ確定、混在時は`null`）。B/Uの初期検出はブロック選択時は範囲内テキストが**全て**そのマークを持つか（`rangeFullyHasMark()`）、単一テキスト選択時は `tiptapEditor.isActive('bold'|'underline')`
+    - 見出し適用は `toggleHeading` ではなく明示的な `setHeading({level})` を使用（ON/OFF判定は自前の状態機械で行うため、ProseMirror側のtoggle機能と二重にトグルさせると意図と逆転するのを避けるため）
+    - 実行時は見出し変換 → 文字色適用 → ボールド → アンダーラインの順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色・B・U適用用のテキスト範囲は見出し変換前に確保しておく（`setHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
+  - `#btnApplyH1` → 選択トグル（実行時に変更があれば `setHeading({ level: 1 })` or `setParagraph()`）
+  - `#btnApplyH2` → 選択トグル（実行時に変更があれば `setHeading({ level: 2 })` or `setParagraph()`）
+  - `#btnApplyParagraph` → 選択トグル（実行時に変更があれば `setParagraph()` で見出しを解除し通常テキストに戻す）
   - **`#btnApplyBold` / `#btnApplyUnderline`（ボールド・アンダーライン、実装完了）**:
-    - H1/H2/地の文とは独立したトグル（`_pendingBold` / `_pendingUnderline`、boolean）で、見出し選択や互いと**同時選択可能**
-    - 見出しボタンと異なりブロック未選択時（`blockMode === false`）でも常に表示・使用可能（文字色パレットと同じ扱い）
-    - 実行時は段落選択があればその全テキスト範囲、無ければ現在のテキスト選択範囲に対して `bold`/`underline` マークを `addMark`（色と同じ実装パターン）。トグルOFFへの解除は現状未実装（再度OFFにする操作は別途検討）
+    - 実行時に状態が変化していれば段落選択中はその全テキスト範囲、無ければ現在のテキスト選択範囲に対して `bold`/`underline` マークを `addMark`（ONにする場合）または `removeMark`（OFFにする場合）
     - `UnderlineExtension`（`@tiptap/extension-underline`）が必要。StarterKitにBoldは含まれるが Underline は含まれないため `.tiptap-build/entry.js` に追加 export し、TipTapエディター初期化（`renderEditor`・`warmUpTipTap` 両方）の `extensions` 配列に追加した
   - **文字色（`.color-swatch-btn` × 17色 + デフォルト解除ボタン）**:
     - 赤・オレンジ・黄・緑・青・紫・黒・白・ピンク・マゼンタ・ライトブルー・シアン・ライムグリーン・ブラウン・ゴールド・シルバー + デフォルト（`✕`、実行時に `removeMark`で解除）
@@ -355,6 +357,14 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - **`cleanupSingleParagraph` の修正**:
   - 旧: `p.removeAttribute('class')` → 全クラス強制削除
   - 新: `if (!p.classList.length) p.removeAttribute('class')` → 空のときだけ属性削除（h1/h2 の残余クラスを保護）
+
+### 書式の自動引き継ぎ防止（実装完了）
+見出し・ボールド・アンダーライン・文字色を設定した段落から、カーソルを別の段落に移動（クリック／矢印キー／Enterで新規段落作成など）すると、その書式が新しい段落にまで引き継がれてしまう問題を修正。
+- **マーク（B/U/文字色）の引き継ぎ**: `tiptapEditor.on('selectionUpdate', ...)` で現在のブロック開始位置（`$from.before($from.depth)`）を毎回記録し、前回と異なるブロックに移動したことを検知したら `editor.view.dispatch(editor.state.tr.setStoredMarks([]))` でタイピング用の保留マーク（stored marks）をリセットする
+  - ProseMirrorの`storedMarks`は「次に入力する文字に自動で乗るマーク」を指す内部状態で、これをクリアするだけで既存の文字に付いている実際のマークには影響しない（新しく入力する文字だけが地の文・デフォルト色になる）
+- **見出しの引き継ぎ**: TipTapの`splitBlock`コマンドはデフォルト（`keepMarks: true`）でEnter時に同じノードタイプ（見出しならh1/h2のまま）を維持するため、見出し内でEnterすると次の段落も見出しになってしまう
+  - `editorProps.handleKeyDown` で `Enter`（Shiftなし）かつカーソルが`heading`ノード内のときだけ専用処理に分岐: `event.preventDefault()` → `tiptapEditor.chain().splitBlock().setParagraph().run()` で分割後の新ノードを明示的に`setParagraph()`で地の文に戻し、続けて`setStoredMarks([])`でB/U/色の引き継ぎも防止
+  - 通常の地の文同士の分割（見出みでない場合）はTipTapのデフォルトEnter処理に委ねており、`selectionUpdate`側のstored marksリセットだけで対応している
 
 ### テーマ管理
 現在のテーマ一覧（`THEMES` 配列）:
@@ -467,7 +477,13 @@ function setEditorMode(mode) {
 | カテゴリ一覧画面のスワイプ操作（ピン留め・複写・移動・削除）・並び替え | `renderCategory` 内の `categoryLocked`（`isLockedCategory()`で判定）でチェック |
 
 ### ロック中のUI
-`applyCardLockUI()` で編集系ボタン（`btnModeToggle`, `btnDel`, `btnTextFormat`, `btnPaste`, `btnPasteCancel`, `btnAttach`, `btnUndo`, `btnBulkCopy`, `btnBulkDelete`）を `display:none` で非表示化。判定が非同期（Firebaseキャッシュ/読み取り）のため、確定後に `refreshYoutubeDeleteButtons('view')` / `refreshParaSortable('view')` を再実行し、確定前に注入されてしまったハンドルを確実に除去する。
+`applyCardLockUI()` で編集系ボタン（`btnModeToggle`, `btnDel`, `btnTextFormat`, `btnPaste`, `btnPasteCancel`, `btnAttach`, `btnAttachFab`, `btnUndo`, `btnBulkCopy`, `btnBulkDelete`）を `display:none` で非表示化。判定が非同期（Firebaseキャッシュ/読み取り）のため、確定後に `refreshYoutubeDeleteButtons('view')` / `refreshParaSortable('view')` を再実行し、確定前に注入されてしまったハンドルを確実に除去する。
+
+## キーボード表示中の画像添付FAB（`#btnAttachFab`、実装完了）
+iOSキーボード表示中、トップバー（`.editor-header`）がキーボードに隠れて`#btnAttach`（画像添付アイコン）が押せなくなる問題への対策。
+- Undoボタン（`#btnUndo`）の左隣に固定配置（`.editor-attach-fab`、オレンジ）。`btnAttachFab.onclick = () => btnAttach.click()` で既存の添付処理（`fileInput.click()`）をそのまま呼ぶだけの薄いラッパー
+- 表示/非表示は `updateEditorHeight()`（`visualViewport.resize`）内で判定: `keyboardVisible && state.editorMode === 'edit' && !state.cardLocked` のときのみ `display:flex`
+- ロック中のカードでは `applyCardLockUI()` の非表示リストにも含めている
 
 ## 閲覧モードでの画像タップ（修正完了）
 閲覧モード中、画像をタップしてもカーソルが点滅したり一覧へ戻ったりしないよう完全に無反応にしている。拡大モーダル機能（`showLightbox`）は実装済みだが呼び出しを停止中（保留）。
@@ -625,9 +641,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=693`
+- `style.css?v=694`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=798`
+- `app.js?v=799`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

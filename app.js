@@ -1977,6 +1977,11 @@ function renderEditor(container) {
         <span class="undo-icon">↩</span>
         <span class="undo-label">戻す</span>
       </div>
+      <div class="editor-attach-fab" id="btnAttachFab" title="画像を添付" style="display:none">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block; pointer-events:none;">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </div>
       <div id="pasteHintBar" class="paste-hint-bar" style="display:none">貼り付け位置をタップしてください</div>
       <div id="textFormatMenu" style="display:none; position:fixed; z-index:10000; background:var(--card-bg,#1e1e1e); border:1px solid var(--border,#444); border-radius:12px; padding:8px; box-shadow:0 4px 24px rgba(0,0,0,0.5); max-width:90vw;">
         <div style="display:flex; align-items:center; gap:6px;">
@@ -2022,7 +2027,7 @@ function renderEditor(container) {
   function applyCardLockUI() {
     if (!state.cardLocked) return;
     // 編集系ボタンをすべて非表示にし、タップは閲覧のみ許可する
-    ['btnModeToggle', 'btnDel', 'btnTextFormat', 'btnPaste', 'btnPasteCancel', 'btnAttach', 'btnUndo', 'btnBulkCopy', 'btnBulkDelete', 'btnRemoveEmptyLines']
+    ['btnModeToggle', 'btnDel', 'btnTextFormat', 'btnPaste', 'btnPasteCancel', 'btnAttach', 'btnAttachFab', 'btnUndo', 'btnBulkCopy', 'btnBulkDelete', 'btnRemoveEmptyLines']
       .forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -2228,6 +2233,11 @@ function renderEditor(container) {
 
   const fileInput = document.getElementById('fileInput');
   const btnAttach = document.getElementById('btnAttach');
+  const btnAttachFab = document.getElementById('btnAttachFab');
+  if (btnAttachFab && btnAttach) {
+    // キーボード表示中はトップバーが隠れることがあるため、同じ処理をFABからも呼べるようにする
+    btnAttachFab.onclick = () => btnAttach.click();
+  }
   if (btnAttach && fileInput) {
     fileInput.setAttribute('accept', 'image/*'); // 画像のみ受付
     btnAttach.onclick = () => {
@@ -2407,19 +2417,27 @@ function renderEditor(container) {
   const textFmtMenu = document.getElementById('textFormatMenu');
   const textFmtBackdrop = document.getElementById('textFormatMenuBackdrop');
 
-  // 実行ボタンを押すまで適用を保留する選択状態（null/undefined = 未選択 = 変更しない）
+  // 実行ボタンを押すまで適用を保留するトグル状態。
+  // 各ボタンは「現在の状態」を反映してON/OFF表示され、ONのボタンをOFFにして実行すると
+  // その書式が解除される（_initialXxx と異なる場合のみ実際にコマンドを適用する）
   let _pendingHeadingChoice = null; // 1 | 2 | 'p' | null
+  let _initialHeadingChoice = null; // メニューを開いた時点の検出値（比較用）
   let _pendingColorChoice = undefined; // 文字列カラー | '' (デフォルトに戻す) | undefined (変更しない)
-  let _pendingBold = false; // ボールドをトグルするか
-  let _pendingUnderline = false; // アンダーラインをトグルするか
+  let _pendingBold = false;
+  let _initialBold = false;
+  let _pendingUnderline = false;
+  let _initialUnderline = false;
 
   function closeTextFormatMenu() {
     if (textFmtMenu) textFmtMenu.style.display = 'none';
     if (textFmtBackdrop) textFmtBackdrop.style.display = 'none';
     _pendingHeadingChoice = null;
+    _initialHeadingChoice = null;
     _pendingColorChoice = undefined;
     _pendingBold = false;
+    _initialBold = false;
     _pendingUnderline = false;
+    _initialUnderline = false;
   }
 
   // ヘルパー: 選択中段落のPM内テキスト範囲を取得
@@ -2434,14 +2452,29 @@ function renderEditor(container) {
     } catch (_) { return null; }
   }
 
-  // H1 / H2 適用（見出し含む全選択ブロックに対応）。insidePos群はheading/paragraph変換前に取得した位置を使う
+  // ヘルパー: 範囲内のテキストすべてに指定マークが付いているか（一部だけ付いている場合はfalse）
+  function rangeFullyHasMark(markType, from, to) {
+    if (!markType) return false;
+    let hasText = false, fullyHas = true;
+    try {
+      tiptapEditor.state.doc.nodesBetween(from, to, (node) => {
+        if (node.isText) {
+          hasText = true;
+          if (!markType.isInSet(node.marks)) fullyHas = false;
+        }
+      });
+    } catch (_) { return false; }
+    return hasText && fullyHas;
+  }
+
+  // H1 / H2 を明示的に設定（toggleではなく常に指定レベルにする。ON/OFF判定は呼び出し側で行う）
   function applyHeadingCore(level, selectedEls) {
     if (!selectedEls || selectedEls.length === 0) return;
     // 下から上に適用してPM位置ずれを防ぐ
     [...selectedEls].reverse().forEach(el => {
       try {
         const insidePos = tiptapEditor.view.posAtDOM(el, 0);
-        tiptapEditor.chain().setTextSelection(insidePos).toggleHeading({ level }).run();
+        tiptapEditor.chain().setTextSelection(insidePos).setHeading({ level }).run();
       } catch (_) {}
     });
   }
@@ -2457,16 +2490,23 @@ function renderEditor(container) {
     });
   }
 
+  const headingActiveStyle = 'rgba(139,92,246,0.35)';
+  const headingActiveBorder = '#8b5cf6';
+  const toggleActiveStyle = (btn, active) => { if (btn) { btn.style.background = active ? headingActiveStyle : 'transparent'; btn.style.borderColor = active ? headingActiveBorder : '#555'; } };
+
+  function highlightPendingHeading() {
+    const map = { 1: document.getElementById('btnApplyH1'), 2: document.getElementById('btnApplyH2'), p: document.getElementById('btnApplyParagraph') };
+    Object.values(map).forEach(b => toggleActiveStyle(b, false));
+    toggleActiveStyle(map[_pendingHeadingChoice], _pendingHeadingChoice !== null);
+  }
+
   if (textFmtBtn && textFmtMenu) {
     textFmtBtn.onclick = (e) => {
       e.stopPropagation();
       if (textFmtMenu.style.display !== 'none') { closeTextFormatMenu(); return; }
 
-      _pendingHeadingChoice = null;
-      _pendingColorChoice = undefined;
-      _pendingBold = false;
-      _pendingUnderline = false;
       document.querySelectorAll('.color-swatch-btn').forEach(b => { b.style.outline = 'none'; });
+      _pendingColorChoice = undefined;
 
       // 選択中の要素タグからアクティブ状態を検出
       const pm = tiptapEditor ? tiptapEditor.view.dom : null;
@@ -2475,21 +2515,36 @@ function renderEditor(container) {
       const allH1 = blockMode && allSelected.every(el => el.tagName === 'H1');
       const allH2 = blockMode && allSelected.every(el => el.tagName === 'H2');
       const allP  = blockMode && allSelected.every(el => el.tagName === 'P');
-      const activeStyle = 'rgba(139,92,246,0.35)';
-      const activeBorder = '#8b5cf6';
+
+      // 見出しの初期検出値（混在選択時はnull＝判定なし）をそのままpendingの初期値にする
+      _initialHeadingChoice = allH1 ? 1 : (allH2 ? 2 : (allP ? 'p' : null));
+      _pendingHeadingChoice = _initialHeadingChoice;
+
+      // ボールド・アンダーラインの初期検出値
+      if (blockMode) {
+        const ranges = allSelected.map(el => getParaTextRange(el)).filter(r => r && r.from < r.to);
+        const boldMarkType = tiptapEditor.schema.marks.bold;
+        const underlineMarkType = tiptapEditor.schema.marks.underline;
+        _initialBold = ranges.length > 0 && ranges.every(r => rangeFullyHasMark(boldMarkType, r.from, r.to));
+        _initialUnderline = ranges.length > 0 && ranges.every(r => rangeFullyHasMark(underlineMarkType, r.from, r.to));
+      } else {
+        _initialBold = tiptapEditor.isActive('bold');
+        _initialUnderline = tiptapEditor.isActive('underline');
+      }
+      _pendingBold = _initialBold;
+      _pendingUnderline = _initialUnderline;
+
       const h1Btn = document.getElementById('btnApplyH1');
       const h2Btn = document.getElementById('btnApplyH2');
       const pBtn  = document.getElementById('btnApplyParagraph');
       const boldBtn = document.getElementById('btnApplyBold');
       const underlineBtn = document.getElementById('btnApplyUnderline');
       const divider = document.getElementById('textFormatDivider');
-      if (h1Btn) { h1Btn.style.background = allH1 ? activeStyle : 'transparent'; h1Btn.style.borderColor = allH1 ? activeBorder : '#555'; }
-      if (h2Btn) { h2Btn.style.background = allH2 ? activeStyle : 'transparent'; h2Btn.style.borderColor = allH2 ? activeBorder : '#555'; }
-      if (pBtn)  { pBtn.style.background  = allP  ? activeStyle : 'transparent'; pBtn.style.borderColor  = allP  ? activeBorder : '#555'; }
-      if (boldBtn)      { boldBtn.style.background = 'transparent'; boldBtn.style.borderColor = '#555'; }
-      if (underlineBtn) { underlineBtn.style.background = 'transparent'; underlineBtn.style.borderColor = '#555'; }
+      highlightPendingHeading();
+      toggleActiveStyle(boldBtn, _pendingBold);
+      toggleActiveStyle(underlineBtn, _pendingUnderline);
 
-      // 見出し関連ボタンはブロック（段落）選択時のみ表示。文字色・B/Uは単独テキスト選択でも常に使える
+      // 見出し関連ボタンはブロック（段落）選択時のみ表示。B/U・文字色は単独テキスト選択でも常に使える
       if (h1Btn) h1Btn.style.display = blockMode ? '' : 'none';
       if (h2Btn) h2Btn.style.display = blockMode ? '' : 'none';
       if (pBtn) pBtn.style.display = blockMode ? '' : 'none';
@@ -2506,16 +2561,7 @@ function renderEditor(container) {
 
   if (textFmtBackdrop) textFmtBackdrop.onclick = closeTextFormatMenu;
 
-  const headingActiveStyle = 'rgba(139,92,246,0.35)';
-  const headingActiveBorder = '#8b5cf6';
-  function highlightPendingHeading() {
-    const map = { 1: document.getElementById('btnApplyH1'), 2: document.getElementById('btnApplyH2'), p: document.getElementById('btnApplyParagraph') };
-    Object.values(map).forEach(b => { if (b) { b.style.background = 'transparent'; b.style.borderColor = '#555'; } });
-    const chosenBtn = map[_pendingHeadingChoice];
-    if (chosenBtn) { chosenBtn.style.background = headingActiveStyle; chosenBtn.style.borderColor = headingActiveBorder; }
-  }
-
-  // H1/H2/地の文ボタンは選択するだけで、実際の適用は実行ボタンを押すまで保留する
+  // H1/H2/地の文ボタン: トグル（現在の状態を反映、再タップでON/OFF切替）
   const btnH1 = document.getElementById('btnApplyH1');
   if (btnH1) btnH1.onclick = (e) => { e.stopPropagation(); _pendingHeadingChoice = _pendingHeadingChoice === 1 ? null : 1; highlightPendingHeading(); };
 
@@ -2525,8 +2571,7 @@ function renderEditor(container) {
   const btnP = document.getElementById('btnApplyParagraph');
   if (btnP) btnP.onclick = (e) => { e.stopPropagation(); _pendingHeadingChoice = _pendingHeadingChoice === 'p' ? null : 'p'; highlightPendingHeading(); };
 
-  // ボールド・アンダーラインは見出しとは独立に複数同時選択できるトグル
-  const toggleActiveStyle = (btn, active) => { if (btn) { btn.style.background = active ? headingActiveStyle : 'transparent'; btn.style.borderColor = active ? headingActiveBorder : '#555'; } };
+  // ボールド・アンダーラインは見出しとは独立に複数同時選択できるトグル（現在の状態を反映）
   const btnBold = document.getElementById('btnApplyBold');
   if (btnBold) btnBold.onclick = (e) => { e.stopPropagation(); _pendingBold = !_pendingBold; toggleActiveStyle(btnBold, _pendingBold); };
 
@@ -2548,7 +2593,7 @@ function renderEditor(container) {
     };
   });
 
-  // 実行ボタン：保留中の見出し選択・文字色選択をまとめて適用する
+  // 実行ボタン：保留中の見出し・B/U・文字色の状態をまとめて適用する（初期検出値と異なる項目のみ実際に変更）
   const btnExecute = document.getElementById('btnApplyExecute');
   if (btnExecute) {
     btnExecute.onclick = (e) => {
@@ -2557,8 +2602,11 @@ function renderEditor(container) {
       if (!pm || !tiptapEditor) { closeTextFormatMenu(); return; }
 
       const selectedEls = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected'));
+      const headingChanged = _pendingHeadingChoice !== _initialHeadingChoice;
+      const boldChanged = _pendingBold !== _initialBold;
+      const underlineChanged = _pendingUnderline !== _initialUnderline;
       // 見出し変換でノードタイプが変わってもテキスト範囲のpos自体は変わらないため、先にマーク適用範囲を確保しておく
-      const needsRanges = _pendingColorChoice !== undefined || _pendingBold || _pendingUnderline;
+      const needsRanges = _pendingColorChoice !== undefined || boldChanged || underlineChanged;
       const blockRanges = needsRanges
         ? selectedEls.map(el => getParaTextRange(el)).filter(r => r && r.from < r.to)
         : [];
@@ -2568,8 +2616,8 @@ function renderEditor(container) {
         return empty ? [] : [{ from, to }];
       };
 
-      if (_pendingHeadingChoice !== null) {
-        if (_pendingHeadingChoice === 'p') applyParagraphCore(selectedEls);
+      if (headingChanged) {
+        if (_pendingHeadingChoice === 'p' || _pendingHeadingChoice === null) applyParagraphCore(selectedEls);
         else applyHeadingCore(_pendingHeadingChoice, selectedEls);
       }
 
@@ -2585,22 +2633,22 @@ function renderEditor(container) {
         }
       }
 
-      if (_pendingBold) {
+      if (boldChanged) {
         const markType = tiptapEditor.schema.marks.bold;
         const ranges = getApplyRanges();
         if (markType && ranges.length > 0) {
           let tr = tiptapEditor.state.tr;
-          ranges.forEach(({ from, to }) => { tr = tr.addMark(from, to, markType.create()); });
+          ranges.forEach(({ from, to }) => { tr = _pendingBold ? tr.addMark(from, to, markType.create()) : tr.removeMark(from, to, markType); });
           tiptapEditor.view.dispatch(tr);
         }
       }
 
-      if (_pendingUnderline) {
+      if (underlineChanged) {
         const markType = tiptapEditor.schema.marks.underline;
         const ranges = getApplyRanges();
         if (markType && ranges.length > 0) {
           let tr = tiptapEditor.state.tr;
-          ranges.forEach(({ from, to }) => { tr = tr.addMark(from, to, markType.create()); });
+          ranges.forEach(({ from, to }) => { tr = _pendingUnderline ? tr.addMark(from, to, markType.create()) : tr.removeMark(from, to, markType); });
           tiptapEditor.view.dispatch(tr);
         }
       }
@@ -2669,6 +2717,8 @@ function renderEditor(container) {
   // 1行目auto-H1: 空の1行目に初めてテキストを入力した瞬間にH1を適用するためのフラグ
   let _firstLineWasEmpty = false;
   let _autoH1Done = false;
+  // 段落をまたいでカーソルが移動したことを検知するための直前段落の開始位置
+  let _lastSelBlockStart = null;
 
   tiptapEditor = new TiptapEditor({
     element: edEl,
@@ -2736,6 +2786,17 @@ function renderEditor(container) {
       handleKeyDown(view, event) {
         // IME確定直後の幽霊Enter（iPhoneで変換確定と改行が同キー）を抑止
         if (event.key === 'Enter' && compositionJustEnded) return true;
+
+        // 見出し内でEnter → 新しい段落は見出しを引き継がず地の文に戻す
+        if (event.key === 'Enter' && !event.shiftKey) {
+          const { $from: hFrom, empty: hEmpty } = view.state.selection;
+          if (hEmpty && hFrom.parent.type.name === 'heading') {
+            event.preventDefault();
+            tiptapEditor.chain().splitBlock().setParagraph().run();
+            tiptapEditor.view.dispatch(tiptapEditor.state.tr.setStoredMarks([]));
+            return true;
+          }
+        }
 
         if (event.key !== 'Backspace') return false;
         const { state } = view;
@@ -2861,6 +2922,20 @@ function renderEditor(container) {
     }, 300);
   });
 
+  // selectionUpdateイベント: 別の段落にカーソルが移動したら、太字・下線・文字色などの
+  // タイピング用stored marksをリセットする（見出し・B/U・文字色を設定した段落から
+  // 隣の未設定段落へ移動した際に書式が自動で引き継がれてしまう問題への対策）
+  tiptapEditor.on('selectionUpdate', ({ editor }) => {
+    try {
+      const { $from } = editor.state.selection;
+      const blockStart = $from.before($from.depth);
+      if (_lastSelBlockStart !== null && blockStart !== _lastSelBlockStart) {
+        editor.view.dispatch(editor.state.tr.setStoredMarks([]));
+      }
+      _lastSelBlockStart = blockStart;
+    } catch (_) {}
+  });
+
   // selectionUpdateイベント: 段落スワイプ選択なしでも、通常のテキスト選択（範囲選択）が
   // あれば書式メニュー（文字色のみ）を使えるようにボタンを表示する
   tiptapEditor.on('selectionUpdate', ({ editor }) => {
@@ -2920,6 +2995,10 @@ function renderEditor(container) {
       edContent.style.height = '';
       edContent.style.flex = '';
     }
+    // キーボード表示中、トップバーが隠れて#btnAttachが押せなくなることがあるため、
+    // 同じ役割のFABを編集モード時のみ右下に出す
+    const fab = document.getElementById('btnAttachFab');
+    if (fab) fab.style.display = (keyboardVisible && state.editorMode === 'edit' && !state.cardLocked) ? 'flex' : 'none';
   };
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateEditorHeight);
