@@ -697,6 +697,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
+## 直近の対応（2026-06-20）
+
+- **画像下の空行削除時のRangeError対策（完了）**: `tiptap.bundle.js`内で発生する`RangeError: Position out of range`をBackspace処理・閲覧モードの自動空段落削除・💥空行削除ボタンの3箇所でtry-catch。エラー時はトースト表示後 `goBack(true)` でパネル一覧へ安全に復帰する。詳細は[画像段落の空行削除で発生するRangeError対策](#画像段落の空行削除で発生するrangeerror対策2026-06-20再発防止の保険として実装)を参照
+- **ログイン後のログイン画面映り込み問題（完了）**: `#authOverlay`を起動時だけでなく**ログインボタン押下時にも即時表示**する方式に変更。ボタンクリック直後に`showAuthOverlay()`でオーバーレイを即時再表示し、`isPremium`/`categories`読み込み中の素のログイン画面が見えてしまう問題を解消。詳細は[第三段（ログインボタン押下時の映り込み対策）](#第三段2026-06-20ログインボタン押下時の映り込み対策)を参照
+- **🚀メニューのトグルON/OFF表示（未完了・次回継続）**: 下記「次のステップ」へ
+
 ## 次のステップ
 
 ### 1. 🚀メニューのトグルボタン表示を修正する（優先・未解決）
