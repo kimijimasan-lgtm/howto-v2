@@ -4235,14 +4235,33 @@ function bindParagraphSwipeEvents(editor) {
     start: touchStartHandler,
     end: touchEndHandler
   });
+
+  // PC用: Ctrl+クリック（Mac: Cmd+クリック）で段落選択（スマホの左スワイプ相当）
+  const ctrlClickHandler = e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    if (state.cardLocked) return;
+    let target = e.target;
+    while (target && target.parentNode !== editor) {
+      target = target.parentNode;
+    }
+    if (!target || target === editor) return;
+    if (target.tagName === 'P' || target.tagName === 'H1' || target.tagName === 'H2') {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleParagraphSelect(target, editor);
+    }
+  };
+  editor.addEventListener('click', ctrlClickHandler);
+  paraSwipeListeners.push({ element: editor, ctrlClick: ctrlClickHandler });
 }
 
 // 登録されたイベントやグローバルリスナーの解放
 function cleanupNativeParagraphListeners(editor) {
   paraSwipeListeners.forEach(item => {
     if (item.element) {
-      item.element.removeEventListener('touchstart', item.start);
-      item.element.removeEventListener('touchend', item.end);
+      if (item.start) item.element.removeEventListener('touchstart', item.start);
+      if (item.end) item.element.removeEventListener('touchend', item.end);
+      if (item.ctrlClick) item.element.removeEventListener('click', item.ctrlClick);
     }
   });
   paraSwipeListeners = [];
