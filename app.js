@@ -4655,6 +4655,11 @@ function renderLogin(container) {
   // Googleログインボタン
   document.getElementById('btnGoogleLogin').onclick = async () => {
     errorDiv.style.display = 'none';
+    // 認証成功後、isPremium/categories読み込み（〜1秒程度）が終わってホームへ
+    // 切り替わるまでの間、ログイン画面がそのまま見え続けてしまうのを防ぐため、
+    // ボタンを押した瞬間にオーバーレイを再表示しておく（成功時は onAuthStateChanged 側の
+    // revealAppAfterAuth() が goTo('home') 後にフェードアウトする）
+    showAuthOverlay();
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
       await firebase.auth().signInWithPopup(provider);
@@ -4663,11 +4668,16 @@ function renderLogin(container) {
       if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
         try {
           await firebase.auth().signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+          return; // リダイレクトでページ遷移するため、ここから先は実行されない
         } catch (redirErr) {
+          hideAuthOverlayNow();
           showLoginError('ログイン画面の起動に失敗しました。もう一度お試しください。');
         }
-      } else if (err.code !== 'auth/popup-closed-by-user') {
-        showLoginError('ログインに失敗しました。もう一度お試しください。');
+      } else {
+        hideAuthOverlayNow();
+        if (err.code !== 'auth/popup-closed-by-user') {
+          showLoginError('ログインに失敗しました。もう一度お試しください。');
+        }
       }
     }
   };
@@ -4677,11 +4687,13 @@ function renderLogin(container) {
     errorDiv.style.display = 'none';
     const btn = document.getElementById('btnGuestLogin');
     if (btn) { btn.disabled = true; btn.textContent = '接続中…'; }
+    showAuthOverlay();
     try {
       await firebase.auth().signInAnonymously();
       // onAuthStateChanged が発火してホームに遷移する
     } catch (err) {
       console.error('Anonymous Sign-In Error:', err);
+      hideAuthOverlayNow();
       if (btn) { btn.disabled = false; btn.textContent = 'ゲストとして試す'; }
       showLoginError('ゲストログインに失敗しました。もう一度お試しください。');
     }
@@ -5061,6 +5073,25 @@ function revealAppAfterAuth() {
   setTimeout(() => {
     overlay.classList.add('auth-overlay-hidden');
   }, 250);
+}
+
+// ログインボタン押下時に即座にオーバーレイを再表示する（起動時は既にフェードアウト済みのため）。
+// CSSのopacityトランジション(0.3s)で薄れて見えてしまわないよう、一旦transitionを切って
+// 即時に完全表示へスナップさせる。
+function showAuthOverlay() {
+  const overlay = document.getElementById('authOverlay');
+  if (!overlay) return;
+  overlay.style.transition = 'none';
+  overlay.classList.remove('auth-overlay-hidden');
+  void overlay.offsetWidth; // 強制リフロー（スナップ表示を確定させる）
+  overlay.style.transition = '';
+}
+
+// ログイン失敗時など、遷移せずにログイン画面へ戻す場合は待機なしで即フェードアウトする
+function hideAuthOverlayNow() {
+  const overlay = document.getElementById('authOverlay');
+  if (!overlay) return;
+  overlay.classList.add('auth-overlay-hidden');
 }
 
 // ── 添付ファイル（写真・書類）関連の補助関数 ────────────────

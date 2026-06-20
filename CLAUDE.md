@@ -653,6 +653,23 @@ function stripTrailingEmptyP(html) {
   ```
   - `goTo()` の画面切り替え（90ms待機 + opacity 0.1sトランジション）が完全に終わるのを待ってからオーバーレイをフェードアウトするため、ログイン画面⇄ホーム画面の入れ替わりは常にオーバーレイの裏側で完結し、ユーザーには見えない
 
+### 第三段（2026-06-20、ログインボタン押下時の映り込み対策）
+第二段の対策後も「ログインボタンを押した直後に1秒ほどログイン画面が映り込む」という報告があった。原因は、`revealAppAfterAuth()` が**起動時の初回判定のみ**を想定しており、ボタン押下時にはオーバーレイが既にフェードアウト済み（非表示）だったこと。そのため、Googleポップアップが閉じた後 `isPremium`/`categories` をFirebaseから読む間（直列で2回読むため〜1秒程度）、何もオーバーレイで覆われずログイン画面が素のまま見え続けていた。
+- `renderLogin()` 内の `btnGoogleLogin.onclick` / `btnGuestLogin.onclick` の**冒頭**（`signInWithPopup`/`signInAnonymously` を呼ぶ前）で `showAuthOverlay()` を呼び、オーバーレイを即時再表示する
+  ```js
+  function showAuthOverlay() {
+    const overlay = document.getElementById('authOverlay');
+    if (!overlay) return;
+    overlay.style.transition = 'none';   // CSSのopacity 0.3sトランジションでうっすら見えるのを防ぐ
+    overlay.classList.remove('auth-overlay-hidden');
+    void overlay.offsetWidth;            // 強制リフローでスナップ表示を確定
+    overlay.style.transition = '';
+  }
+  ```
+- 成功時はそのまま `onAuthStateChanged` の `user` 分岐 → `goTo('home')` → 既存の `revealAppAfterAuth()`（250ms後にフェードアウト）に委ねる
+- **失敗時（ポップアップブロック以外のエラー・ゲストログイン失敗）**は `hideAuthOverlayNow()` で待機なしに即フェードアウトし、エラーメッセージをすぐ見せる
+- **`auth/popup-blocked` 等で `signInWithRedirect` にフォールバックする場合**はページがまるごとリダイレクトで離脱するため、オーバーレイを隠す処理は行わず `return` する（リダイレクト復帰後は起動時フローの第二段対策がそのまま適用される）
+
 ## Undoボタン（#btnUndo）の動作
 - **表示条件**: 編集モード中は**常に表示**
 - **active/inactive**: `lastDeletedContent !== null` → 通常、`=== null` → `.inactive`（opacity 0.35）
@@ -673,7 +690,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=695`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=801`
+- `app.js?v=802`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
