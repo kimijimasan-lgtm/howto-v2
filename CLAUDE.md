@@ -330,19 +330,19 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
   - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
 - **メニューUI**: H1・地の文・H2 + 区切り線 + **B（ボールド）・U（アンダーライン）** + **文字色パレット（17色実装完了）** + **実行ボタン**
   - **選択→実行方式（2026-06改修）**: H1/H2/地の文・B/U・文字色のボタンは押しても即時反映されない。タップで「選択中」状態（紫ハイライト/アウトライン）になるだけで、実際の適用は `#btnApplyExecute`（メニュー最下部の「実行」ボタン）を押した時点でまとめて反映される
-  - **完全トグル方式（2026-06改修、現在の挙動）**: H1/H2/地の文・B/U のいずれも、メニューを開いた時点で選択中の段落の**現在の状態を検出してON表示**する（`_initialHeadingChoice` / `_initialBold` / `_initialUnderline`、`_pendingXxx` の初期値もこれに合わせる）
-    - ONのボタンをタップしてOFFにしてから実行すると、その書式が**解除**されて地の文・通常テキストに戻る（OFF→ONも同様に有効化される）
+  - **完全トグル方式（2026-06改修、⚠️実装中・ON/OFF表示が未完了）**: H1/H2/地の文・B/U のいずれも、メニューを開いた時点で選択中の段落の**現在の状態を検出してON表示**する設計（`_initialHeadingChoice` / `_initialBold` / `_initialUnderline`、`_pendingXxx` の初期値もこれに合わせる）
+    - ONのボタンをタップしてOFFにしてから実行すると、その書式が**解除**されて地の文・通常テキストに戻る（OFF→ONも同様に有効化される）想定
     - 実際にコマンドを発行するのは「実行時の `_pendingXxx` が開いた時点の `_initialXxx` と異なる場合」のみ。何も触らずに実行すれば既存の書式はそのまま変化しない
     - H1/H2/地の文は内部的には三択のラジオ的トグル（`_pendingHeadingChoice`: `1|2|'p'|null`）。B/Uは独立した boolean トグルで、見出し選択や互いと**同時選択可能**
     - 見出しの初期検出は選択中の要素タグ（`allH1`/`allH2`/`allP`、全部一致のときのみ確定、混在時は`null`）。B/Uの初期検出はブロック選択時は範囲内テキストが**全て**そのマークを持つか（`rangeFullyHasMark()`）、単一テキスト選択時は `tiptapEditor.isActive('bold'|'underline')`
-    - 検出ロジック自体は実際の`tiptap.bundle.js`をjsdomで動かしたシミュレーションで動作確認済み（単一H1選択→`allH1=true`、ボールド段落選択→`initialBold=true`を正しく検出）。「トグルが効かない」と報告された際の実体は大半が**push漏れ**（ローカルにコミット済みだが`origin/main`未push＝GitHub Pagesが未反映）だったため、機能修正を疑う前にまず`git status`/`git log origin/main..HEAD`でpush状況を確認すること
-    - ON状態の視認性のため、ハイライトは半透明背景ではなく**ベタの紫背景（`#8b5cf6`）＋白文字＋外側グロー（`box-shadow: 0 0 0 2px rgba(139,92,246,0.5)`）**にしている（`toggleActiveStyle()`）
+    - 検出ロジック自体は実際の`tiptap.bundle.js`をjsdomで動かしたシミュレーションでは正しく動作（単一H1選択→`allH1=true`、ボールド段落選択→`initialBold=true`を検出）。pushし忘れによるGitHub Pages未反映の問題も解消した上で、**実機ではON/OFF表示がまだ反映されないという報告あり（2026-06-20時点・未解決）**。次回はこの食い違いの原因（DOM上の`.para-selected`付与タイミング、メニュー再オープン時のボタン要素取得、実際のテストで使っている段落の構造など）から再調査すること
+    - ON状態の視認性のため、ハイライトは半透明背景ではなく**ベタの紫背景（`#8b5cf6`）＋白文字＋外側グロー（`box-shadow: 0 0 0 2px rgba(139,92,246,0.5)`）**にしている（`toggleActiveStyle()`）。視認性は強化したが、ON判定自体が実機で機能していない可能性が残る
     - 見出し適用は `toggleHeading` ではなく明示的な `setHeading({level})` を使用（ON/OFF判定は自前の状態機械で行うため、ProseMirror側のtoggle機能と二重にトグルさせると意図と逆転するのを避けるため）
     - 実行時は見出し変換 → 文字色適用 → ボールド → アンダーラインの順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色・B・U適用用のテキスト範囲は見出し変換前に確保しておく（`setHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
   - `#btnApplyH1` → 選択トグル（実行時に変更があれば `setHeading({ level: 1 })` or `setParagraph()`）
   - `#btnApplyH2` → 選択トグル（実行時に変更があれば `setHeading({ level: 2 })` or `setParagraph()`）
   - `#btnApplyParagraph` → 選択トグル（実行時に変更があれば `setParagraph()` で見出しを解除し通常テキストに戻す）
-  - **`#btnApplyBold` / `#btnApplyUnderline`（ボールド・アンダーライン、実装完了）**:
+  - **`#btnApplyBold` / `#btnApplyUnderline`（ボールド・アンダーライン、⚠️実装中・トグル動作の表示が未完了）**:
     - 実行時に状態が変化していれば段落選択中はその全テキスト範囲、無ければ現在のテキスト選択範囲に対して `bold`/`underline` マークを `addMark`（ONにする場合）または `removeMark`（OFFにする場合）
     - `UnderlineExtension`（`@tiptap/extension-underline`）が必要。StarterKitにBoldは含まれるが Underline は含まれないため `.tiptap-build/entry.js` に追加 export し、TipTapエディター初期化（`renderEditor`・`warmUpTipTap` 両方）の `extensions` 配列に追加した
   - **文字色（`.color-swatch-btn` × 17色 + デフォルト解除ボタン）**:
@@ -652,7 +652,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
-## 次のステップ：Stripe課金実装
+## 次のステップ
+
+### 1. 🚀メニューのトグルボタン表示を修正する（優先・未解決）
+[段落書式アクションボタン](#段落書式アクションボタンbtntextformat) のH1/H2/地の文・B/Uトグルについて、検出ロジック自体はjsdomシミュレーションで正しく動作することを確認済み・GitHub Pagesへのpush漏れも解消済みだが、**実機ではメニューを開いた時にON状態のハイライトが反映されないという報告が残っている（2026-06-20時点）**。次回はここから再調査する。
+
+### 2. Stripe課金実装
 
 ### 準備タスク
 1. **問い合わせ用Gmail作成**（例: `pcsmartmemo.support@gmail.com`）
