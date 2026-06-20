@@ -625,6 +625,34 @@ function stripTrailingEmptyP(html) {
 - 末尾の空段落（`<br>`バリアント含む）を除去
 - `getCleanEditorHTML()` / `forceSaveEditorContent()` / `setContent`後の後処理で使用
 
+## 画像段落の空行削除で発生するRangeError対策（2026-06-20、再発防止の保険として実装）
+**症状**: 画像の直後の空段落を削除しようとした際に `tiptap.bundle.js` 内で `RangeError: Position out of range` が発生することがある。
+
+**対応箇所**: 画像段落に隣接する空行削除に関わる3箇所すべてに try-catch を追加し、根本原因（ProseMirrorの位置計算が環境依存でズレるケース）を完全に特定できなくても、エラー発生時にアプリが赤いエラー画面で固まらず安全に復帰できるようにした。
+1. **Backspace処理**（`editorProps.handleKeyDown`、画像段落の直後の空段落でBackspaceを押した時）: 直前段落の画像判定を「1枚だけ」から「画像のみで構成される段落（複数枚グループも含む）」に拡張した上で、`deleteCurrentNode()` + `setTextSelection()` のチェーンを try-catch。失敗時は `showToast('エラーが発生しました')` → `goBack(true)` でカード一覧へ復帰
+2. **閲覧モードでの末尾空段落自動削除**（`onUpdate` 内、画像段落の直後の末尾空段落を自動で消す処理）: `tr.delete()` の dispatch を try-catch（自動処理のため失敗時はトーストなしで握り潰すのみ）
+3. **💥空行削除ボタン**（`#btnRemoveEmptyLines`）: 全体を try-catch。失敗時は `showToast('エラーが発生しました')` → `goBack(true)` でカード一覧へ復帰
+
+いずれも `goBack(true)`（`skipSave=true`）で戻ることで、壊れた可能性のある状態のまま再保存を試みて二次被害が起きないようにしている。
+
+## ログイン画面の一瞬の映り込み対策・第二段（2026-06-20、`#authOverlay` 常時最前面オーバーレイ）
+`authStateReady()` による根本対策（上記「ログインフラッシュ修正」参照）を入れた後も、ごく短時間のログイン画面の映り込みが報告されたため、二重の安全策として**画面遷移そのものを裏側に隠す**オーバーレイを追加した。
+
+### 実装
+- `index.html`: `#app`・`#modal-root` と同じ階層に `#authOverlay`（`class="auth-overlay"`）を**静的HTML**として配置。中身は従来の `.splash-screen`（アイコン+ロゴ+ドット）。JSの実行を待たずに最初の描画から存在するため、JS実行前の空白フラッシュも防げる
+- `style.css`: `.auth-overlay { position: fixed; inset: 0; z-index: 999999; opacity: 1; transition: opacity 0.3s ease; }` / `.auth-overlay.auth-overlay-hidden { opacity: 0; pointer-events: none; }`
+- `app.js`: `DOMContentLoaded` 内で `#app` に splash HTMLを動的挿入する処理を削除（静的化したため不要）。`onAuthStateChanged` 内で `goTo('home')` / `goTo('login')` を呼んだ直後に `revealAppAfterAuth()` を呼ぶ
+  ```js
+  function revealAppAfterAuth() {
+    const overlay = document.getElementById('authOverlay');
+    if (!overlay) return;
+    setTimeout(() => {
+      overlay.classList.add('auth-overlay-hidden');
+    }, 250);
+  }
+  ```
+  - `goTo()` の画面切り替え（90ms待機 + opacity 0.1sトランジション）が完全に終わるのを待ってからオーバーレイをフェードアウトするため、ログイン画面⇄ホーム画面の入れ替わりは常にオーバーレイの裏側で完結し、ユーザーには見えない
+
 ## Undoボタン（#btnUndo）の動作
 - **表示条件**: 編集モード中は**常に表示**
 - **active/inactive**: `lastDeletedContent !== null` → 通常、`=== null` → `.inactive`（opacity 0.35）
@@ -643,9 +671,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=694`
+- `style.css?v=695`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=800`
+- `app.js?v=801`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`

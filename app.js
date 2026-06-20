@@ -2391,6 +2391,7 @@ function renderEditor(container) {
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
+      try {
       lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
 
       // テキスト・画像・YouTubeのいずれも含まない段落（<p></p> / <p><br></p> / 空白のみ等）を削除する
@@ -2409,6 +2410,11 @@ function renderEditor(container) {
         refreshYoutubeDeleteButtons(state.editorMode);
       }
       showToast("空行を削除しました");
+      } catch (err) {
+        console.error('空行削除処理でエラー:', err);
+        showToast('エラーが発生しました');
+        setTimeout(() => { try { goBack(true); } catch (_) {} }, 0);
+      }
     };
   }
 
@@ -2818,30 +2824,43 @@ function renderEditor(container) {
 
         const prevNode = $from.node(depth - 1).child(indexInParent - 1);
 
-        // 直前段落が画像1つだけの場合の Backspace 処理
-        if (
-          prevNode.type.name === 'paragraph' &&
-          prevNode.childCount === 1 &&
-          prevNode.firstChild &&
-          prevNode.firstChild.type.name === 'image'
-        ) {
-          // 現在段落が空 → 空段落を削除してカーソルを画像段落末尾へ（画像は残す）
-          if ($from.parent.content.size === 0) {
+        // 直前段落が画像のみ（1枚 or 複数枚グループ）の場合の Backspace 処理
+        let prevIsImageOnlyParagraph = false;
+        if (prevNode.type.name === 'paragraph' && prevNode.childCount > 0) {
+          prevIsImageOnlyParagraph = true;
+          prevNode.forEach(n => { if (n.type.name !== 'image') prevIsImageOnlyParagraph = false; });
+        }
+
+        if (prevIsImageOnlyParagraph) {
+          try {
+            // 現在段落が空 → 空段落を削除してカーソルを画像段落末尾へ（画像は残す）
+            if ($from.parent.content.size === 0) {
+              event.preventDefault();
+              const cursorTargetPos = $from.before(depth) - 1; // 画像段落末尾の位置
+              tiptapEditor.chain()
+                .deleteCurrentNode()
+                .setTextSelection(Math.max(1, cursorTargetPos))
+                .run();
+              return true;
+            }
+            // 現在段落にテキストあり → 画像段落末尾へカーソル移動のみ（マージしない）
+            const targetPos = $from.before(depth) - 1;
+            setTimeout(() => {
+              try {
+                if (tiptapEditor) tiptapEditor.commands.setTextSelection(targetPos);
+              } catch (_) {}
+            }, 0);
             event.preventDefault();
-            const cursorTargetPos = $from.before(depth) - 1; // 画像段落末尾の位置
-            tiptapEditor.chain()
-              .deleteCurrentNode()
-              .setTextSelection(Math.max(1, cursorTargetPos))
-              .run();
+            return true;
+          } catch (err) {
+            // ProseMirrorの位置計算が想定外にズレた場合（RangeError: Position out of range 等）の保険。
+            // 復旧不能な編集状態のままユーザーを編集画面に留めると再発・データ破損の恐れがあるため、
+            // 安全にカード一覧へ戻す。
+            console.error('画像段落の空行削除処理でエラー:', err);
+            showToast('エラーが発生しました');
+            setTimeout(() => { try { goBack(true); } catch (_) {} }, 0);
             return true;
           }
-          // 現在段落にテキストあり → 画像段落末尾へカーソル移動のみ（マージしない）
-          const targetPos = $from.before(depth) - 1;
-          setTimeout(() => {
-            if (tiptapEditor) tiptapEditor.commands.setTextSelection(targetPos);
-          }, 0);
-          event.preventDefault();
-          return true;
         }
         return false;
       }
@@ -2875,12 +2894,17 @@ function renderEditor(container) {
           const prevHasImage = prev.type.name === 'paragraph' &&
             prev.childCount > 0 && prev.lastChild && prev.lastChild.type.name === 'image';
           if (lastIsEmpty && prevHasImage) {
-            isRemovingTrailingP = true;
-            const from = doc.content.size - last.nodeSize;
-            editor.view.dispatch(
-              editor.state.tr.delete(from, doc.content.size).setMeta('addToHistory', false)
-            );
-            isRemovingTrailingP = false;
+            try {
+              isRemovingTrailingP = true;
+              const from = doc.content.size - last.nodeSize;
+              editor.view.dispatch(
+                editor.state.tr.delete(from, doc.content.size).setMeta('addToHistory', false)
+              );
+            } catch (err) {
+              console.error('画像直後の末尾空段落削除でエラー:', err);
+            } finally {
+              isRemovingTrailingP = false;
+            }
             return;
           }
         }
@@ -4967,12 +4991,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   // カーソルが入り込まないようにする修正（editorProps.handleDOMEvents の mousedown/touchstart）は維持。
 
   const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="splash-screen">
-      <img class="splash-icon" src="icon.png" alt="" />
-      <div class="splash-logo">PCスマホ連動メモ</div>
-      <div class="splash-dots"><span></span><span></span><span></span></div>
-    </div>`;
   app.classList.add('visible');
 
   // ── ログイン画面フラッシュ対策（タイマーでの推測を完全排除） ──
@@ -5012,6 +5030,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
       } catch (e) { /* 非致命的 */ }
       goTo('home');
+      revealAppAfterAuth();
       // ホーム画面の初期表示が落ち着いたタイミングで、編集画面を開く前に
       // TipTapエディターの初期化コストを先払いしておく
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
@@ -5025,11 +5044,24 @@ window.addEventListener('DOMContentLoaded', async () => {
         state.isPremium = false;
         state.isAnonymous = false;
         goTo('login');
+        revealAppAfterAuth();
       }
       // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
     }
   });
 });
+
+// 認証確定後に呼ぶ goTo() の画面切り替えアニメーション（90ms待機 + opacity 0.1s）が
+// 完全に終わるのを待ってから、起動時の黒オーバーレイをフェードアウトする。
+// ログイン画面とホーム画面の入れ替わりが裏側（オーバーレイの下）で完結するため、
+// 万一 onAuthStateChanged が想定外のタイミングで再発火しても画面の映り込みは発生しない。
+function revealAppAfterAuth() {
+  const overlay = document.getElementById('authOverlay');
+  if (!overlay) return;
+  setTimeout(() => {
+    overlay.classList.add('auth-overlay-hidden');
+  }, 250);
+}
 
 // ── 添付ファイル（写真・書類）関連の補助関数 ────────────────
 

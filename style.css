@@ -1382,6 +1382,20 @@ body {
   background: var(--bg);
 }
 
+/* 認証確定〜画面遷移完了までを覆う常時最前面オーバーレイ。
+   ログイン画面・ホーム画面の入れ替わりが裏で起きても一切見えないようにする */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+.auth-overlay.auth-overlay-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* スプラッシュ画面（起動直後〜認証確定まで。ログイン画面の一瞬の映り込みを完全に隠す） */
 .splash-screen {
   height: 100%;
