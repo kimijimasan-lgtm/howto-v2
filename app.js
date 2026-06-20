@@ -2490,9 +2490,15 @@ function renderEditor(container) {
     });
   }
 
-  const headingActiveStyle = 'rgba(139,92,246,0.35)';
-  const headingActiveBorder = '#8b5cf6';
-  const toggleActiveStyle = (btn, active) => { if (btn) { btn.style.background = active ? headingActiveStyle : 'transparent'; btn.style.borderColor = active ? headingActiveBorder : '#555'; } };
+  const headingActiveStyle = '#8b5cf6';
+  const headingActiveBorder = '#c4b5fd';
+  const toggleActiveStyle = (btn, active) => {
+    if (!btn) return;
+    btn.style.background = active ? headingActiveStyle : 'transparent';
+    btn.style.borderColor = active ? headingActiveBorder : '#555';
+    btn.style.color = active ? '#ffffff' : 'var(--text,#fff)';
+    btn.style.boxShadow = active ? '0 0 0 2px rgba(139,92,246,0.5)' : 'none';
+  };
 
   function highlightPendingHeading() {
     const map = { 1: document.getElementById('btnApplyH1'), 2: document.getElementById('btnApplyH2'), p: document.getElementById('btnApplyParagraph') };

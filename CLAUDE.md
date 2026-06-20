@@ -335,6 +335,8 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
     - 実際にコマンドを発行するのは「実行時の `_pendingXxx` が開いた時点の `_initialXxx` と異なる場合」のみ。何も触らずに実行すれば既存の書式はそのまま変化しない
     - H1/H2/地の文は内部的には三択のラジオ的トグル（`_pendingHeadingChoice`: `1|2|'p'|null`）。B/Uは独立した boolean トグルで、見出し選択や互いと**同時選択可能**
     - 見出しの初期検出は選択中の要素タグ（`allH1`/`allH2`/`allP`、全部一致のときのみ確定、混在時は`null`）。B/Uの初期検出はブロック選択時は範囲内テキストが**全て**そのマークを持つか（`rangeFullyHasMark()`）、単一テキスト選択時は `tiptapEditor.isActive('bold'|'underline')`
+    - 検出ロジック自体は実際の`tiptap.bundle.js`をjsdomで動かしたシミュレーションで動作確認済み（単一H1選択→`allH1=true`、ボールド段落選択→`initialBold=true`を正しく検出）。「トグルが効かない」と報告された際の実体は大半が**push漏れ**（ローカルにコミット済みだが`origin/main`未push＝GitHub Pagesが未反映）だったため、機能修正を疑う前にまず`git status`/`git log origin/main..HEAD`でpush状況を確認すること
+    - ON状態の視認性のため、ハイライトは半透明背景ではなく**ベタの紫背景（`#8b5cf6`）＋白文字＋外側グロー（`box-shadow: 0 0 0 2px rgba(139,92,246,0.5)`）**にしている（`toggleActiveStyle()`）
     - 見出し適用は `toggleHeading` ではなく明示的な `setHeading({level})` を使用（ON/OFF判定は自前の状態機械で行うため、ProseMirror側のtoggle機能と二重にトグルさせると意図と逆転するのを避けるため）
     - 実行時は見出し変換 → 文字色適用 → ボールド → アンダーラインの順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色・B・U適用用のテキスト範囲は見出し変換前に確保しておく（`setHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
   - `#btnApplyH1` → 選択トグル（実行時に変更があれば `setHeading({ level: 1 })` or `setParagraph()`）
@@ -643,7 +645,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=694`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=799`
+- `app.js?v=800`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
