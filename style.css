@@ -1082,6 +1082,14 @@ body {
   justify-content: center;
   padding: 1.5rem;
   animation: fadeIn 0.15s ease;
+  transition: align-items 0.2s;
+}
+
+/* 入力フォームにフォーカス中（ソフトキーボード表示中）はダイアログを画面上部に移動し、
+   キーボードに隠れてカラーパレットが見えなくなるのを防ぐ */
+.modal-overlay.kb-open {
+  align-items: flex-start;
+  padding-top: 1rem;
 }
 
 .modal-box {
@@ -1096,6 +1104,14 @@ body {
 .modal-box h3 {
   font-size: 1.1rem;
   margin-bottom: 1rem;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.modal-box .btn-secondary,
+.modal-box .btn-danger {
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .modal-input {

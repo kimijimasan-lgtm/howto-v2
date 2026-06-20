@@ -3,6 +3,7 @@ export { default as StarterKit } from '@tiptap/starter-kit';
 export { default as YoutubeExtension } from '@tiptap/extension-youtube';
 export { default as TaskList } from '@tiptap/extension-task-list';
 export { default as TaskItem } from '@tiptap/extension-task-item';
+export { default as UnderlineExtension } from '@tiptap/extension-underline';
 
 import { TextStyle } from '@tiptap/extension-text-style';
 

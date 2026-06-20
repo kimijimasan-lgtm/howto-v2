@@ -14,7 +14,7 @@ GitHub Pages でホスティング: `https://kimijimasan-lgtm.github.io/howto-v2
 ### バンドル
 - `tiptap.bundle.js`（296KB、IIFE、`window.TipTapBundle` に export）
 - ビルド元: `.tiptap-build/entry.js`（esbuild）
-- エクスポート: `Editor`, `StarterKit`, `ImageExtension`, `YoutubeExtension`, `TaskList`, `TaskItem`, `TextStyleExtension`
+- エクスポート: `Editor`, `StarterKit`, `ImageExtension`, `YoutubeExtension`, `TaskList`, `TaskItem`, `TextStyleExtension`, `UnderlineExtension`（`@tiptap/extension-underline`、`.tiptap-build/entry.js` で追加 export）
 - `ImageExtension` は `CustomImageExtension`（`class` 属性を per-image で保持できるよう extend 済み）
 - `TextStyleExtension` は `@tiptap/extension-text-style` を extend し、`color` 属性（inline style）を追加
 
@@ -279,6 +279,15 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - 文字色: `#ffffff`（白）、`font-weight: 700`（太字）
 - `showCategoryModal` で使用（新規作成・編集とも同じ input）
 
+### カテゴリ編集モーダル（`showCategoryModal`）の文字色（修正済み）
+- `.modal-box h3`（タイトル「カテゴリを編集」）・`.modal-box .btn-secondary`（キャンセル）・`.modal-box .btn-danger`（削除）の文字色を `#ffffff`・`font-weight: 700` に固定
+- `.modal-box` の背景は常に暗色（`#1c2230`）だが、これらのテキスト色は元々テーマ変数（`var(--text-primary)` / `var(--danger)`）依存だったため、ライト系テーマ選択時に暗い文字色になり視認できなくなっていた
+
+### カテゴリ編集モーダルのキーボード対策（`.modal-overlay.kb-open`）
+キーボード表示中にダイアログ（中央配置）がキーボードに押しつぶされ、カラーパレットが見えなくなる問題を修正。
+- `#catInput` の `focus`/`blur` で `#modal`（`.modal-overlay`）に `kb-open` クラスを付け外しする
+- `.modal-overlay.kb-open { align-items: flex-start; padding-top: 1rem; }` でダイアログを画面上部に移動し、キーボードに隠れないようにする
+
 ### カード一覧の並び替え
 - **デフォルト**: 名前の昇順（`sortField = 'name'`, `sortDir = 'asc'`）
 - 起動時に `updateSortUI()` を呼んでデフォルト状態をUIに反映
@@ -319,14 +328,19 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - タップで `#textFormatMenu` を表示（ボタン直下に位置合わせ）
 - `#textFormatMenuBackdrop`（z-index: 5）でエディターコンテンツ外のクリックを拾って閉じる
   - ヘッダー（z-index: 10）はバックドロップより上なので引き続き操作可能
-- **メニューUI**: H1・地の文・H2 + 区切り線 + **文字色パレット（17色実装完了）** + **実行ボタン**
-  - **選択→実行方式（2026-06改修）**: H1/H2/地の文・文字色のボタンは押しても即時反映されない。タップで「選択中」状態（紫ハイライト/アウトライン）になるだけで、実際の適用は `#btnApplyExecute`（メニュー最下部の「実行」ボタン）を押した時点でまとめて反映される
-    - 同じボタンをもう一度押すと選択解除（`_pendingHeadingChoice = null` / `_pendingColorChoice = undefined`）
-    - メニューを開閉するたびに `_pendingHeadingChoice` / `_pendingColorChoice` はリセットされる
-    - 実行時は見出し変換 → 文字色適用の順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色適用用のテキスト範囲は見出し変換前に確保しておく（`toggleHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
+- **メニューUI**: H1・地の文・H2 + 区切り線 + **B（ボールド）・U（アンダーライン）** + **文字色パレット（17色実装完了）** + **実行ボタン**
+  - **選択→実行方式（2026-06改修）**: H1/H2/地の文・B/U・文字色のボタンは押しても即時反映されない。タップで「選択中」状態（紫ハイライト/アウトライン）になるだけで、実際の適用は `#btnApplyExecute`（メニュー最下部の「実行」ボタン）を押した時点でまとめて反映される
+    - 同じボタンをもう一度押すと選択解除（`_pendingHeadingChoice = null` / `_pendingColorChoice = undefined` / `_pendingBold = false` / `_pendingUnderline = false`）
+    - メニューを開閉するたびに `_pendingHeadingChoice` / `_pendingColorChoice` / `_pendingBold` / `_pendingUnderline` はリセットされる
+    - 実行時は見出し変換 → 文字色適用 → ボールド → アンダーラインの順で処理。見出し変換でノード（p→h1等）のDOMが置き換わりPM位置情報が失われるため、色・B・U適用用のテキスト範囲は見出し変換前に確保しておく（`toggleHeading`/`setParagraph`はノードサイズを変えないため、保存したposは変換後も有効）
   - `#btnApplyH1` → 選択トグル（実行時に `toggleHeading({ level: 1 })`） ← 選択中の要素が全部H1のときメニュー初期表示で紫ハイライト
   - `#btnApplyH2` → 選択トグル（実行時に `toggleHeading({ level: 2 })`） ← 選択中の要素が全部H2のときメニュー初期表示で紫ハイライト
   - `#btnApplyParagraph` → 選択トグル（実行時に `setParagraph()` で見出しを解除し通常テキストに戻す）
+  - **`#btnApplyBold` / `#btnApplyUnderline`（ボールド・アンダーライン、実装完了）**:
+    - H1/H2/地の文とは独立したトグル（`_pendingBold` / `_pendingUnderline`、boolean）で、見出し選択や互いと**同時選択可能**
+    - 見出しボタンと異なりブロック未選択時（`blockMode === false`）でも常に表示・使用可能（文字色パレットと同じ扱い）
+    - 実行時は段落選択があればその全テキスト範囲、無ければ現在のテキスト選択範囲に対して `bold`/`underline` マークを `addMark`（色と同じ実装パターン）。トグルOFFへの解除は現状未実装（再度OFFにする操作は別途検討）
+    - `UnderlineExtension`（`@tiptap/extension-underline`）が必要。StarterKitにBoldは含まれるが Underline は含まれないため `.tiptap-build/entry.js` に追加 export し、TipTapエディター初期化（`renderEditor`・`warmUpTipTap` 両方）の `extensions` 配列に追加した
   - **文字色（`.color-swatch-btn` × 17色 + デフォルト解除ボタン）**:
     - 赤・オレンジ・黄・緑・青・紫・黒・白・ピンク・マゼンタ・ライトブルー・シアン・ライムグリーン・ブラウン・ゴールド・シルバー + デフォルト（`✕`、実行時に `removeMark`で解除）
     - **`input type="color"` のネイティブピッカーは廃止**（iOS Safariで連続タップ時にダブルタップズームが誤発動し画面全体が拡大される不具合があったため）
@@ -611,9 +625,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=692`
-- `tiptap.bundle.js?v=3`
-- `app.js?v=797`
+- `style.css?v=693`
+- `tiptap.bundle.js?v=4`
+- `app.js?v=798`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
