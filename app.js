@@ -1905,7 +1905,7 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
   }
 }
 
-// ── 全パネル一括エクスポート（パネルごとにtxtファイルをダウンロード） ──
+// ── 全パネル一括エクスポート（全パネルを1つのtxtファイルにまとめてダウンロード） ──
 async function exportAllPanelsToTxt() {
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 
@@ -1919,10 +1919,18 @@ async function exportAllPanelsToTxt() {
     categories.sort((a, b) => b.order - a.order);
 
     // 確認ダイアログ
-    if (!confirm(`${categories.length}個のパネルをそれぞれtxtファイルとしてダウンロードします。\n続行しますか？`)) return;
+    const totalPanels = categories.length;
+    if (!confirm(`${totalPanels}個のパネルを1つのテキストファイルにまとめてエクスポートします。\n続行しますか？`)) return;
 
-    let exportedCount = 0;
-    const failedPanels = [];
+    // 全パネルのデータを1つのテキストに結合
+    let allTextData = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    allTextData += `  PCスマホ連動メモ 全データバックアップ\n`;
+    allTextData += `  エクスポート日時: ${new Date().toLocaleString('ja-JP')}\n`;
+    allTextData += `  パネル数: ${totalPanels}\n`;
+    allTextData += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    let panelCount = 0;
+    let cardCount = 0;
 
     for (const cat of categories) {
       try {
@@ -1930,7 +1938,15 @@ async function exportAllPanelsToTxt() {
         const artSnap = await db.ref(`users/${state.uid}/articles/${cat.id}`).once('value');
         const artData = artSnap.val();
 
-        if (!artData) continue; // 記事がないパネルはスキップ
+        allTextData += `\n${'═'.repeat(50)}\n`;
+        allTextData += `【パネル】${cat.name}\n`;
+        allTextData += `${'═'.repeat(50)}\n\n`;
+
+        if (!artData) {
+          allTextData += `（カードなし）\n`;
+          panelCount++;
+          continue;
+        }
 
         const articles = Object.values(artData)
           .sort((a, b) => {
@@ -1938,71 +1954,83 @@ async function exportAllPanelsToTxt() {
             return (b.updatedAt || 0) - (a.updatedAt || 0);
           });
 
-        // テキストデータを生成
-        let textData = `【${cat.name}】\n\n`;
-        textData += articles.map((art, idx) => {
+        articles.forEach((art, idx) => {
           const lines = htmlToLines(art.content);
           const title = lines[0] || '（タイトルなし）';
           const body = lines.slice(1).join('\n');
-          return `■ ${title}\n${body}`;
-        }).join('\n\n────────────────\n\n');
-
-        // ファイル名から無効な文字を除去
-        const safeFileName = cat.name.replace(/[\\/:*?"<>|]/g, '_');
-
-        if (isIOS) {
-          // iOSではシェアシート経由
-          const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
-          const file = new File([blob], `${safeFileName}.txt`, { type: 'text/plain' });
-
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: `${cat.name}のエクスポート`
-            });
-          } else {
-            // シェアAPIが使えない場合はBlobダウンロード
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${safeFileName}.txt`;
-            a.click();
-            URL.revokeObjectURL(url);
+          allTextData += `■ ${title}\n`;
+          if (body.trim()) allTextData += `${body}\n`;
+          if (idx < articles.length - 1) {
+            allTextData += `\n────────────────\n\n`;
           }
-        } else {
-          // PC/Android: 直接ダウンロード
-          const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${safeFileName}.txt`;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
+          cardCount++;
+        });
 
-        exportedCount++;
-
-        // ブラウザが連続ダウンロードをブロックしないよう少し待機
-        await new Promise(r => setTimeout(r, 300));
+        panelCount++;
 
       } catch (err) {
-        console.error(`Failed to export ${cat.name}:`, err);
-        failedPanels.push(cat.name);
+        console.error(`Failed to read ${cat.name}:`, err);
+        allTextData += `\n【パネル】${cat.name}\n（読み込みエラー）\n`;
       }
     }
 
-    if (failedPanels.length > 0) {
-      alert(`${exportedCount}個のパネルをエクスポートしました。\n以下のパネルは失敗しました：\n${failedPanels.join(', ')}`);
-    } else if (exportedCount > 0) {
-      alert(`${exportedCount}個のパネルをエクスポートしました！\nダウンロードフォルダをご確認ください。`);
+    allTextData += `\n\n${'━'.repeat(50)}\n`;
+    allTextData += `  エクスポート完了: ${panelCount}パネル / ${cardCount}カード\n`;
+    allTextData += `${'━'.repeat(50)}\n`;
+
+    // ファイル名を生成
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const fileName = `メモバックアップ_${dateStr}.txt`;
+
+    // Blobを作成
+    const blob = new Blob([allTextData], { type: 'text/plain;charset=utf-8' });
+
+    if (isIOS && navigator.share) {
+      // iOS: シェアシート経由で「ファイル」アプリに保存
+      try {
+        const file = new File([blob], fileName, { type: 'text/plain' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'メモバックアップ'
+          });
+          alert(`エクスポート完了！\n${panelCount}パネル / ${cardCount}カード`);
+        } else {
+          // canShareがfalseの場合はダウンロードリンク方式
+          downloadViaLink(blob, fileName, panelCount, cardCount);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          // ユーザーがシェアシートをキャンセルした場合
+          alert('エクスポートがキャンセルされました。');
+        } else {
+          console.error('Share failed:', err);
+          // フォールバック: ダウンロードリンク方式
+          downloadViaLink(blob, fileName, panelCount, cardCount);
+        }
+      }
     } else {
-      alert('エクスポートする記事がありませんでした。');
+      // PC/Android: ダウンロードリンク方式
+      downloadViaLink(blob, fileName, panelCount, cardCount);
     }
 
   } catch (err) {
     console.error('Export all panels failed:', err);
-    alert('エクスポート中にエラーが発生しました。');
+    alert('エクスポート中にエラーが発生しました。\n' + err.message);
   }
+}
+
+// ダウンロードリンク方式でファイルを保存
+function downloadViaLink(blob, fileName, panelCount, cardCount) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  alert(`エクスポート完了！\n${panelCount}パネル / ${cardCount}カード\nダウンロードフォルダをご確認ください。`);
 }
 
 async function createArticle(noTransition = false) {
