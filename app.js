@@ -53,6 +53,8 @@ const db = firebase.database();
 // ── グローバルエラーハンドラー（ランタイムエラー時の安全復帰） ──
 let _errorRecoveryInProgress = false;
 function handleGlobalError(errorMsg) {
+  // ページ遷移中（Stripe決済など）のエラーは無視
+  if (window._navigatingToStripe) return;
   if (_errorRecoveryInProgress) return;
   _errorRecoveryInProgress = true;
   console.error('[GlobalError]', errorMsg);
@@ -4997,6 +4999,9 @@ function startStripePayment() {
 
   // uidをlocalStorageに保存（決済完了後に参照するため）
   localStorage.setItem('pending_payment_uid', currentUser.uid);
+
+  // ページ遷移中のエラーを無視するフラグ
+  window._navigatingToStripe = true;
 
   // Payment Linkページを開く
   window.location.href = STRIPE_PAYMENT_LINK;
