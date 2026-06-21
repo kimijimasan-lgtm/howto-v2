@@ -4957,9 +4957,15 @@ function showGuestSignoutModal() {
   };
 }
 
-// Stripe公開可能キー（テスト環境）
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_51TkfxOJHIlRyZ2PYWiH3pKdsaguzna5bJZ9PZYGLpUjYx84TBnymh02c4YMrGy08HHkBEqYaRUCNTe5LgBuRvdg500XueY5ST2';
-const STRIPE_PRICE_ID = 'price_1TkgClJHIlRyZ2PYuHomfChN';
+// Stripe Payment Link URL（テスト環境）
+// Stripeダッシュボードで作成したPayment LinkのURLを設定
+// ダッシュボード: https://dashboard.stripe.com/test/payment-links
+// 設定手順:
+// 1. Payment Linksで新規作成
+// 2. 価格100円を設定
+// 3. 「決済完了後のURL」に https://kimijimasan-lgtm.github.io/howto-v2/?payment=success を設定
+// 4. 生成されたURLをここに貼り付け
+const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_YOUR_PAYMENT_LINK_ID';
 
 function showLimitModal(message) {
   const root = document.getElementById('modal-root');
@@ -4975,57 +4981,43 @@ function showLimitModal(message) {
   `;
   document.getElementById('btnLimitClose').onclick = () => { root.innerHTML = ''; };
   document.getElementById('limitModal').onclick = (e) => { if (e.target.id === 'limitModal') root.innerHTML = ''; };
-  document.getElementById('btnUpgrade').onclick = async () => {
+  document.getElementById('btnUpgrade').onclick = () => {
     root.innerHTML = '';
-    await startStripeCheckout();
+    startStripePayment();
   };
 }
 
-// Stripe Checkoutを開始
-async function startStripeCheckout() {
+// Stripe Payment Linkで決済を開始
+function startStripePayment() {
   const currentUser = firebase.auth().currentUser;
   if (!currentUser) {
     showToast('ログインが必要です');
     return;
   }
 
-  try {
-    // Stripeインスタンスを初期化
-    const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+  // uidをlocalStorageに保存（決済完了後に参照するため）
+  localStorage.setItem('pending_payment_uid', currentUser.uid);
 
-    // 現在のURLをベースにリダイレクトURLを構築
-    const baseUrl = window.location.origin + window.location.pathname;
-    const successUrl = baseUrl + '?payment=success&uid=' + encodeURIComponent(currentUser.uid);
-    const cancelUrl = baseUrl + '?payment=cancel';
-
-    // Stripe Checkoutにリダイレクト
-    const { error } = await stripe.redirectToCheckout({
-      lineItems: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
-      mode: 'payment',
-      successUrl: successUrl,
-      cancelUrl: cancelUrl,
-      clientReferenceId: currentUser.uid,
-    });
-
-    if (error) {
-      console.error('Stripe error:', error);
-      showToast('決済の開始に失敗しました');
-    }
-  } catch (err) {
-    console.error('Stripe checkout error:', err);
-    showToast('決済処理中にエラーが発生しました');
-  }
+  // Payment Linkページを開く
+  window.location.href = STRIPE_PAYMENT_LINK;
 }
 
 // 決済完了後の処理（URLパラメータをチェック）
 function handlePaymentCallback() {
   const params = new URLSearchParams(window.location.search);
   const paymentStatus = params.get('payment');
-  const uid = params.get('uid');
 
-  if (paymentStatus === 'success' && uid) {
+  if (paymentStatus === 'success') {
     // URLパラメータをクリア（履歴を汚さないようreplaceState）
     window.history.replaceState({}, document.title, window.location.pathname);
+
+    // localStorageからuidを取得（決済開始時に保存したもの）
+    const uid = localStorage.getItem('pending_payment_uid');
+    if (!uid) {
+      showToast('決済情報の取得に失敗しました');
+      return;
+    }
+    localStorage.removeItem('pending_payment_uid');
 
     // isPremiumフラグを設定
     db.ref(`users/${uid}/isPremium`).set(true).then(() => {
@@ -5045,6 +5037,7 @@ function handlePaymentCallback() {
     });
   } else if (paymentStatus === 'cancel') {
     window.history.replaceState({}, document.title, window.location.pathname);
+    localStorage.removeItem('pending_payment_uid');
     showToast('決済がキャンセルされました');
   }
 }
