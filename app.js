@@ -1988,10 +1988,8 @@ async function exportAllPanelsToTxt() {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const fileName = `メモバックアップ_${dateStr}.txt`;
 
-    // 改行コードをWindows形式（CRLF）に統一してBlobを作成
-    // まず既存のCR(\r)を全て除去し、LF(\n)のみにしてからCRLF(\r\n)に変換
-    const textWithCRLF = allTextData.replace(/\r/g, '').replace(/\n/g, '\r\n');
-    const blob = new Blob([textWithCRLF], { type: 'text/plain' });
+    // Blobを作成
+    const blob = new Blob([allTextData], { type: 'text/plain' });
 
     if (isIOS && navigator.share) {
       // iOS: シェアシート経由で「ファイル」アプリに保存
