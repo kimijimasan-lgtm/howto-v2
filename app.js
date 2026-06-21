@@ -1920,12 +1920,12 @@ async function exportAllPanelsToTxt() {
 
     const totalPanels = categories.length;
 
-    // 全パネルのデータを1つのテキストに結合
-    let allTextData = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    // 全パネルのデータを1つのテキストに結合（ASCII文字のみ使用でメモ帳対応）
+    let allTextData = `${'='.repeat(50)}\n`;
     allTextData += `  PCスマホ連動メモ 全データバックアップ\n`;
     allTextData += `  エクスポート日時: ${new Date().toLocaleString('ja-JP')}\n`;
     allTextData += `  パネル数: ${totalPanels}\n`;
-    allTextData += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    allTextData += `${'='.repeat(50)}\n\n`;
 
     let panelCount = 0;
     let cardCount = 0;
@@ -1936,12 +1936,12 @@ async function exportAllPanelsToTxt() {
         const artSnap = await db.ref(`users/${state.uid}/articles/${cat.id}`).once('value');
         const artData = artSnap.val();
 
-        allTextData += `\n${'═'.repeat(50)}\n`;
-        allTextData += `【パネル】${cat.name}\n`;
-        allTextData += `${'═'.repeat(50)}\n\n`;
+        allTextData += `\n${'='.repeat(50)}\n`;
+        allTextData += `[パネル] ${cat.name}\n`;
+        allTextData += `${'='.repeat(50)}\n\n`;
 
         if (!artData) {
-          allTextData += `（カードなし）\n`;
+          allTextData += `(カードなし)\n`;
           panelCount++;
           continue;
         }
@@ -1954,12 +1954,12 @@ async function exportAllPanelsToTxt() {
 
         articles.forEach((art, idx) => {
           const lines = htmlToLines(art.content);
-          const title = lines[0] || '（タイトルなし）';
+          const title = lines[0] || '(タイトルなし)';
           const body = lines.slice(1).join('\n');
-          allTextData += `■ ${title}\n`;
+          allTextData += `* ${title}\n`;
           if (body.trim()) allTextData += `${body}\n`;
           if (idx < articles.length - 1) {
-            allTextData += `\n────────────────\n\n`;
+            allTextData += `\n${'-'.repeat(30)}\n\n`;
           }
           cardCount++;
         });
@@ -1968,13 +1968,13 @@ async function exportAllPanelsToTxt() {
 
       } catch (err) {
         console.error(`Failed to read ${cat.name}:`, err);
-        allTextData += `\n【パネル】${cat.name}\n（読み込みエラー）\n`;
+        allTextData += `\n[パネル] ${cat.name}\n(読み込みエラー)\n`;
       }
     }
 
-    allTextData += `\n\n${'━'.repeat(50)}\n`;
+    allTextData += `\n\n${'='.repeat(50)}\n`;
     allTextData += `  エクスポート完了: ${panelCount}パネル / ${cardCount}カード\n`;
-    allTextData += `${'━'.repeat(50)}\n`;
+    allTextData += `${'='.repeat(50)}\n`;
 
     // ファイル名を生成
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
