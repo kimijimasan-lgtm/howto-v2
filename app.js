@@ -1980,8 +1980,9 @@ async function exportAllPanelsToTxt() {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const fileName = `メモバックアップ_${dateStr}.txt`;
 
-    // Blobを作成（シンプルにUTF-8テキストとして保存）
-    const blob = new Blob([allTextData], { type: 'text/plain' });
+    // 改行コードをWindows形式（CRLF）に変換してBlobを作成
+    const textWithCRLF = allTextData.replace(/\n/g, '\r\n');
+    const blob = new Blob([textWithCRLF], { type: 'text/plain' });
 
     if (isIOS && navigator.share) {
       // iOS: シェアシート経由で「ファイル」アプリに保存
