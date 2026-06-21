@@ -1983,8 +1983,9 @@ async function exportAllPanelsToTxt() {
     // 改行コードをWindows形式（CRLF）に統一（メモ帳対応）
     allTextData = allTextData.replace(/\r?\n/g, '\r\n');
 
-    // Blobを作成
-    const blob = new Blob([allTextData], { type: 'text/plain;charset=utf-8' });
+    // BOM付きUTF-8でBlobを作成（Windowsメモ帳で文字化けしないように）
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, allTextData], { type: 'text/plain;charset=utf-8' });
 
     if (isIOS && navigator.share) {
       // iOS: シェアシート経由で「ファイル」アプリに保存
