@@ -1980,6 +1980,9 @@ async function exportAllPanelsToTxt() {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const fileName = `メモバックアップ_${dateStr}.txt`;
 
+    // 改行コードをWindows形式（CRLF）に統一（メモ帳対応）
+    allTextData = allTextData.replace(/\r?\n/g, '\r\n');
+
     // Blobを作成
     const blob = new Blob([allTextData], { type: 'text/plain;charset=utf-8' });
 
