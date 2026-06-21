@@ -1913,14 +1913,12 @@ async function exportAllPanelsToTxt() {
     // 全カテゴリを取得
     const catSnap = await db.ref(`users/${state.uid}/categories`).once('value');
     const catData = catSnap.val();
-    if (!catData) { alert('エクスポートするパネルがありません'); return; }
+    if (!catData) { showToast('エクスポートするパネルがありません'); return; }
 
     const categories = Object.entries(catData).map(([id, c]) => ({ id, name: c.name, order: c.order ?? 0 }));
     categories.sort((a, b) => b.order - a.order);
 
-    // 確認ダイアログ
     const totalPanels = categories.length;
-    if (!confirm(`${totalPanels}個のパネルを1つのテキストファイルにまとめてエクスポートします。\n続行しますか？`)) return;
 
     // 全パネルのデータを1つのテキストに結合
     let allTextData = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -1994,15 +1992,14 @@ async function exportAllPanelsToTxt() {
             files: [file],
             title: 'メモバックアップ'
           });
-          alert(`エクスポート完了！\n${panelCount}パネル / ${cardCount}カード`);
+          showToast(`${panelCount}パネル / ${cardCount}カード をエクスポートしました`);
         } else {
           // canShareがfalseの場合はダウンロードリンク方式
           downloadViaLink(blob, fileName, panelCount, cardCount);
         }
       } catch (err) {
         if (err.name === 'AbortError') {
-          // ユーザーがシェアシートをキャンセルした場合
-          alert('エクスポートがキャンセルされました。');
+          // ユーザーがシェアシートをキャンセルした場合は何もしない
         } else {
           console.error('Share failed:', err);
           // フォールバック: ダウンロードリンク方式
@@ -2016,7 +2013,7 @@ async function exportAllPanelsToTxt() {
 
   } catch (err) {
     console.error('Export all panels failed:', err);
-    alert('エクスポート中にエラーが発生しました。\n' + err.message);
+    showToast('エクスポートに失敗しました');
   }
 }
 
@@ -2030,7 +2027,7 @@ function downloadViaLink(blob, fileName, panelCount, cardCount) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  alert(`エクスポート完了！\n${panelCount}パネル / ${cardCount}カード\nダウンロードフォルダをご確認ください。`);
+  showToast(`${panelCount}パネル / ${cardCount}カード をエクスポートしました`);
 }
 
 async function createArticle(noTransition = false) {
