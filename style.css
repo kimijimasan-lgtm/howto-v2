@@ -271,6 +271,16 @@ body {
   }
 }
 
+/* スマホ画面専用ボタン */
+.btn-mobile-only {
+  display: flex !important;
+}
+@media (min-width: 600px) {
+  .btn-mobile-only {
+    display: none !important;
+  }
+}
+
 /* ── Buttons ── */
 .btn-primary {
   display: inline-flex;
