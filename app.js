@@ -5077,7 +5077,7 @@ function showPaymentSuccessModal() {
       if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
         await currentUser.linkWithRedirect(provider).catch(() => {});
       } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
-        const ok = confirm('このGoogleアカウントはすでに登録済みです。\\nゲストのデータは引き継がれません。\\nそのままログインしますか？');
+        const ok = confirm('このGoogleアカウントはすでに登録済みです。\nゲストのデータは引き継がれません。\nそのままログインしますか？');
         if (ok) {
           await firebase.auth().signInWithCredential(err.credential).catch(() => {});
         }
