@@ -4957,6 +4957,10 @@ function showGuestSignoutModal() {
   };
 }
 
+// Stripe公開可能キー（テスト環境）
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51TkfxOJHIlRyZ2PYWiH3pKdsaguzna5bJZ9PZYGLpUjYx84TBnymh02c4YMrGy08HHkBEqYaRUCNTe5LgBuRvdg500XueY5ST2';
+const STRIPE_PRICE_ID = 'price_1TkgClJHIlRyZ2PYuHomfChN';
+
 function showLimitModal(message) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
@@ -4964,7 +4968,7 @@ function showLimitModal(message) {
       <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
         <div style="font-size:2.5rem;margin-bottom:0.75rem;">🔒</div>
         <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;white-space:pre-line;">${message}</p>
-        <button id="btnUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">アップグレードする</button>
+        <button id="btnUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">アップグレードする（100円）</button>
         <button id="btnLimitClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">閉じる</button>
       </div>
     </div>
@@ -4973,32 +4977,115 @@ function showLimitModal(message) {
   document.getElementById('limitModal').onclick = (e) => { if (e.target.id === 'limitModal') root.innerHTML = ''; };
   document.getElementById('btnUpgrade').onclick = async () => {
     root.innerHTML = '';
-    const currentUser = firebase.auth().currentUser;
-    const isGuest = currentUser && currentUser.isAnonymous;
-    if (isGuest) {
-      // ゲストユーザー: Googleアカウントにデータを引き継ぎながら連携
-      if (confirm('ゲストのデータをGoogleアカウントに引き継ぎます。\nこれまでのメモはそのまま使えます。')) {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        try {
-          await currentUser.linkWithPopup(provider);
-          // 連携成功 — onAuthStateChanged が再発火してホームが再描画される
-        } catch (err) {
-          if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
-            await currentUser.linkWithRedirect(provider).catch(() => {});
-          } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
-            // このGoogleアカウントはすでに別ユーザーとして登録済み
-            // → データ引き継ぎはできずそのアカウントに切り替わる
-            const ok = confirm('このGoogleアカウントはすでに登録済みです。\nゲストのデータは引き継がれません。\nそのままログインしますか？');
-            if (ok) {
-              await firebase.auth().signInWithCredential(err.credential).catch(() => {});
-            }
-          }
-        }
+    await startStripeCheckout();
+  };
+}
+
+// Stripe Checkoutを開始
+async function startStripeCheckout() {
+  const currentUser = firebase.auth().currentUser;
+  if (!currentUser) {
+    showToast('ログインが必要です');
+    return;
+  }
+
+  try {
+    // Stripeインスタンスを初期化
+    const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+
+    // 現在のURLをベースにリダイレクトURLを構築
+    const baseUrl = window.location.origin + window.location.pathname;
+    const successUrl = baseUrl + '?payment=success&uid=' + encodeURIComponent(currentUser.uid);
+    const cancelUrl = baseUrl + '?payment=cancel';
+
+    // Stripe Checkoutにリダイレクト
+    const { error } = await stripe.redirectToCheckout({
+      lineItems: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
+      mode: 'payment',
+      successUrl: successUrl,
+      cancelUrl: cancelUrl,
+      clientReferenceId: currentUser.uid,
+    });
+
+    if (error) {
+      console.error('Stripe error:', error);
+      showToast('決済の開始に失敗しました');
+    }
+  } catch (err) {
+    console.error('Stripe checkout error:', err);
+    showToast('決済処理中にエラーが発生しました');
+  }
+}
+
+// 決済完了後の処理（URLパラメータをチェック）
+function handlePaymentCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentStatus = params.get('payment');
+  const uid = params.get('uid');
+
+  if (paymentStatus === 'success' && uid) {
+    // URLパラメータをクリア（履歴を汚さないようreplaceState）
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // isPremiumフラグを設定
+    db.ref(`users/${uid}/isPremium`).set(true).then(() => {
+      state.isPremium = true;
+
+      const currentUser = firebase.auth().currentUser;
+      if (currentUser && currentUser.isAnonymous) {
+        // ゲストユーザーの場合：Googleアカウントへの連携を促す
+        showPaymentSuccessModal();
+      } else {
+        // 正規ユーザーの場合：完了メッセージのみ
+        showToast('アップグレード完了！無制限でご利用いただけます');
       }
-    } else {
-      // 非ゲストユーザー: Stripe 課金ページへ
-      const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID';
-      window.open(paymentUrl, '_blank');
+    }).catch(err => {
+      console.error('Failed to set isPremium:', err);
+      showToast('アップグレードの反映に失敗しました');
+    });
+  } else if (paymentStatus === 'cancel') {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showToast('決済がキャンセルされました');
+  }
+}
+
+// 決済成功後のモーダル（ゲストユーザー向け：Googleアカウント連携を促す）
+function showPaymentSuccessModal() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="paymentSuccessModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+      <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+        <div style="font-size:2.5rem;margin-bottom:0.75rem;">🎉</div>
+        <h3 style="color:#fff;font-size:1.1rem;font-weight:700;margin-bottom:0.75rem;">お支払い完了！</h3>
+        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;">無制限でご利用いただけます。<br><br>Googleアカウントでログインすると、<br>他のデバイスでもデータを同期できます。</p>
+        <button id="btnLinkGoogle" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">Googleアカウントでログイン</button>
+        <button id="btnPaymentSuccessClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">後で設定する</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnPaymentSuccessClose').onclick = () => { root.innerHTML = ''; };
+  document.getElementById('paymentSuccessModal').onclick = (e) => { if (e.target.id === 'paymentSuccessModal') root.innerHTML = ''; };
+  document.getElementById('btnLinkGoogle').onclick = async () => {
+    root.innerHTML = '';
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) return;
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try {
+      await currentUser.linkWithPopup(provider);
+      showToast('Googleアカウントと連携しました！');
+    } catch (err) {
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+        await currentUser.linkWithRedirect(provider).catch(() => {});
+      } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
+        const ok = confirm('このGoogleアカウントはすでに登録済みです。\\nゲストのデータは引き継がれません。\\nそのままログインしますか？');
+        if (ok) {
+          await firebase.auth().signInWithCredential(err.credential).catch(() => {});
+        }
+      } else {
+        showToast('連携に失敗しました');
+      }
     }
   };
 }
@@ -5251,6 +5338,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (typeof firebase.auth().authStateReady === 'function') {
     await firebase.auth().authStateReady();
   }
+
+  // Stripe決済完了後のコールバック処理
+  handlePaymentCallback();
 
   firebase.auth().onAuthStateChanged(async (user) => {
     if (user) {

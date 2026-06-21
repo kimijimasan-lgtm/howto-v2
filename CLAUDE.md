@@ -688,9 +688,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=695`
+- `style.css?v=696`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=814`
+- `app.js?v=822`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -703,30 +703,39 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - **PC用Ctrl+クリック段落選択（追加）**: デバッグ用に追加したCtrl+クリック（Mac: Cmd+クリック）で段落選択できる機能を正式採用。スマホの左スワイプ相当の操作がPCでも可能に
 - **グローバルエラーハンドラー追加（完了）**: `window.onerror`と`window.onunhandledrejection`で全エラーをキャッチし、トースト表示後に`goTo('home')`でホームに安全復帰。フリーズ防止
 - **🚀メニューの文字色パレットに濃い色8色追加**: ダークレッド・ダークブルー・ダークグリーン・ダークパープル・ダークオレンジ・ネイビー・ダークブラウン・ダークシアン（計25色）
-- **全パネル一括エクスポート機能（完了）**: ホーム画面ヘッダーにエクスポートボタン追加。全パネルを1つのtxtファイルにまとめてエクスポート。iOSはシェアシート経由で「ファイル」アプリに保存、PCはダウンロードフォルダに保存
+- **全パネル一括エクスポート機能（完了）**: ホーム画面ヘッダーにエクスポートボタン追加（スマホのみ表示）。全パネルを1つのtxtファイルにまとめてエクスポート。iOSはシェアシート経由で「ファイル」アプリに保存
+- **Stripe課金実装（完了・テスト環境）**: ゲストユーザーが100円で課金 → isPremium=true → Googleアカウント連携を促す流れを実装
 
 ## 直近の対応（2026-06-20）
 
 - **画像下の空行削除時のRangeError対策（完了）**: `tiptap.bundle.js`内で発生する`RangeError: Position out of range`をBackspace処理・閲覧モードの自動空段落削除・💥空行削除ボタンの3箇所でtry-catch。エラー時はトースト表示後 `goBack(true)` でパネル一覧へ安全に復帰する。詳細は[画像段落の空行削除で発生するRangeError対策](#画像段落の空行削除で発生するrangeerror対策2026-06-20再発防止の保険として実装)を参照
 - **ログイン後のログイン画面映り込み問題（完了）**: `#authOverlay`を起動時だけでなく**ログインボタン押下時にも即時表示**する方式に変更。ボタンクリック直後に`showAuthOverlay()`でオーバーレイを即時再表示し、`isPremium`/`categories`読み込み中の素のログイン画面が見えてしまう問題を解消。詳細は[第三段（ログインボタン押下時の映り込み対策）](#第三段2026-06-20ログインボタン押下時の映り込み対策)を参照
 
+## Stripe課金（実装済み・テスト環境）
+
+### 設定値
+- **公開可能キー**: `pk_test_51TkfxO...`（テスト環境）
+- **価格ID**: `price_1TkgClJHIlRyZ2PYuHomfChN`（100円）
+
+### フロー
+1. ゲストユーザーが「アップグレードする（100円）」ボタンをタップ
+2. Stripe Checkoutにリダイレクト
+3. 決済完了後、`?payment=success&uid=...` でアプリに戻る
+4. `users/{uid}/isPremium: true` をFirebaseに書き込み
+5. ゲストユーザーにはGoogleアカウント連携モーダルを表示
+
+### 関連関数
+- `showLimitModal()`: 制限モーダル表示
+- `startStripeCheckout()`: Stripe Checkoutを開始
+- `handlePaymentCallback()`: 決済完了後のコールバック処理
+- `showPaymentSuccessModal()`: 決済成功後のモーダル（Google連携促す）
+
+### 本番移行時の変更点
+- `STRIPE_PUBLISHABLE_KEY` を本番用キー（`pk_live_...`）に変更
+- `STRIPE_PRICE_ID` を本番用価格IDに変更
+
 ## 次のステップ
 
-### 1. Stripe課金実装
-
-### 準備タスク
-1. **問い合わせ用Gmail作成**（例: `pcsmartmemo.support@gmail.com`）
-2. **メインアドレスへの転送設定**
-3. **Stripeアカウント作成**（メインアドレスで登録）
-4. **APIキー・価格IDの取得**
-
-### 実装箇所
-- `showLimitModal` 内の `paymentUrl` を実際の Stripe Payment Link URL に置き換える
-  ```js
-  const paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'; // ← ここ
-  ```
-- 課金完了後に Firebase の `users/{uid}/isPremium: true` を書き込む Webhook または Cloud Functions が必要
-
-### 課金対象ユーザー
-現状では正規ログイン（Google）ユーザーは無制限なので、課金メリットを設計し直す必要がある。  
-例：正規ユーザーに上限を設けて（例：パネル10・カード30）、課金で無制限にするなど。
+### 1. Stripe課金の本番化
+- 本番用Stripeアカウントで価格を作成
+- 公開可能キーと価格IDを本番用に差し替え
