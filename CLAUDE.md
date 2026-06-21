@@ -690,7 +690,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=696`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=823`
+- `app.js?v=826`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -704,20 +704,21 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - **グローバルエラーハンドラー追加（完了）**: `window.onerror`と`window.onunhandledrejection`で全エラーをキャッチし、トースト表示後に`goTo('home')`でホームに安全復帰。フリーズ防止
 - **🚀メニューの文字色パレットに濃い色8色追加**: ダークレッド・ダークブルー・ダークグリーン・ダークパープル・ダークオレンジ・ネイビー・ダークブラウン・ダークシアン（計25色）
 - **全パネル一括エクスポート機能（完了）**: ホーム画面ヘッダーにエクスポートボタン追加（スマホのみ表示）。全パネルを1つのtxtファイルにまとめてエクスポート。iOSはシェアシート経由で「ファイル」アプリに保存
-- **Stripe課金実装（完了・テスト環境）**: ゲストユーザーが100円で課金 → isPremium=true → Googleアカウント連携を促す流れを実装
+- **Stripe課金実装（完了・テスト環境）**: ゲストユーザーが100円で課金 → isPremium=true → Googleアカウント連携を促す流れを実装。テスト決済動作確認済み
+- **confirmダイアログの改行コード修正（完了）**: `\\n`がそのまま表示される問題を修正
 
 ## 直近の対応（2026-06-20）
 
 - **画像下の空行削除時のRangeError対策（完了）**: `tiptap.bundle.js`内で発生する`RangeError: Position out of range`をBackspace処理・閲覧モードの自動空段落削除・💥空行削除ボタンの3箇所でtry-catch。エラー時はトースト表示後 `goBack(true)` でパネル一覧へ安全に復帰する。詳細は[画像段落の空行削除で発生するRangeError対策](#画像段落の空行削除で発生するrangeerror対策2026-06-20再発防止の保険として実装)を参照
 - **ログイン後のログイン画面映り込み問題（完了）**: `#authOverlay`を起動時だけでなく**ログインボタン押下時にも即時表示**する方式に変更。ボタンクリック直後に`showAuthOverlay()`でオーバーレイを即時再表示し、`isPremium`/`categories`読み込み中の素のログイン画面が見えてしまう問題を解消。詳細は[第三段（ログインボタン押下時の映り込み対策）](#第三段2026-06-20ログインボタン押下時の映り込み対策)を参照
 
-## Stripe課金（Payment Links方式・テスト環境）
+## Stripe課金（Payment Links方式・サンドボックス環境）
 
-### 設定方法
-1. Stripeダッシュボード（https://dashboard.stripe.com/test/payment-links）でPayment Linkを作成
-2. 価格100円を設定
-3. 「決済完了後のURL」に `https://kimijimasan-lgtm.github.io/howto-v2/?payment=success` を設定
-4. 生成されたURLを `STRIPE_PAYMENT_LINK` 定数に設定
+### 現在の設定値（テスト用）
+- **Payment Link URL**: `https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01`
+- **価格ID**: `price_1TkgClJHIlRyZ2PYuHomfChN`（100円）
+- **決済完了後URL**: `https://kimijimasan-lgtm.github.io/howto-v2/?payment=success`
+- **テスト決済**: 動作確認済み（2026-06-21）
 
 ### フロー
 1. ゲストユーザーが「アップグレードする（100円）」ボタンをタップ
@@ -734,14 +735,14 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - `showPaymentSuccessModal()`: 決済成功後のモーダル（Google連携促す）
 
 ### 本番移行時の変更点
-- `STRIPE_PAYMENT_LINK` を本番用Payment Link URLに変更
+- `STRIPE_PAYMENT_LINK` を本番用Payment Link URLに変更（`https://buy.stripe.com/live_...`）
+- Stripeダッシュボードで本番用Payment Linkを作成
 
 ## 次のステップ
 
-### 1. Stripe Payment Linkの作成
-- Stripeダッシュボードでテスト用Payment Linkを作成
-- 生成されたURLを `STRIPE_PAYMENT_LINK` に設定
-
-### 2. Stripe課金の本番化
+### 1. Stripeを本番環境に切り替える
 - 本番用Stripeアカウントで価格・Payment Linkを作成
-- URLを本番用に差し替え
+- `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
+
+### 2. ブログからアプリ呼び出し実験
+- ブログ記事からアプリへのリンク方法を検討
