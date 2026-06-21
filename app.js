@@ -1992,7 +1992,7 @@ async function exportAllPanelsToTxt() {
             files: [file],
             title: 'メモバックアップ'
           });
-          showToast(`${panelCount}パネル / ${cardCount}カード をエクスポートしました`);
+          showExportCompleteDialog(panelCount, cardCount);
         } else {
           // canShareがfalseの場合はダウンロードリンク方式
           downloadViaLink(blob, fileName, panelCount, cardCount);
@@ -2027,7 +2027,26 @@ function downloadViaLink(blob, fileName, panelCount, cardCount) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  showToast(`${panelCount}パネル / ${cardCount}カード をエクスポートしました`);
+  showExportCompleteDialog(panelCount, cardCount);
+}
+
+// エクスポート完了ダイアログを表示
+function showExportCompleteDialog(panelCount, cardCount) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box" style="text-align:center; max-width:320px;">
+      <div style="font-size:2.5rem; margin-bottom:0.5rem;">✅</div>
+      <h3 style="color:#fff; font-weight:700; margin-bottom:0.75rem;">エクスポート完了！</h3>
+      <p style="color:#e2e8f0; font-size:1.1rem; font-weight:600; margin-bottom:0.5rem;">${panelCount}パネル / ${cardCount}カード</p>
+      <p style="color:#94a3b8; font-size:0.9rem; margin-bottom:1.25rem;">後でダウンロードフォルダをご確認ください。</p>
+      <button class="btn-secondary" style="width:100%; padding:12px; font-size:1rem; font-weight:600; color:#fff; background:#4b5563; border:none; border-radius:8px; cursor:pointer;">閉じる</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const closeBtn = overlay.querySelector('.btn-secondary');
+  closeBtn.onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 }
 
 async function createArticle(noTransition = false) {
