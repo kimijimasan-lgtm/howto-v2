@@ -515,10 +515,18 @@ function htmlToLines(html) {
   if (!html) return [];
   const tmp = document.createElement('div');
   tmp.innerHTML = html;
-  
+
   // スワイプチェックボックス ✔ など一時要素はパースから排除する
   const checkmarks = tmp.querySelectorAll('.para-checkbox');
   checkmarks.forEach(c => c.remove());
+
+  // 画像タグを除去（Base64データがテキストに混入するのを防ぐ）
+  const images = tmp.querySelectorAll('img');
+  images.forEach(img => img.remove());
+
+  // YouTube埋め込みを除去
+  const youtubes = tmp.querySelectorAll('[data-youtube-video]');
+  youtubes.forEach(yt => yt.remove());
 
   // 子要素から行を抽出する（innerTextが未ロードDOMで改行を無視する問題を回避）
   const lines = [];
