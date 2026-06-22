@@ -697,6 +697,14 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
+## 直近の対応（2026-06-22）
+
+- **100kin-blog公開（完了）**: ブログサイトをGitHub Pagesで公開。URL: https://kimijimasan-lgtm.github.io/100kin-blog/
+- **ブログ→Stripe決済→アプリ遷移（動作確認済み）**: 「購入してログイン」→Stripe決済→`?payment=success`でアプリに戻る流れを確認
+- **?guest=trueパラメータ対応（完了）**: ブログの「ゲストで試してみる」ボタンから`?guest=true`でアプリを開くと自動ゲストログイン
+- **決済完了後のGoogleログイン促進モーダル（完了）**: `?payment=success`で戻った際に「お支払いありがとうございます！Googleアカウントでログインすると無制限で使えます」モーダルを表示。Googleログイン完了後に`isPremium:true`を設定
+- **100kin-blogにsave.bat作成（完了）**: ワンクリックで日時付きコミット&push
+
 ## 直近の対応（2026-06-21）
 
 - **🚀メニューのトグルON/OFF表示（完了）**: PCブラウザでデバッグした結果、検出ロジック・UI更新ロジックともに正常に動作していることを確認。段落を選択してメニューを開くと、対応するボタン（H1/H2/地の文）が紫色にハイライトされる
@@ -720,29 +728,55 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - **決済完了後URL**: `https://kimijimasan-lgtm.github.io/howto-v2/?payment=success`
 - **テスト決済**: 動作確認済み（2026-06-21）
 
-### フロー
-1. ゲストユーザーが「アップグレードする（100円）」ボタンをタップ
-2. `localStorage` にuidを保存
-3. Stripe Payment Linkページにリダイレクト
-4. 決済完了後、`?payment=success` でアプリに戻る
-5. `localStorage` からuidを取得し、`users/{uid}/isPremium: true` をFirebaseに書き込み
-6. ゲストユーザーにはGoogleアカウント連携モーダルを表示
+### フロー（実装完了 2026-06-22）
+1. ブログ（100kin-blog）の「購入してログイン」ボタンをタップ
+2. Stripe Payment Linkページで決済
+3. 決済完了後、`?payment=success` でアプリに戻る
+4. 「お支払いありがとうございます！Googleアカウントでログインすると無制限で使えます」モーダル表示
+5. Googleログイン完了 → `isPremium: true` 設定 → ホーム画面へ遷移
 
 ### 関連関数
 - `showLimitModal()`: 制限モーダル表示
 - `startStripePayment()`: Payment Linkページに遷移
-- `handlePaymentCallback()`: 決済完了後のコールバック処理
-- `showPaymentSuccessModal()`: 決済成功後のモーダル（Google連携促す）
+- `showPaymentSuccessModal()`: 決済成功後のモーダル（Googleログイン促す）
 
 ### 本番移行時の変更点
 - `STRIPE_PAYMENT_LINK` を本番用Payment Link URLに変更（`https://buy.stripe.com/live_...`）
 - Stripeダッシュボードで本番用Payment Linkを作成
+- 100kin-blogの購入ボタンURLも本番用に差し替え
+
+## 100kin-blog（ブログサイト）
+
+### 概要
+100均アプリのランディングページ・ブログサイト。GitHub Pagesでホスティング。
+
+- **リポジトリ**: https://github.com/kimijimasan-lgtm/100kin-blog
+- **公開URL**: https://kimijimasan-lgtm.github.io/100kin-blog/
+- **ローカルパス**: `F:\Claude学習\100kin-blog\`
+
+### ファイル構成
+| ファイル | 内容 |
+|----------|------|
+| `index.html` | ホーム画面（アプリ一覧、3カラム） |
+| `app-detail.html` | PCスマホ連動メモ詳細ページ |
+| `login.html` | ログイン選択画面（購入/ゲスト） |
+| `設計書.md` | 全体設計・フェーズ計画 |
+| `開発者ガイド.md` | 次作アプリ登録手順 |
+| `save.bat` | ワンクリックでgit push |
+
+### ボタンリンク
+- **「購入してログイン」**: `https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01`（テスト環境）
+- **「ゲストで試してみる」**: `https://kimijimasan-lgtm.github.io/howto-v2/?guest=true`
+
+### ?guest=true パラメータ
+howto-v2側で `?guest=true` パラメータを検出すると、未ログイン状態なら自動的に `signInAnonymously()` を実行してゲストログインする。
 
 ## 次のステップ
 
 ### 1. Stripeを本番環境に切り替える
 - 本番用Stripeアカウントで価格・Payment Linkを作成
-- `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
+- howto-v2の `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
+- 100kin-blogの購入ボタンURLも本番用に差し替え
 
-### 2. ブログからアプリ呼び出し実験
-- ブログ記事からアプリへのリンク方法を検討
+### 2. スクリーンショット追加
+- 100kin-blogの絵文字プレースホルダーを実際のスクリーンショット画像に差し替え
