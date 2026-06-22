@@ -5008,7 +5008,8 @@ function startStripePayment() {
 }
 
 // 決済完了後の処理（URLパラメータをチェック）
-function handlePaymentCallback() {
+// onAuthStateChanged内から呼ばれる想定（userが確定してから）
+async function handlePaymentCallback() {
   const params = new URLSearchParams(window.location.search);
   const paymentStatus = params.get('payment');
 
@@ -5019,27 +5020,22 @@ function handlePaymentCallback() {
     // localStorageからuidを取得（決済開始時に保存したもの）
     const uid = localStorage.getItem('pending_payment_uid');
     if (!uid) {
-      showToast('決済情報の取得に失敗しました');
+      // uidがなくても、Googleアカウントでログインを促すモーダルは表示する
+      showPaymentSuccessModal();
       return;
     }
     localStorage.removeItem('pending_payment_uid');
 
     // isPremiumフラグを設定
-    db.ref(`users/${uid}/isPremium`).set(true).then(() => {
+    try {
+      await db.ref(`users/${uid}/isPremium`).set(true);
       state.isPremium = true;
-
-      const currentUser = firebase.auth().currentUser;
-      if (currentUser && currentUser.isAnonymous) {
-        // ゲストユーザーの場合：Googleアカウントへの連携を促す
-        showPaymentSuccessModal();
-      } else {
-        // 正規ユーザーの場合：完了メッセージのみ
-        showToast('アップグレード完了！無制限でご利用いただけます');
-      }
-    }).catch(err => {
+    } catch (err) {
       console.error('Failed to set isPremium:', err);
-      showToast('アップグレードの反映に失敗しました');
-    });
+    }
+
+    // Googleアカウントでログインを促すモーダルを表示
+    showPaymentSuccessModal();
   } else if (paymentStatus === 'cancel') {
     window.history.replaceState({}, document.title, window.location.pathname);
     localStorage.removeItem('pending_payment_uid');
@@ -5047,42 +5043,49 @@ function handlePaymentCallback() {
   }
 }
 
-// 決済成功後のモーダル（ゲストユーザー向け：Googleアカウント連携を促す）
+// 決済成功後のモーダル（Googleアカウントでログインを促す）
 function showPaymentSuccessModal() {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
     <div class="modal-overlay" id="paymentSuccessModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
       <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
         <div style="font-size:2.5rem;margin-bottom:0.75rem;">🎉</div>
-        <h3 style="color:#fff;font-size:1.1rem;font-weight:700;margin-bottom:0.75rem;">お支払い完了！</h3>
-        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;">無制限でご利用いただけます。<br><br>Googleアカウントでログインすると、<br>他のデバイスでもデータを同期できます。</p>
+        <h3 style="color:#fff;font-size:1.1rem;font-weight:700;margin-bottom:0.75rem;">お支払いありがとうございます！</h3>
+        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;">Googleアカウントでログインすると<br>無制限で使えます</p>
         <button id="btnLinkGoogle" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">Googleアカウントでログイン</button>
-        <button id="btnPaymentSuccessClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">後で設定する</button>
       </div>
     </div>
   `;
 
-  document.getElementById('btnPaymentSuccessClose').onclick = () => { root.innerHTML = ''; };
   document.getElementById('paymentSuccessModal').onclick = (e) => { if (e.target.id === 'paymentSuccessModal') root.innerHTML = ''; };
   document.getElementById('btnLinkGoogle').onclick = async () => {
     root.innerHTML = '';
-    const currentUser = firebase.auth().currentUser;
-    if (!currentUser) return;
+    showAuthOverlay();
 
     const provider = new firebase.auth.GoogleAuthProvider();
     try {
-      await currentUser.linkWithPopup(provider);
-      showToast('Googleアカウントと連携しました！');
+      const result = await firebase.auth().signInWithPopup(provider);
+      const user = result.user;
+      // isPremiumフラグを設定
+      await db.ref(`users/${user.uid}/isPremium`).set(true);
+      state.uid = user.uid;
+      state.isPremium = true;
+      state.isAnonymous = false;
+      // 新規ユーザーならテンプレートをコピー
+      const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
+      if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
+        await copyTemplateToUser(user.uid);
+      }
+      goTo('home');
+      revealAppAfterAuth();
+      showToast('ログイン完了！無制限でご利用いただけます');
     } catch (err) {
+      hideAuthOverlayNow();
       if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
-        await currentUser.linkWithRedirect(provider).catch(() => {});
-      } else if (err.code === 'auth/credential-already-in-use' && err.credential) {
-        const ok = confirm('このGoogleアカウントはすでに登録済みです。\nゲストのデータは引き継がれません。\nそのままログインしますか？');
-        if (ok) {
-          await firebase.auth().signInWithCredential(err.credential).catch(() => {});
-        }
+        await firebase.auth().signInWithRedirect(provider).catch(() => {});
       } else {
-        showToast('連携に失敗しました');
+        console.error('Google Sign-In Error:', err);
+        showToast('ログインに失敗しました');
       }
     }
   };
@@ -5337,12 +5340,22 @@ window.addEventListener('DOMContentLoaded', async () => {
     await firebase.auth().authStateReady();
   }
 
-  // Stripe決済完了後のコールバック処理
-  handlePaymentCallback();
+  // URLパラメータを確認
+  const urlParams = new URLSearchParams(window.location.search);
+  const isPaymentSuccess = urlParams.get('payment') === 'success';
+  const isGuestParam = urlParams.get('guest') === 'true';
+
+  // ?payment=success の場合：モーダルを表示してGoogleログインを促す
+  if (isPaymentSuccess) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    localStorage.removeItem('pending_payment_uid');
+    revealAppAfterAuth();
+    showPaymentSuccessModal();
+    return; // onAuthStateChangedの登録をスキップ（モーダル内でログイン処理する）
+  }
 
   // ?guest=true パラメータがあり、未ログイン状態なら自動ゲストログイン
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('guest') === 'true' && !firebase.auth().currentUser) {
+  if (isGuestParam && !firebase.auth().currentUser) {
     try {
       await firebase.auth().signInAnonymously();
       // URLからパラメータを除去（履歴を汚さない）
