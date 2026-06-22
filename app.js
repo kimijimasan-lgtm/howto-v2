@@ -5340,6 +5340,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Stripe決済完了後のコールバック処理
   handlePaymentCallback();
 
+  // ?guest=true パラメータがあり、未ログイン状態なら自動ゲストログイン
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('guest') === 'true' && !firebase.auth().currentUser) {
+    try {
+      await firebase.auth().signInAnonymously();
+      // URLからパラメータを除去（履歴を汚さない）
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch (e) {
+      console.error('Auto guest login failed:', e);
+    }
+  }
+
   firebase.auth().onAuthStateChanged(async (user) => {
     if (user) {
       // ログイン済み — 購入状態を読み取り
