@@ -598,8 +598,13 @@ function cleanMarkdownForPaste(text) {
     result.push(line);
   }
 
-  // NotebookLM等の引用番号 [1] [2,3] [1, 2, 3] などを除去
-  const noRefs = result.map(line => line.replace(/\[\d+(?:,\s*\d+)*\]/g, ''));
+  // NotebookLM等の引用番号 [1] [1,2] [1, 2] [1, 2, 3] などを除去
+  // 複数パターンに対応: スペースありなし両方、連続した番号も
+  const noRefs = result.map(line => line
+    .replace(/\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g, '')  // [1] [1,2] [1, 2, 3] など
+    .replace(/\s{2,}/g, ' ')  // 複数スペースを1つに
+    .trim()
+  );
 
   // 連続する空行を最大1行にまとめる
   const collapsed = [];
@@ -757,7 +762,7 @@ function renderHome(container) {
       </button>
       ${_homeUser?.isAnonymous ? `<a href="https://apps100kin.web.app/" target="_blank" class="blog-link-fab" id="btnBlogLink" title="100均アプリブログ">
         <span style="font-size:1.1rem;line-height:1;">📱</span>
-        <span style="font-size:0.7rem;font-weight:600;white-space:nowrap;">ブログ</span>
+        <span style="font-size:0.7rem;font-weight:600;white-space:nowrap;">100均</span>
       </a>` : ''}
     </div>`;
 
@@ -1252,10 +1257,12 @@ function renderCategory(container) {
       const dx    = e.changedTouches[0].clientX - _alSx;
       const rawDy = e.changedTouches[0].clientY - _alSy;
       const dy    = Math.abs(rawDy);
-      // 真下ドラッグのみ新規カード作成、それ以外は全てホームに戻る
+      // 右フリップ判定: 横方向の移動が縦方向より明確に大きい場合のみ
+      // 縦スクロールはフリップ判定しない（横移動が縦移動の1.5倍以上必要）
+      const isHorizontalSwipe = Math.abs(dx) > 40 && Math.abs(dx) > dy * 1.5;
+      // 真下ドラッグのみ新規カード作成（縦80px以上、横ズレが縦の20%未満）
       const isStraightDown = dy >= 80 && Math.abs(dx) < dy * 0.2;
-      const hasMoved = Math.abs(dx) > 20 || dy > 20;
-      if (hasMoved && !isStraightDown) {
+      if (isHorizontalSwipe && dx > 0 && !isStraightDown) {
         // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
         // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
         e.stopPropagation();
@@ -3095,7 +3102,14 @@ function renderEditor(container) {
           _autoH1Done = true;
           setTimeout(() => {
             if (!tiptapEditor || tiptapEditor.isDestroyed) return;
-            tiptapEditor.chain().setTextSelection(1).setHeading({ level: 1 }).run();
+            // 現在のカーソル位置を保存
+            const currentPos = tiptapEditor.state.selection.from;
+            // 1行目を選択してH1に変換
+            tiptapEditor.chain()
+              .setTextSelection({ from: 1, to: 1 + firstNode.nodeSize - 2 })
+              .setHeading({ level: 1 })
+              .setTextSelection(currentPos)
+              .run();
           }, 0);
         }
       }
@@ -3247,10 +3261,13 @@ function renderEditor(container) {
     }
     // キーボード表示中、トップバーが隠れて#btnAttachが押せなくなることがあるため、
     // 同じ役割のFABをキーボード表示中の編集モード時に右下に出す
-    // （スマホ判定: タッチデバイスかつ画面幅768px以下）
-    const isMobile = 'ontouchstart' in window && window.innerWidth <= 768;
+    // 編集モードでフォーカスがある場合もキーボード表示とみなす（より確実な検出）
     const fab = document.getElementById('btnAttachFab');
-    if (fab) fab.style.display = (isMobile && keyboardVisible && state.editorMode === 'edit' && !state.cardLocked) ? 'flex' : 'none';
+    if (fab) {
+      const isFocused = tiptapEditor && tiptapEditor.isFocused;
+      const shouldShow = state.editorMode === 'edit' && !state.cardLocked && (keyboardVisible || isFocused);
+      fab.style.display = shouldShow ? 'flex' : 'none';
+    }
   };
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateEditorHeight);
@@ -4406,13 +4423,13 @@ function bindParagraphSwipeEvents(editor) {
     const rawDy = touch.clientY - tyStart;
     const dy = Math.abs(rawDy);
 
-    // 真下ドラッグのみ新規カード作成、それ以外は全てカード一覧に戻る
-    // 真下判定: 縦80px以上 かつ 横ズレが縦の20%未満
+    // 右フリップ判定: 横方向の移動が縦方向より明確に大きい場合のみ
+    // 縦スクロールはフリップ判定しない（横移動が縦移動の1.5倍以上必要）
+    const isHorizontalSwipe = Math.abs(dx) > 40 && Math.abs(dx) > dy * 1.5;
+    // 真下ドラッグのみ新規カード作成（縦80px以上、横ズレが縦の20%未満）
     const isStraightDown = dy >= 80 && Math.abs(dx) < dy * 0.2;
-    // 真下ドラッグ以外の動き（右・斜め右・左・上など）で移動量が20px以上なら戻る
-    const hasMoved = Math.abs(dx) > 20 || dy > 20;
-    if (hasMoved && !isStraightDown) {
-      // 右フリップで前の画面に戻る（緩いルール）
+    if (isHorizontalSwipe && dx > 0 && !isStraightDown) {
+      // 右フリップで前の画面に戻る
       // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
       // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
       e.stopPropagation();
@@ -4465,22 +4482,27 @@ function bindParagraphSwipeEvents(editor) {
   });
 
   // PC用: Ctrl+クリック（Mac: Cmd+クリック）で段落選択（スマホの左スワイプ相当）
+  // mousedownでキャプチャフェーズで先取りしないとProseMirrorに消費される
   const ctrlClickHandler = e => {
     if (!e.ctrlKey && !e.metaKey) return;
     if (state.cardLocked) return;
+
+    // Ctrl/Cmd+クリック時はブラウザのデフォルト動作（新規タブで開く等）を即座にキャンセル
+    e.preventDefault();
+    e.stopPropagation();
+
     let target = e.target;
     while (target && target.parentNode !== editor) {
       target = target.parentNode;
     }
     if (!target || target === editor) return;
     if (target.tagName === 'P' || target.tagName === 'H1' || target.tagName === 'H2') {
-      e.preventDefault();
-      e.stopPropagation();
       toggleParagraphSelect(target, editor);
     }
   };
-  editor.addEventListener('click', ctrlClickHandler);
-  paraSwipeListeners.push({ element: editor, ctrlClick: ctrlClickHandler });
+  // キャプチャフェーズでmousedownを捕捉（ProseMirrorより先に処理）
+  editor.addEventListener('mousedown', ctrlClickHandler, true);
+  paraSwipeListeners.push({ element: editor, ctrlClick: ctrlClickHandler, useCapture: true });
 }
 
 // 登録されたイベントやグローバルリスナーの解放
@@ -4489,7 +4511,11 @@ function cleanupNativeParagraphListeners(editor) {
     if (item.element) {
       if (item.start) item.element.removeEventListener('touchstart', item.start);
       if (item.end) item.element.removeEventListener('touchend', item.end);
-      if (item.ctrlClick) item.element.removeEventListener('click', item.ctrlClick);
+      if (item.ctrlClick) {
+        // キャプチャフェーズで登録した場合はキャプチャフェーズで解除
+        item.element.removeEventListener('mousedown', item.ctrlClick, item.useCapture || false);
+        item.element.removeEventListener('click', item.ctrlClick);
+      }
     }
   });
   paraSwipeListeners = [];
@@ -6078,8 +6104,20 @@ function setupImageDeleteButtons(editor) {
   window._removeImageDeleteBtn = removeDeleteBtn;
 
   const showDeleteBtnFor = (img) => {
-    if (activeImg === img) return;
+    // 同じ画像への重複表示を防止
+    if (activeImg === img && activeDeleteBtn) return;
+
+    // 既存のボタンを削除（別の画像のボタンや孤立したボタン）
     removeDeleteBtn();
+
+    // DOM上に既に削除ボタンがある場合は何もしない（重複防止）
+    const existingBtn = img.closest('p')?.querySelector('.img-delete-btn');
+    if (existingBtn) {
+      activeDeleteBtn = existingBtn;
+      activeImg = img;
+      return;
+    }
+
     activeImg = img;
 
     // 画像の親段落（p要素）を取得し、その中に削除ボタンを配置
