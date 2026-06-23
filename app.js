@@ -1444,8 +1444,19 @@ function renderCategory(container) {
             </button>
           </div>`;
 
-        // カード本体タップ→エディター
-        li.querySelector('.article-inner').onclick = () => {
+        // カード本体タップ→エディター（Ctrl/Cmdキーが押されている場合はスワイプメニューを表示）
+        li.querySelector('.article-inner').onclick = (e) => {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            // 他のカードのメニューを閉じる
+            document.querySelectorAll('.article-item.swiped').forEach(el => {
+              if (el !== li) el.classList.remove('swiped');
+            });
+            // トグル動作
+            li.classList.toggle('swiped');
+            return;
+          }
           goTo('editor', state.categoryId, art.id);
         };
 
@@ -2527,6 +2538,34 @@ function renderEditor(container) {
         }
       }
     };
+
+    // 長押しでペーストをキャンセル
+    let pasteLongPressTimer = null;
+    pasteBtn.addEventListener('touchstart', e => {
+      pasteLongPressTimer = setTimeout(() => {
+        // 長押しでキャンセル
+        if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
+          window.globalCutParagraphs = null;
+          removePasteMarker();
+          updatePasteButtonState();
+          showToast("ペーストをキャンセルしました");
+        }
+        pasteLongPressTimer = null;
+      }, 800);
+    }, { passive: true });
+    pasteBtn.addEventListener('touchend', () => {
+      if (pasteLongPressTimer) {
+        clearTimeout(pasteLongPressTimer);
+        pasteLongPressTimer = null;
+      }
+    }, { passive: true });
+    pasteBtn.addEventListener('touchmove', () => {
+      if (pasteLongPressTimer) {
+        clearTimeout(pasteLongPressTimer);
+        pasteLongPressTimer = null;
+      }
+    }, { passive: true });
+
     updatePasteButtonState();
   }
 
@@ -2567,24 +2606,31 @@ function renderEditor(container) {
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
-      const selectedParas = pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected, [data-youtube-video].para-selected');
+      // 選択された段落を取得し、配列としてコピー（NodeListは変更されるため）
+      const selectedParas = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected, [data-youtube-video].para-selected'));
       if (selectedParas.length === 0) return;
 
-      window.globalCutParagraphs = Array.from(selectedParas).map(el => {
+      // カット対象のHTMLを保存
+      window.globalCutParagraphs = selectedParas.map(el => {
         const clone = el.cloneNode(true);
         const chk = clone.querySelector('.para-checkbox');
         if (chk) chk.remove();
         clone.classList.remove('para-selected');
-        if (el.tagName === 'P') clone.removeAttribute('class');
+        clone.removeAttribute('class');
         return clone.outerHTML;
       });
 
+      // カット前の全体HTMLを保存（Undo用）
       lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
 
+      // アニメーションクラスを追加
       selectedParas.forEach(p => p.classList.add('para-cut-animating'));
 
       setTimeout(() => {
-        selectedParas.forEach(p => p.remove());
+        // 選択された段落のみを削除（配列をループして確実に削除）
+        selectedParas.forEach(p => {
+          if (p.parentNode) p.remove();
+        });
 
         // カット後に残った孤立した空段落を除去して上に詰める
         Array.from(pm.querySelectorAll('p')).forEach(p => {
@@ -2603,7 +2649,7 @@ function renderEditor(container) {
           return;
         }
 
-        // DOMの変更をTipTapの内部状態に同期
+        // DOMの変更をTipTapの内部状態に同期（ここで確定）
         if (tiptapEditor) {
           tiptapEditor.commands.setContent(getCleanPMHTML());
           refreshYoutubeDeleteButtons('view');
@@ -2615,13 +2661,7 @@ function renderEditor(container) {
         if (_bd) { _bd.style.display = 'none'; _bd.classList.remove('pulse-delete-active'); }
         if (_bc) { _bc.style.display = 'none'; _bc.classList.remove('pulse-delete-active'); }
         updatePasteButtonState();
-        // 5秒後に貼り付けボタンを自動非表示（貼り付けなければ削除扱い）
-        if (pasteAutoHideTimer) clearTimeout(pasteAutoHideTimer);
-        pasteAutoHideTimer = setTimeout(() => {
-          window.globalCutParagraphs = null;
-          updatePasteButtonState();
-          pasteAutoHideTimer = null;
-        }, 5000);
+        // タイムアウトなし：ペーストボタンはキャンセルするまで点滅し続ける
       }, 500);
     };
   }
@@ -3174,6 +3214,22 @@ function renderEditor(container) {
             return;
           }
         }
+      }
+
+      // NotebookLM等の引用番号 [1] [1,2] などが残っていたら自動削除
+      // 貼り付け直後や編集中も常に監視
+      const currentHtml = editor.getHTML();
+      const refPattern = /\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g;
+      if (refPattern.test(currentHtml)) {
+        const cleanedHtml = currentHtml.replace(refPattern, '');
+        setTimeout(() => {
+          if (tiptapEditor && !tiptapEditor.isDestroyed) {
+            const pos = tiptapEditor.state.selection.from;
+            tiptapEditor.commands.setContent(cleanedHtml, false);
+            try { tiptapEditor.commands.setTextSelection(Math.min(pos, tiptapEditor.state.doc.content.size)); } catch (_) {}
+          }
+        }, 0);
+        return;
       }
 
       if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
@@ -6120,31 +6176,33 @@ function setupImageDragAndDrop(editor) {
 
 // 画像削除ボタン（ゴミ箱アイコン）の表示・制御
 // 編集モードでのみ表示する（閲覧モードでの画像タップは拡大モーダルを優先するため）
+// グローバル変数でシングルトン管理（イベントリスナー重複登録を防止）
+let _imgDeleteBtnState = { activeBtn: null, activeImg: null, initialized: false };
+
 function setupImageDeleteButtons(editor) {
   if (!editor) return;
-  let activeDeleteBtn = null;
-  let activeImg = null;
+
+  // 既に初期化済みの場合はスキップ（イベントリスナー重複防止）
+  if (editor._imgDeleteInitialized) return;
+  editor._imgDeleteInitialized = true;
 
   const removeDeleteBtn = () => {
-    if (activeDeleteBtn) {
-      activeDeleteBtn.remove();
-      activeDeleteBtn = null;
-      activeImg = null;
-    }
+    // DOM全体から全ての削除ボタンを確実に削除
+    document.querySelectorAll('.img-delete-btn').forEach(btn => btn.remove());
+    _imgDeleteBtnState.activeBtn = null;
+    _imgDeleteBtnState.activeImg = null;
   };
   // 画面遷移（閲覧モードへの切替）時に外部から削除ボタンを消せるように公開
   window._removeImageDeleteBtn = removeDeleteBtn;
 
   const showDeleteBtnFor = (img) => {
     // 同じ画像への重複表示を防止
-    if (activeImg === img && activeDeleteBtn && activeDeleteBtn.parentNode) return;
+    if (_imgDeleteBtnState.activeImg === img && _imgDeleteBtnState.activeBtn && _imgDeleteBtnState.activeBtn.parentNode) return;
 
     // まずDOM全体から既存の削除ボタンを全て削除（重複防止の徹底）
-    document.querySelectorAll('.img-delete-btn').forEach(btn => btn.remove());
-    activeDeleteBtn = null;
-    activeImg = null;
+    removeDeleteBtn();
 
-    activeImg = img;
+    _imgDeleteBtnState.activeImg = img;
 
     // 画像の親段落（p要素）を取得し、その中に削除ボタンを配置
     // これによりスクロールしても画像と一緒にボタンが動く
@@ -6190,7 +6248,7 @@ function setupImageDeleteButtons(editor) {
     };
 
     parentP.appendChild(btn);
-    activeDeleteBtn = btn;
+    _imgDeleteBtnState.activeBtn = btn;
   };
 
   // PC: 画像の上にホバーしたときに削除ボタンを表示（編集モードのみ）
@@ -6198,7 +6256,7 @@ function setupImageDeleteButtons(editor) {
     const img = e.target;
     if (state.editorMode === 'edit' && img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
       showDeleteBtnFor(img);
-    } else if (!(activeDeleteBtn && (e.target === activeDeleteBtn || activeDeleteBtn.contains(e.target)))) {
+    } else if (!(_imgDeleteBtnState.activeBtn && (e.target === _imgDeleteBtnState.activeBtn || _imgDeleteBtnState.activeBtn.contains(e.target)))) {
       removeDeleteBtn();
     }
   });
@@ -6212,7 +6270,7 @@ function setupImageDeleteButtons(editor) {
     if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
       e.stopPropagation();
       showDeleteBtnFor(img);
-    } else if (!(activeDeleteBtn && (e.target === activeDeleteBtn || activeDeleteBtn.contains(e.target)))) {
+    } else if (!(_imgDeleteBtnState.activeBtn && (e.target === _imgDeleteBtnState.activeBtn || _imgDeleteBtnState.activeBtn.contains(e.target)))) {
       removeDeleteBtn();
     }
   });
@@ -6220,9 +6278,9 @@ function setupImageDeleteButtons(editor) {
   // エディタからマウスが外れたら削除ボタンを消す
   editor.addEventListener('mouseleave', e => {
     setTimeout(() => {
-      if (activeDeleteBtn) {
-        const isHoverBtn = activeDeleteBtn.matches(':hover');
-        const isHoverImg = activeImg && activeImg.matches(':hover');
+      if (_imgDeleteBtnState.activeBtn) {
+        const isHoverBtn = _imgDeleteBtnState.activeBtn.matches(':hover');
+        const isHoverImg = _imgDeleteBtnState.activeImg && _imgDeleteBtnState.activeImg.matches(':hover');
         if (!isHoverBtn && !isHoverImg) {
           removeDeleteBtn();
         }
