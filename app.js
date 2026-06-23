@@ -1245,35 +1245,40 @@ function renderCategory(container) {
   addSwipeBack(container, () => goBack());
   addPullToCreate(document.getElementById('artList'));
 
-  // カード一覧→ホームのスワイプバック（エディターと同じ閾値・判定を直接artListにバインド）
-  // SortableJS が touchend のバブルを止める場合に備えて container への登録とは別に追加
+  // カード一覧→ホームのスワイプバック
+  // スクロールを最優先にし、明確な横フリップのみ戻る動作を発火
   {
     const _al = document.getElementById('artList');
-    let _alSx = 0, _alSy = 0;
-    const _alTouchStart = e => { _alSx = e.touches[0].clientX; _alSy = e.touches[0].clientY; };
+    let _alSx = 0, _alSy = 0, _alScrolled = false;
+    const _alTouchStart = e => {
+      _alSx = e.touches[0].clientX;
+      _alSy = e.touches[0].clientY;
+      _alScrolled = false;
+    };
+    const _alTouchMove = e => {
+      // 縦に10px以上動いたらスクロール中とみなし、フリップ判定を無効化
+      const dy = Math.abs(e.touches[0].clientY - _alSy);
+      if (dy > 10) _alScrolled = true;
+    };
     const _alTouchEnd = e => {
       if (isDragging) return;
+      if (_alScrolled) return; // スクロール中だったので何もしない
       if (document.querySelector('.article-item.swiped')) return;
-      const dx    = e.changedTouches[0].clientX - _alSx;
-      const rawDy = e.changedTouches[0].clientY - _alSy;
-      const dy    = Math.abs(rawDy);
-      // 右フリップ判定: 横方向の移動が縦方向より明確に大きい場合のみ
-      // 縦スクロールはフリップ判定しない（横移動が縦移動の1.5倍以上必要）
-      const isHorizontalSwipe = Math.abs(dx) > 40 && Math.abs(dx) > dy * 1.5;
-      // 真下ドラッグのみ新規カード作成（縦80px以上、横ズレが縦の20%未満）
-      const isStraightDown = dy >= 80 && Math.abs(dx) < dy * 0.2;
-      if (isHorizontalSwipe && dx > 0 && !isStraightDown) {
-        // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
-        // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
+      const dx = e.changedTouches[0].clientX - _alSx;
+      const dy = Math.abs(e.changedTouches[0].clientY - _alSy);
+      // 明確な右フリップのみ: 横60px以上、かつ横が縦の2倍以上
+      if (dx > 60 && dx > dy * 2) {
         e.stopPropagation();
         goBack();
       }
     };
     _al.addEventListener('touchstart', _alTouchStart, { passive: true });
-    _al.addEventListener('touchend',   _alTouchEnd,   { passive: true });
+    _al.addEventListener('touchmove', _alTouchMove, { passive: true });
+    _al.addEventListener('touchend', _alTouchEnd, { passive: true });
     listeners.push(() => {
       _al.removeEventListener('touchstart', _alTouchStart);
-      _al.removeEventListener('touchend',   _alTouchEnd);
+      _al.removeEventListener('touchmove', _alTouchMove);
+      _al.removeEventListener('touchend', _alTouchEnd);
     });
   }
 
@@ -1503,6 +1508,19 @@ function renderCategory(container) {
             }
           }
         }, { passive: true });
+
+        // PC用: Ctrl+クリック（Mac: Cmd+クリック）でスワイプメニューを表示
+        li.addEventListener('click', e => {
+          if (!e.ctrlKey && !e.metaKey) return;
+          e.preventDefault();
+          e.stopPropagation();
+          // 他のカードのメニューを閉じる
+          document.querySelectorAll('.article-item.swiped').forEach(el => {
+            if (el !== li) el.classList.remove('swiped');
+          });
+          // トグル動作
+          li.classList.toggle('swiped');
+        });
 
         list.appendChild(li);
       });
@@ -3016,10 +3034,24 @@ function renderEditor(container) {
         const lines = cleaned.split('\n');
         const html = lines
           .filter(l => l.trim() !== '')
-          .map(l => `<p>${esc(l)}</p>`)
+          .map(l => {
+            // 最終段階でも引用番号を確実に除去（二重チェック）
+            const cleanedLine = l.replace(/\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g, '').replace(/\s{2,}/g, ' ').trim();
+            return `<p>${esc(cleanedLine)}</p>`;
+          })
           .join('');
         if (!html) return true;
         tiptapEditor.commands.insertContent(html);
+
+        // 貼り付け完了後にDOMを再スキャンして残っている引用番号を削除
+        setTimeout(() => {
+          if (!tiptapEditor || tiptapEditor.isDestroyed) return;
+          const currentHtml = tiptapEditor.getHTML();
+          const cleanedHtml = currentHtml.replace(/\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g, '');
+          if (cleanedHtml !== currentHtml) {
+            tiptapEditor.commands.setContent(cleanedHtml, false);
+          }
+        }, 50);
         return true;
       },
       handleKeyDown(view, event) {
@@ -6105,18 +6137,12 @@ function setupImageDeleteButtons(editor) {
 
   const showDeleteBtnFor = (img) => {
     // 同じ画像への重複表示を防止
-    if (activeImg === img && activeDeleteBtn) return;
+    if (activeImg === img && activeDeleteBtn && activeDeleteBtn.parentNode) return;
 
-    // 既存のボタンを削除（別の画像のボタンや孤立したボタン）
-    removeDeleteBtn();
-
-    // DOM上に既に削除ボタンがある場合は何もしない（重複防止）
-    const existingBtn = img.closest('p')?.querySelector('.img-delete-btn');
-    if (existingBtn) {
-      activeDeleteBtn = existingBtn;
-      activeImg = img;
-      return;
-    }
+    // まずDOM全体から既存の削除ボタンを全て削除（重複防止の徹底）
+    document.querySelectorAll('.img-delete-btn').forEach(btn => btn.remove());
+    activeDeleteBtn = null;
+    activeImg = null;
 
     activeImg = img;
 
