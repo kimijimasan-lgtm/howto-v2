@@ -598,10 +598,13 @@ function cleanMarkdownForPaste(text) {
     result.push(line);
   }
 
+  // NotebookLM等の引用番号 [1] [2,3] [1, 2, 3] などを除去
+  const noRefs = result.map(line => line.replace(/\[\d+(?:,\s*\d+)*\]/g, ''));
+
   // 連続する空行を最大1行にまとめる
   const collapsed = [];
   let prevEmpty = false;
-  for (const line of result) {
+  for (const line of noRefs) {
     const isEmpty = line.trim() === '';
     if (isEmpty && prevEmpty) continue;
     collapsed.push(line);
@@ -752,6 +755,10 @@ function renderHome(container) {
           <line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       </button>
+      ${_homeUser?.isAnonymous ? `<a href="https://apps100kin.web.app/" target="_blank" class="blog-link-fab" id="btnBlogLink" title="100均アプリブログ">
+        <span style="font-size:1.1rem;line-height:1;">📱</span>
+        <span style="font-size:0.7rem;font-weight:600;white-space:nowrap;">ブログ</span>
+      </a>` : ''}
     </div>`;
 
   document.getElementById('btnAddCat').onclick = () => showCategoryModal();
@@ -1245,9 +1252,10 @@ function renderCategory(container) {
       const dx    = e.changedTouches[0].clientX - _alSx;
       const rawDy = e.changedTouches[0].clientY - _alSy;
       const dy    = Math.abs(rawDy);
-      const isStraightDown = dy >= 80 && dx < dy * 0.2;
-      const isStronglyUp   = rawDy < 0 && dy > dx * 0.5;
-      if (dx > 30 && !isStraightDown && !isStronglyUp) {
+      // 真下ドラッグのみ新規カード作成、それ以外は全てホームに戻る
+      const isStraightDown = dy >= 80 && Math.abs(dx) < dy * 0.2;
+      const hasMoved = Math.abs(dx) > 20 || dy > 20;
+      if (hasMoved && !isStraightDown) {
         // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
         // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
         e.stopPropagation();
@@ -3238,9 +3246,11 @@ function renderEditor(container) {
       edContent.style.flex = '';
     }
     // キーボード表示中、トップバーが隠れて#btnAttachが押せなくなることがあるため、
-    // 同じ役割のFABを編集モード時のみ右下に出す
+    // 同じ役割のFABをキーボード表示中の編集モード時に右下に出す
+    // （スマホ判定: タッチデバイスかつ画面幅768px以下）
+    const isMobile = 'ontouchstart' in window && window.innerWidth <= 768;
     const fab = document.getElementById('btnAttachFab');
-    if (fab) fab.style.display = (keyboardVisible && state.editorMode === 'edit' && !state.cardLocked) ? 'flex' : 'none';
+    if (fab) fab.style.display = (isMobile && keyboardVisible && state.editorMode === 'edit' && !state.cardLocked) ? 'flex' : 'none';
   };
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateEditorHeight);
@@ -3447,6 +3457,12 @@ function renderEditor(container) {
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (searchKw) blinkSearchKeyword(pm, searchKw, 3000);
       }, 400);
+    } else {
+      // 通常のカード表示: 1行目までスクロールして表示開始位置をリセット
+      setTimeout(() => {
+        const edContent = document.getElementById('edContent');
+        if (edContent) edContent.scrollTop = 0;
+      }, 50);
     }
   });
 
@@ -4390,12 +4406,12 @@ function bindParagraphSwipeEvents(editor) {
     const rawDy = touch.clientY - tyStart;
     const dy = Math.abs(rawDy);
 
-    // 真下スワイプ（横ズレが縦の20%未満かつ縦80px以上）以外の右方向ジェスチャーはすべて戻る
-    const isStraightDown = dy >= 80 && dx < dy * 0.2;
-    // 上方向への移動量が右方向の半分を超えたら上スクロールとみなし戻らない
-    // （dy > dx * 2 は閾値が厳しすぎ、斜め上フリップが誤ってgoBackを発火させていた）
-    const isStronglyUp = rawDy < 0 && dy > dx * 0.5;
-    if (dx > 30 && !isStraightDown && !isStronglyUp) {
+    // 真下ドラッグのみ新規カード作成、それ以外は全てカード一覧に戻る
+    // 真下判定: 縦80px以上 かつ 横ズレが縦の20%未満
+    const isStraightDown = dy >= 80 && Math.abs(dx) < dy * 0.2;
+    // 真下ドラッグ以外の動き（右・斜め右・左・上など）で移動量が20px以上なら戻る
+    const hasMoved = Math.abs(dx) > 20 || dy > 20;
+    if (hasMoved && !isStraightDown) {
       // 右フリップで前の画面に戻る（緩いルール）
       // container側のaddSwipeBackも同じジェスチャーで重複発火してしまうため、
       // ここで処理したらバブリングを止めて二重のgoBack()呼び出しを防ぐ
@@ -6066,8 +6082,16 @@ function setupImageDeleteButtons(editor) {
     removeDeleteBtn();
     activeImg = img;
 
-    const screenEditor = editor.closest('.screen-editor');
-    if (!screenEditor) return;
+    // 画像の親段落（p要素）を取得し、その中に削除ボタンを配置
+    // これによりスクロールしても画像と一緒にボタンが動く
+    const parentP = img.closest('p');
+    if (!parentP) return;
+
+    // 親段落を相対配置に設定（ボタンの絶対配置の基準にする）
+    const originalPosition = parentP.style.position;
+    if (!originalPosition || originalPosition === 'static') {
+      parentP.style.position = 'relative';
+    }
 
     const btn = document.createElement('button');
     btn.className = 'img-delete-btn';
@@ -6075,16 +6099,13 @@ function setupImageDeleteButtons(editor) {
     btn.title = '画像を削除';
     btn.contentEditable = 'false';
     btn.style.position = 'absolute';
-
-    // screenEditor を基準とした相対座標を計算して配置を安定させる
-    const rect = img.getBoundingClientRect();
-    const parentRect = screenEditor.getBoundingClientRect();
-    const top = rect.top - parentRect.top;
-    const left = rect.left - parentRect.left;
-
-    btn.style.top = `${top + 8}px`;
-    btn.style.left = `${left + 8}px`;
     btn.style.zIndex = '150';
+
+    // 画像の左上に配置（親段落を基準とした相対座標）
+    const imgRect = img.getBoundingClientRect();
+    const parentRect = parentP.getBoundingClientRect();
+    btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
+    btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
 
     // mousedownでフォーカスがエディタから移動するのを防ぎ、blurイベントによるボタン消滅を防ぐ
     btn.onmousedown = (event) => {
@@ -6104,7 +6125,7 @@ function setupImageDeleteButtons(editor) {
       }
     };
 
-    screenEditor.appendChild(btn);
+    parentP.appendChild(btn);
     activeDeleteBtn = btn;
   };
 
