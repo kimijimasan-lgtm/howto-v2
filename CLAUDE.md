@@ -677,7 +677,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=782, style.css?v=686, tiptap.bundle.js?v=3）
+index.html          — エントリポイント（app.js?v=832, style.css?v=697, tiptap.bundle.js?v=4）
 app.js              — アプリ全体（約5,500行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -688,21 +688,34 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=696`
+- `style.css?v=697`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=828`
+- `app.js?v=832`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
+## 直近の対応（2026-06-23）
+
+- **カード編集画面の初期スクロール位置修正（完了）**: カードを開いた時に`edContent.scrollTop = 0`で1行目から表示
+- **右フリップ判定改善（完了）**: 横移動が縦移動の1.5倍以上の場合のみフリップと判定。縦スクロールはフリップ判定しない（`isHorizontalSwipe`判定）
+- **カード一覧スクロール固まり修正（完了）**: `touchmove`でスクロール検出を追加し、縦に10px以上動いたら`_alScrolled=true`でフリップ判定を無効化
+- **NotebookLM引用番号自動削除（完了）**: `cleanMarkdownForPaste`・貼り付け時・`onUpdate`イベントの3段階で`[\s*\d+\s*(?:,\s*\d+\s*)*]`パターンを監視・削除
+- **画像❌ボタン重複生成問題修正（完了）**: グローバル変数`_imgDeleteBtnState`でシングルトン管理、`editor._imgDeleteInitialized`フラグでイベントリスナー重複登録を防止
+- **複数段落カット時の誤動作修正（完了）**: `selectedParas`をArray.fromで配列にコピーしてから処理、`p.parentNode`を確認してから削除
+- **ペーストアイコン点滅永続化（完了）**: 5秒タイムアウトを削除、キャンセルするまで点滅し続ける
+- **ペーストボタン長押しキャンセル（完了）**: 800ms長押しでペーストをキャンセル（`touchstart`/`touchend`/`touchmove`リスナー）
+- **PC版カード一覧Ctrl+クリック（完了）**: Ctrl/Cmd+クリックでスワイプメニュー（ピン留め・複写・移動・削除）を表示
+- **ゲスト用100均ブログボタン（完了）**: ホーム画面左下に「📱100均」ボタンを追加（`state.isAnonymous`の場合のみ表示）、https://apps100kin.web.app/ へリンク
+
 ## 直近の対応（2026-06-22）
 
 - **100kin-blog公開（完了）**: ブログサイトをGitHub Pagesで公開。URL: https://kimijimasan-lgtm.github.io/100kin-blog/
 - **ブログ→Stripe決済→アプリ遷移（動作確認済み）**: 「購入してログイン」→Stripe決済→`?payment=success`でアプリに戻る流れを確認
 - **?guest=trueパラメータ対応（完了）**: ブログの「ゲストで試してみる」ボタンから`?guest=true`でアプリを開くと自動ゲストログイン
-- **決済完了後のGoogleログイン促進モーダル（完了）**: `?payment=success`で戻った際に「お支払いありがとうございます！Googleアカウントでログインすると無制限で使えます」モーダルを表示。Googleログイン完了後に`isPremium:true`を設定
+- **決済完了後のGoogleログイン促進モーダル（未実装→次回継続）**: `?payment=success`で戻った際のモーダル表示は設計のみ。実装は次回継続
 - **100kin-blogにsave.bat作成（完了）**: ワンクリックで日時付きコミット&push
 
 ## 直近の対応（2026-06-21）
