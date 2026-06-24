@@ -2360,8 +2360,6 @@ function renderEditor(container) {
         const marker = edContent.querySelector('.paste-insert-line');
         if (marker) marker.remove();
       }
-      // 編集モードで表示していた画像削除ボタンが残らないように消す
-      if (window._removeImageDeleteBtn) window._removeImageDeleteBtn();
     }
     refreshParaSortable(mode);
     refreshYoutubeDeleteButtons(mode);
@@ -4131,10 +4129,8 @@ function initializeNativeParagraphActions(editor) {
     }
   });
 
-  // PC用画像削除ボタンのセットアップ
-  setupImageDeleteButtons(editor);
-
   // 画像移動は段落ドラッグハンドル（⠿）でSortableJSが処理するため独自実装は不要
+  // 画像削除ボタンは refreshYoutubeDeleteButtons で静的にinjectする（YouTube削除ボタンと同じ方式）
 
   // 各段落（<p>）にスワイプイベントをバインド
   bindParagraphSwipeEvents(editor);
@@ -4851,13 +4847,14 @@ function refreshParaSortable(mode) {
   }
 }
 
-// YouTube削除ボタン＆ドラッグハンドルをDOMに直接inject（閲覧モード時）
+// YouTube削除ボタン・画像削除ボタン・ドラッグハンドルをDOMに直接inject（閲覧モード時）
 function refreshYoutubeDeleteButtons(mode) {
   if (!tiptapEditor) return;
   const pm = tiptapEditor.view.dom;
 
   // 既存のオーバーレイをすべてクリーンアップ
   pm.querySelectorAll('.yt-del-btn').forEach(b => b.remove());
+  pm.querySelectorAll('.img-delete-btn').forEach(b => b.remove());
   pm.querySelectorAll('.para-drag-handle').forEach(h => h.remove());
   pm.querySelectorAll('[data-youtube-video]').forEach(yt => {
     if (yt._ytEnter) yt.removeEventListener('mouseenter', yt._ytEnter);
@@ -4867,10 +4864,11 @@ function refreshYoutubeDeleteButtons(mode) {
     delete yt._ytLeave;
   });
   if (mode !== 'view') return;
-  // ロック中のカードはYouTube削除ボタン・ドラッグハンドルを一切注入しない
+  // ロック中のカードはYouTube削除ボタン・画像削除ボタン・ドラッグハンドルを一切注入しない
   // （これらは閲覧モードでも動作してしまうため、ロックの抜け道になる）
   if (state.cardLocked) return;
 
+  // YouTube削除ボタン
   pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
     const btn = document.createElement('button');
     btn.className = 'yt-del-btn';
@@ -4897,6 +4895,41 @@ function refreshYoutubeDeleteButtons(mode) {
     };
 
     ytDiv.appendChild(btn);
+  });
+
+  // 画像削除ボタン（YouTube削除ボタンと同じ方式で静的にinject）
+  pm.querySelectorAll('img.inserted-img').forEach(img => {
+    const parentP = img.closest('p');
+    if (!parentP) return;
+    parentP.style.position = 'relative';
+
+    const btn = document.createElement('button');
+    btn.className = 'img-delete-btn';
+    btn.contentEditable = 'false';
+    btn.title = '画像を削除';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
+
+    // 画像の左上に配置
+    const imgRect = img.getBoundingClientRect();
+    const parentRect = parentP.getBoundingClientRect();
+    btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
+    btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
+
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (confirm('この画像を削除しますか？')) {
+        lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+        img.remove();
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(getCleanPMHTML());
+          refreshYoutubeDeleteButtons('view');
+        }
+        showToast('画像を削除しました');
+      }
+    };
+
+    parentP.appendChild(btn);
   });
 
   // ドラッグハンドルを全段落・見出し・YouTube要素に inject
@@ -6174,135 +6207,4 @@ function setupImageDragAndDrop(editor) {
   });
 }
 
-// 画像削除ボタン（ゴミ箱アイコン）の表示・制御
-// 編集モードでのみ表示する（閲覧モードでの画像タップは拡大モーダルを優先するため）
-// グローバル変数でシングルトン管理
-let _imgDeleteBtn = null;
-let _imgDeleteTarget = null;
-let _imgDeleteDebounce = 0;
-
-function _removeImageDeleteBtn() {
-  if (_imgDeleteBtn && _imgDeleteBtn.parentNode) {
-    _imgDeleteBtn.parentNode.removeChild(_imgDeleteBtn);
-  }
-  _imgDeleteBtn = null;
-  _imgDeleteTarget = null;
-}
-window._removeImageDeleteBtn = _removeImageDeleteBtn;
-
-function _showImageDeleteBtn(img) {
-  if (!img || !img.parentNode) return;
-  if (state.editorMode !== 'edit') return;
-
-  // 同じ画像に既にボタンがある場合は何もしない
-  if (_imgDeleteTarget === img && _imgDeleteBtn && _imgDeleteBtn.parentNode) return;
-
-  // 既存のボタンを削除
-  _removeImageDeleteBtn();
-
-  // デバウンス: 50ms以内の連続呼び出しを無視
-  const now = Date.now();
-  if (now - _imgDeleteDebounce < 50) return;
-  _imgDeleteDebounce = now;
-
-  _imgDeleteTarget = img;
-
-  const parentP = img.closest('p');
-  if (!parentP) return;
-
-  // 親段落を相対配置に設定
-  if (!parentP.style.position || parentP.style.position === 'static') {
-    parentP.style.position = 'relative';
-  }
-
-  const btn = document.createElement('button');
-  btn.className = 'img-delete-btn';
-  btn.innerHTML = '✖';
-  btn.title = '画像を削除';
-  btn.contentEditable = 'false';
-  btn.style.cssText = 'position:absolute;z-index:150;';
-
-  // 画像の左上に配置
-  const imgRect = img.getBoundingClientRect();
-  const parentRect = parentP.getBoundingClientRect();
-  btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
-  btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
-
-  btn.onmousedown = e => e.preventDefault();
-  btn.ontouchstart = e => e.stopPropagation();
-
-  btn.onclick = e => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (confirm('この画像を削除しますか？')) {
-      lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-      img.remove();
-      _removeImageDeleteBtn();
-      if (tiptapEditor) {
-        tiptapEditor.commands.setContent(getCleanPMHTML());
-      }
-    }
-  };
-
-  parentP.appendChild(btn);
-  _imgDeleteBtn = btn;
-}
-
-function setupImageDeleteButtons(editor) {
-  if (!editor) return;
-  if (editor._imgDeleteInitialized) return;
-  editor._imgDeleteInitialized = true;
-
-  // タッチデバイス判定
-  let isTouchDevice = false;
-
-  // touchstartが発生したらタッチデバイスとして扱う
-  editor.addEventListener('touchstart', () => {
-    isTouchDevice = true;
-  }, { passive: true, once: true });
-
-  // PC: マウスホバーで表示（タッチデバイスでは無効）
-  editor.addEventListener('mouseover', e => {
-    if (isTouchDevice) return;
-    if (state.editorMode !== 'edit') return;
-    const img = e.target;
-    if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
-      _showImageDeleteBtn(img);
-    }
-  });
-
-  editor.addEventListener('mouseout', e => {
-    if (isTouchDevice) return;
-    // ボタン自体へのmouseoutは無視
-    if (_imgDeleteBtn && (e.relatedTarget === _imgDeleteBtn || _imgDeleteBtn.contains(e.relatedTarget))) return;
-    // 画像へのmouseoutも、ボタンに入る場合は無視
-    if (e.target === _imgDeleteTarget && e.relatedTarget === _imgDeleteBtn) return;
-
-    setTimeout(() => {
-      if (_imgDeleteBtn && !_imgDeleteBtn.matches(':hover') && (!_imgDeleteTarget || !_imgDeleteTarget.matches(':hover'))) {
-        _removeImageDeleteBtn();
-      }
-    }, 100);
-  });
-
-  // スマホ: タップで表示（pointerupを使用、click/mouseoverより先に発火）
-  editor.addEventListener('pointerup', e => {
-    if (e.pointerType !== 'touch') return;
-    if (_multiTouchActive) return;
-    if (state.editorMode !== 'edit') return;
-
-    const img = e.target;
-    if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
-      e.stopPropagation();
-      _showImageDeleteBtn(img);
-    } else if (_imgDeleteBtn && e.target !== _imgDeleteBtn && !_imgDeleteBtn.contains(e.target)) {
-      _removeImageDeleteBtn();
-    }
-  });
-
-  // スクロール・入力・blur時に消去
-  editor.addEventListener('scroll', _removeImageDeleteBtn, { passive: true });
-  editor.addEventListener('input', _removeImageDeleteBtn);
-  editor.addEventListener('blur', () => setTimeout(_removeImageDeleteBtn, 200));
-}
 
