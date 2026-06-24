@@ -2127,11 +2127,11 @@ body.yt-fullscreen-active {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 18px;
+  height: 18px;
   background: rgba(239, 68, 68, 0.88);
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   color: white;
   cursor: pointer;
   backdrop-filter: blur(4px);
@@ -2142,8 +2142,8 @@ body.yt-fullscreen-active {
   -webkit-user-select: none;
 }
 .img-delete-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
 }
 .img-delete-btn:hover {
   background: rgba(220, 38, 38, 1);
