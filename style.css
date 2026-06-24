@@ -2120,37 +2120,34 @@ body.yt-fullscreen-active {
   100% { opacity: 0; }
 }
 
-/* 画像削除ボタン（YouTube削除ボタンと同じスタイル・閲覧モードで常時表示） */
+/* 画像削除ボタン（小さい赤い×マーク・閲覧モードで常時表示） */
 .img-delete-btn {
   position: absolute;
   z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  background: rgba(239, 68, 68, 0.88);
+  width: 16px;
+  height: 16px;
+  background: #ef4444;
   border: none;
-  border-radius: 4px;
+  border-radius: 50%;
   color: white;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 1;
   cursor: pointer;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: background 0.15s, transform 0.15s;
   user-select: none;
   -webkit-user-select: none;
 }
-.img-delete-btn svg {
-  width: 10px;
-  height: 10px;
-}
 .img-delete-btn:hover {
-  background: rgba(220, 38, 38, 1);
-  transform: scale(1.1);
+  background: #dc2626;
+  transform: scale(1.15);
 }
 .img-delete-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.9);
 }
 
 /* 🔘 画面最下部モード切り替えトグルバー（2行表示） */
