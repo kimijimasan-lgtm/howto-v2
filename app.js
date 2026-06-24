@@ -2151,7 +2151,9 @@ function downloadViaLink(blob, fileName, panelCount, cardCount) {
   showExportCompleteDialog(panelCount, cardCount);
 }
 
-// 起動時の自動エクスポート（バックグラウンドで実行、UIは表示しない）
+// 起動時の自動エクスポート（バックグラウンドで実行）
+// PC: File System Access APIで同じファイルに上書き保存
+// iOS/Android: localStorageにバックアップを保存（ダウンロードは手動）
 async function autoExportOnStartup() {
   try {
     if (!state.uid) return;
@@ -2206,8 +2208,52 @@ async function autoExportOnStartup() {
     lines.push('==================================================');
 
     const allTextData = lines.join('\r\n');
-    const fileName = 'auto_backup_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.txt';
+
+    // localStorageにバックアップを保存（全環境共通）
+    try {
+      localStorage.setItem('autoBackup_data', allTextData);
+      localStorage.setItem('autoBackup_date', new Date().toISOString());
+      console.log('[AutoBackup] Saved to localStorage:', panelCount, 'panels,', cardCount, 'cards');
+    } catch (e) {
+      console.warn('[AutoBackup] localStorage save failed:', e);
+    }
+
+    // PC（File System Access API対応）: 同じファイルに上書き保存
+    if (window.showSaveFilePicker && window._autoBackupFileHandle) {
+      try {
+        const writable = await window._autoBackupFileHandle.createWritable();
+        await writable.write(allTextData);
+        await writable.close();
+        console.log('[AutoBackup] Overwritten to file');
+        return;
+      } catch (e) {
+        console.warn('[AutoBackup] File overwrite failed:', e);
+      }
+    }
+
+    // 初回またはファイルハンドルがない場合: ダウンロード
+    const fileName = 'memo_backup.txt';
     const blob = new Blob([allTextData], { type: 'text/plain' });
+
+    // File System Access APIが使える場合、ファイルハンドルを保存
+    if (window.showSaveFilePicker && !window._autoBackupFileHandle) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description: 'Text Files', accept: { 'text/plain': ['.txt'] } }]
+        });
+        window._autoBackupFileHandle = handle;
+        const writable = await handle.createWritable();
+        await writable.write(allTextData);
+        await writable.close();
+        console.log('[AutoBackup] Saved to file (first time)');
+        return;
+      } catch (e) {
+        if (e.name !== 'AbortError') console.warn('[AutoBackup] File picker failed:', e);
+      }
+    }
+
+    // フォールバック: 通常のダウンロード
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -2216,7 +2262,7 @@ async function autoExportOnStartup() {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    console.log('[AutoBackup] Exported:', panelCount, 'panels,', cardCount, 'cards');
+    console.log('[AutoBackup] Downloaded:', panelCount, 'panels,', cardCount, 'cards');
   } catch (e) {
     console.error('[AutoBackup] Failed:', e);
   }
@@ -2323,8 +2369,8 @@ function renderEditor(container) {
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
             </svg>
           </button>
-          <button class="btn-icon" id="btnPasteCancelInline" title="ペーストをキャンセル" style="display: none; background: #6b7280; border: 1px solid #6b7280; width: 32px; height: 32px; margin-right: 0.5rem; border-radius: 8px; color: #ffffff; font-size: 0.7rem; font-weight: 600; transition: transform 0.2s; align-items: center; justify-content: center;">
-            ✕
+          <button class="btn-icon" id="btnPasteCancelInline" title="ペーストをキャンセル" style="display: none; background: #6b7280; border: 1px solid #6b7280; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #ffffff; font-size: 0.85rem; font-weight: 700; transition: transform 0.2s; align-items: center; justify-content: center;">
+            取消
           </button>
           <button class="btn-icon" id="btnPasteCancel" title="貼り付けキャンセル" style="display: none; background: #22c55e; border: 1px solid #22c55e; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #ffffff; transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: block;">
@@ -5690,7 +5736,8 @@ window.addEventListener('DOMContentLoaded', async () => {
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
       idle(() => warmUpTipTap());
       // 起動時に自動で全パネルをエクスポート（バックアップ）
-      setTimeout(() => autoExportOnStartup(), 2000);
+      // ホーム画面の描画が落ち着いた直後に実行
+      setTimeout(() => autoExportOnStartup(), 500);
     } else {
       // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
       // getRedirectResult() で結果を確認してから判断する
