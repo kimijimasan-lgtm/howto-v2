@@ -55,6 +55,10 @@ let _errorRecoveryInProgress = false;
 function handleGlobalError(errorMsg) {
   // ページ遷移中（Stripe決済など）のエラーは無視
   if (window._navigatingToStripe) return;
+  // 認証処理中のエラーは無視（authStateReady前のFirebase内部エラー等）
+  if (window._authInProgress) return;
+  // ResizeObserver loop や非致命的エラーは無視
+  if (errorMsg && (errorMsg.includes('ResizeObserver') || errorMsg.includes('Script error'))) return;
   if (_errorRecoveryInProgress) return;
   _errorRecoveryInProgress = true;
   console.error('[GlobalError]', errorMsg);
@@ -953,12 +957,16 @@ function showSearchModal() {
   overlay.innerHTML = `
     <div class="search-modal-box">
       <div class="search-modal-header">
-        <span class="search-modal-title">全カテゴリ内の文字検索</span>
+        <span class="search-modal-title">全カテゴリ内の文字検索・置換</span>
         <button class="search-modal-close" id="btnSearchClose">✕</button>
       </div>
       <div class="search-modal-form">
-        <input class="search-modal-input" id="searchInput" type="search" placeholder="キーワードを入力…" autocomplete="off" />
+        <input class="search-modal-input" id="searchInput" type="search" placeholder="検索ワード…" autocomplete="off" />
         <button class="search-modal-run" id="btnSearchRun">検索</button>
+      </div>
+      <div class="search-modal-form" style="margin-top: 0.5rem;">
+        <input class="search-modal-input" id="replaceInput" type="text" placeholder="置換ワード…" autocomplete="off" />
+        <button class="search-modal-run" id="btnReplaceRun" style="background: #22c55e;">置換</button>
       </div>
       <div class="search-results-area" id="searchResultsArea">
         <div class="search-empty">キーワードを入力してください</div>
@@ -971,7 +979,9 @@ function showSearchModal() {
   document.getElementById('btnSearchClose').onclick = close;
 
   const input = document.getElementById('searchInput');
+  const replaceInput = document.getElementById('replaceInput');
   const runBtn = document.getElementById('btnSearchRun');
+  const replaceBtn = document.getElementById('btnReplaceRun');
   const resultsArea = document.getElementById('searchResultsArea');
 
   const doSearch = async () => {
@@ -1013,7 +1023,24 @@ function showSearchModal() {
     }
   };
 
+  const doReplace = async () => {
+    const searchWord = input.value.trim();
+    const replaceWord = replaceInput.value;
+    if (!searchWord) { showToast('検索ワードを入力してください'); return; }
+    if (!confirm(`「${searchWord}」を「${replaceWord}」に一括置換しますか？\n（全カードに適用されます）`)) return;
+    resultsArea.innerHTML = '<div class="search-empty">置換中…</div>';
+    try {
+      const count = await performFullReplace(searchWord, replaceWord);
+      resultsArea.innerHTML = `<div class="search-empty">${count} 件置換しました</div>`;
+      showToast(`${count} 件置換しました`);
+    } catch (e) {
+      console.error(e);
+      resultsArea.innerHTML = '<div class="search-empty">置換中にエラーが発生しました</div>';
+    }
+  };
+
   runBtn.onclick = doSearch;
+  replaceBtn.onclick = doReplace;
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
   setTimeout(() => input.focus(), 100);
 }
@@ -1042,6 +1069,35 @@ async function performFullSearch(keyword) {
     }
   }
   return results;
+}
+
+async function performFullReplace(searchWord, replaceWord) {
+  const artSnap = await db.ref(`users/${state.uid}/articles`).once('value');
+  const allArticles = artSnap.val() || {};
+  let totalCount = 0;
+  const updates = {};
+
+  for (const [catId, articles] of Object.entries(allArticles)) {
+    if (!articles || typeof articles !== 'object') continue;
+    for (const [artId, article] of Object.entries(articles)) {
+      if (!article || typeof article !== 'object' || !article.content) continue;
+      const original = article.content;
+      // グローバル置換（大文字小文字を区別）
+      const replaced = original.split(searchWord).join(replaceWord);
+      if (replaced !== original) {
+        const count = (original.length - replaced.length) / (searchWord.length - replaceWord.length) ||
+                      (original.match(new RegExp(searchWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        totalCount += Math.max(1, Math.abs(count) || 1);
+        updates[`users/${state.uid}/articles/${catId}/${artId}/content`] = replaced;
+        updates[`users/${state.uid}/articles/${catId}/${artId}/updatedAt`] = Date.now();
+      }
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await db.ref().update(updates);
+  }
+  return totalCount;
 }
 
 function buildHighlightedExcerpt(text, keyword) {
@@ -2095,6 +2151,77 @@ function downloadViaLink(blob, fileName, panelCount, cardCount) {
   showExportCompleteDialog(panelCount, cardCount);
 }
 
+// 起動時の自動エクスポート（バックグラウンドで実行、UIは表示しない）
+async function autoExportOnStartup() {
+  try {
+    if (!state.uid) return;
+    const catSnap = await db.ref(`users/${state.uid}/categories`).once('value');
+    const catData = catSnap.val();
+    if (!catData) return;
+
+    const categories = Object.entries(catData)
+      .map(([id, cat]) => ({ id, ...cat }))
+      .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+    const lines = [];
+    const dateStr = new Date().toLocaleString('ja-JP');
+    lines.push('==================================================');
+    lines.push('  PCスマホ連動メモ - 自動バックアップ');
+    lines.push('  エクスポート日時: ' + dateStr);
+    lines.push('==================================================');
+    lines.push('');
+
+    let panelCount = 0;
+    let cardCount = 0;
+
+    for (const cat of categories) {
+      try {
+        const artSnap = await db.ref(`users/${state.uid}/articles/${cat.id}`).once('value');
+        const artData = artSnap.val() || {};
+        const articles = Object.entries(artData)
+          .map(([id, a]) => ({ id, ...a }))
+          .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
+
+        lines.push('');
+        lines.push('[パネル] ' + cat.name);
+        lines.push('─'.repeat(30));
+
+        articles.forEach((art, idx) => {
+          const artLines = htmlToLines(art.content || '');
+          const title = artLines[0] || '（タイトルなし）';
+          lines.push('');
+          lines.push('  [' + (idx + 1) + '] ' + title);
+          artLines.slice(1).forEach(line => {
+            if (line.trim()) lines.push('      ' + line);
+          });
+          cardCount++;
+        });
+        panelCount++;
+      } catch (e) { /* skip */ }
+    }
+
+    lines.push('');
+    lines.push('==================================================');
+    lines.push('  完了: ' + panelCount + 'パネル / ' + cardCount + 'カード');
+    lines.push('==================================================');
+
+    const allTextData = lines.join('\r\n');
+    const fileName = 'auto_backup_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.txt';
+    const blob = new Blob([allTextData], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    console.log('[AutoBackup] Exported:', panelCount, 'panels,', cardCount, 'cards');
+  } catch (e) {
+    console.error('[AutoBackup] Failed:', e);
+  }
+}
+
 // エクスポート完了ダイアログを表示
 function showExportCompleteDialog(panelCount, cardCount) {
   const overlay = document.createElement('div');
@@ -2190,11 +2317,14 @@ function renderEditor(container) {
           <button class="btn-icon" id="btnTextFormat" title="書式を変更" style="display: none; background: rgba(139, 92, 246, 0.2); border: 1px solid #8b5cf6; width: 42px; height: 42px; margin-right: 0.75rem; border-radius: 12px; color: #8b5cf6; transition: transform 0.2s; align-items: center; justify-content: center;">
             <span style="font-size:1.6rem; line-height:1; pointer-events:none;">🚀</span>
           </button>
-          <button class="btn-icon accent" id="btnPaste" title="段落を貼り付け" style="display: none; background: rgba(249, 115, 22, 0.2); border: 1px solid var(--accent); width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: var(--accent); transition: transform 0.2s; align-items: center; justify-content: center;">
+          <button class="btn-icon accent" id="btnPaste" title="段落を貼り付け" style="display: none; background: rgba(249, 115, 22, 0.2); border: 1px solid var(--accent); width: 42px; height: 42px; margin-right: 0.25rem; border-radius: 12px; color: var(--accent); transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
             </svg>
+          </button>
+          <button class="btn-icon" id="btnPasteCancelInline" title="ペーストをキャンセル" style="display: none; background: #6b7280; border: 1px solid #6b7280; width: 32px; height: 32px; margin-right: 0.5rem; border-radius: 8px; color: #ffffff; font-size: 0.7rem; font-weight: 600; transition: transform 0.2s; align-items: center; justify-content: center;">
+            ✕
           </button>
           <button class="btn-icon" id="btnPasteCancel" title="貼り付けキャンセル" style="display: none; background: #22c55e; border: 1px solid #22c55e; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #ffffff; transition: transform 0.2s; align-items: center; justify-content: center;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="display: block;">
@@ -2524,6 +2654,7 @@ function renderEditor(container) {
   }
 
   const pasteBtn = document.getElementById('btnPaste');
+  const pasteCancelInlineBtn = document.getElementById('btnPasteCancelInline');
   if (pasteBtn) {
     pasteBtn.onclick = () => {
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
@@ -2536,35 +2667,18 @@ function renderEditor(container) {
         }
       }
     };
-
-    // 長押しでペーストをキャンセル
-    let pasteLongPressTimer = null;
-    pasteBtn.addEventListener('touchstart', e => {
-      pasteLongPressTimer = setTimeout(() => {
-        // 長押しでキャンセル
-        if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
-          window.globalCutParagraphs = null;
-          removePasteMarker();
-          updatePasteButtonState();
-          showToast("ペーストをキャンセルしました");
-        }
-        pasteLongPressTimer = null;
-      }, 800);
-    }, { passive: true });
-    pasteBtn.addEventListener('touchend', () => {
-      if (pasteLongPressTimer) {
-        clearTimeout(pasteLongPressTimer);
-        pasteLongPressTimer = null;
-      }
-    }, { passive: true });
-    pasteBtn.addEventListener('touchmove', () => {
-      if (pasteLongPressTimer) {
-        clearTimeout(pasteLongPressTimer);
-        pasteLongPressTimer = null;
-      }
-    }, { passive: true });
-
     updatePasteButtonState();
+  }
+  // ペースト横のキャンセルボタン
+  if (pasteCancelInlineBtn) {
+    pasteCancelInlineBtn.onclick = () => {
+      if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
+        window.globalCutParagraphs = null;
+        removePasteMarker();
+        updatePasteButtonState();
+        showToast("ペーストをキャンセルしました");
+      }
+    };
   }
 
   const bulkCopyBtn = document.getElementById('btnBulkCopy');
@@ -2604,17 +2718,24 @@ function renderEditor(container) {
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
-      // 選択された段落を取得し、配列としてコピー（NodeListは変更されるため）
+      // 選択された段落を取得（IDで一意に特定するため、各要素にdata-cut-idを付与）
       const selectedParas = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected, [data-youtube-video].para-selected'));
       if (selectedParas.length === 0) return;
+
+      // 各選択段落に一意のIDを付与（確実に削除対象を特定するため）
+      const cutId = 'cut-' + Date.now();
+      selectedParas.forEach((el, i) => el.setAttribute('data-cut-id', cutId + '-' + i));
 
       // カット対象のHTMLを保存
       window.globalCutParagraphs = selectedParas.map(el => {
         const clone = el.cloneNode(true);
+        clone.removeAttribute('data-cut-id');
         const chk = clone.querySelector('.para-checkbox');
         if (chk) chk.remove();
+        const handle = clone.querySelector('.para-drag-handle');
+        if (handle) handle.remove();
         clone.classList.remove('para-selected');
-        clone.removeAttribute('class');
+        if (!clone.classList.length) clone.removeAttribute('class');
         return clone.outerHTML;
       });
 
@@ -2625,9 +2746,9 @@ function renderEditor(container) {
       selectedParas.forEach(p => p.classList.add('para-cut-animating'));
 
       setTimeout(() => {
-        // 選択された段落のみを削除（配列をループして確実に削除）
-        selectedParas.forEach(p => {
-          if (p.parentNode) p.remove();
+        // data-cut-idを持つ要素のみを削除（確実に対象を特定）
+        pm.querySelectorAll(`[data-cut-id^="${cutId}"]`).forEach(el => {
+          if (el.parentNode) el.remove();
         });
 
         // カット後に残った孤立した空段落を除去して上に詰める
@@ -2647,10 +2768,12 @@ function renderEditor(container) {
           return;
         }
 
-        // DOMの変更をTipTapの内部状態に同期（ここで確定）
+        // DOMの変更をTipTapの内部状態に同期（ここで確定・これにより保存される）
         if (tiptapEditor) {
           tiptapEditor.commands.setContent(getCleanPMHTML());
           refreshYoutubeDeleteButtons('view');
+          // 即座に保存してモード変更時に復元されないようにする
+          saveEditorContentDirectly();
         }
 
         // カット後はbulk選択ボタンを消し、ペースト/キャンセルのみ表示
@@ -2659,7 +2782,6 @@ function renderEditor(container) {
         if (_bd) { _bd.style.display = 'none'; _bd.classList.remove('pulse-delete-active'); }
         if (_bc) { _bc.style.display = 'none'; _bc.classList.remove('pulse-delete-active'); }
         updatePasteButtonState();
-        // タイムアウトなし：ペーストボタンはキャンセルするまで点滅し続ける
       }, 500);
     };
   }
@@ -3464,10 +3586,15 @@ function renderEditor(container) {
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value', snap => {
     if (!tiptapEditor) return;
 
-    let raw = snap.val()?.content || '';
+    const snapVal = snap.val();
+    let raw = snapVal?.content || '';
 
-    if (state._isNewCard) {
-      state._isNewCard = false;
+    // 新規カード判定: _isNewCardフラグがtrue かつ Firebaseにデータが無いか空の場合のみ
+    // これにより、既存カードが誤って空にされることを防ぐ
+    const isNewCard = state._isNewCard && (!snapVal || !raw);
+    state._isNewCard = false;
+
+    if (isNewCard) {
       tiptapEditor.commands.setContent('<p></p>', false);
       _firstLineWasEmpty = true; _autoH1Done = false;
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
@@ -4847,7 +4974,8 @@ function refreshParaSortable(mode) {
   }
 }
 
-// YouTube削除ボタン・画像削除ボタン・ドラッグハンドルをDOMに直接inject（閲覧モード時）
+// YouTube削除ボタン・画像削除ボタン・ドラッグハンドルをDOMに直接inject
+// YouTube/ドラッグハンドル: 閲覧モードで表示、画像削除: 編集モードで表示
 function refreshYoutubeDeleteButtons(mode) {
   if (!tiptapEditor) return;
   const pm = tiptapEditor.view.dom;
@@ -4863,10 +4991,50 @@ function refreshYoutubeDeleteButtons(mode) {
     delete yt._ytEnter;
     delete yt._ytLeave;
   });
-  if (mode !== 'view') return;
-  // ロック中のカードはYouTube削除ボタン・画像削除ボタン・ドラッグハンドルを一切注入しない
-  // （これらは閲覧モードでも動作してしまうため、ロックの抜け道になる）
+
+  // ロック中のカードは削除ボタン・ドラッグハンドルを一切注入しない
   if (state.cardLocked) return;
+
+  // 画像削除ボタン（編集モードでのみ表示）
+  if (mode === 'edit') {
+    pm.querySelectorAll('img.inserted-img').forEach(img => {
+      const parentP = img.closest('p');
+      if (!parentP) return;
+      parentP.style.position = 'relative';
+
+      const btn = document.createElement('button');
+      btn.className = 'img-delete-btn';
+      btn.contentEditable = 'false';
+      btn.title = '画像を削除';
+      btn.textContent = '✕';
+
+      // 画像の左上に配置
+      const imgRect = img.getBoundingClientRect();
+      const parentRect = parentP.getBoundingClientRect();
+      btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
+      btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
+
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (confirm('この画像を削除しますか？')) {
+          lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+          img.remove();
+          if (tiptapEditor) {
+            tiptapEditor.commands.setContent(getCleanPMHTML());
+            refreshYoutubeDeleteButtons('edit');
+          }
+          showToast('画像を削除しました');
+        }
+      };
+
+      parentP.appendChild(btn);
+    });
+    return; // 編集モードではYouTube削除ボタン・ドラッグハンドルは不要
+  }
+
+  // 以下は閲覧モード（mode === 'view'）のみ
+  if (mode !== 'view') return;
 
   // YouTube削除ボタン
   pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
@@ -4895,41 +5063,6 @@ function refreshYoutubeDeleteButtons(mode) {
     };
 
     ytDiv.appendChild(btn);
-  });
-
-  // 画像削除ボタン（YouTube削除ボタンと同じ方式で静的にinject）
-  pm.querySelectorAll('img.inserted-img').forEach(img => {
-    const parentP = img.closest('p');
-    if (!parentP) return;
-    parentP.style.position = 'relative';
-
-    const btn = document.createElement('button');
-    btn.className = 'img-delete-btn';
-    btn.contentEditable = 'false';
-    btn.title = '画像を削除';
-    btn.textContent = '✕';
-
-    // 画像の左上に配置
-    const imgRect = img.getBoundingClientRect();
-    const parentRect = parentP.getBoundingClientRect();
-    btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
-    btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
-
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      if (confirm('この画像を削除しますか？')) {
-        lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-        img.remove();
-        if (tiptapEditor) {
-          tiptapEditor.commands.setContent(getCleanPMHTML());
-          refreshYoutubeDeleteButtons('view');
-        }
-        showToast('画像を削除しました');
-      }
-    };
-
-    parentP.appendChild(btn);
   });
 
   // ドラッグハンドルを全段落・見出し・YouTube要素に inject
@@ -5485,6 +5618,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   const app = document.getElementById('app');
   app.classList.add('visible');
 
+  // 認証処理中フラグ（グローバルエラーハンドラーで無視するため）
+  window._authInProgress = true;
+
   // ── ログイン画面フラッシュ対策（タイマーでの推測を完全排除） ──
   // 過去の修正: getRedirectResult() を onAuthStateChanged の外で呼ぶと
   // セッション復元前に null が先発火する → null ハンドラの内部で呼ぶよう修正。
@@ -5546,12 +5682,15 @@ window.addEventListener('DOMContentLoaded', async () => {
           await copyTemplateToUser(user.uid);
         }
       } catch (e) { /* 非致命的 */ }
+      window._authInProgress = false;
       goTo('home');
       revealAppAfterAuth();
       // ホーム画面の初期表示が落ち着いたタイミングで、編集画面を開く前に
       // TipTapエディターの初期化コストを先払いしておく
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
       idle(() => warmUpTipTap());
+      // 起動時に自動で全パネルをエクスポート（バックアップ）
+      setTimeout(() => autoExportOnStartup(), 2000);
     } else {
       // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
       // getRedirectResult() で結果を確認してから判断する
@@ -5560,6 +5699,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         state.uid = null;
         state.isPremium = false;
         state.isAnonymous = false;
+        window._authInProgress = false;
         goTo('login');
         revealAppAfterAuth();
       }
@@ -5766,6 +5906,7 @@ function insertNodeAtCursor(node, editor) {
 function updatePasteButtonState() {
   const pasteBtn = document.getElementById('btnPaste');
   const cancelBtn = document.getElementById('btnPasteCancel');
+  const cancelInlineBtn = document.getElementById('btnPasteCancelInline');
   const attachBtn = document.getElementById('btnAttach');
   const delBtn = document.getElementById('btnDel');
   const hintBar = document.getElementById('pasteHintBar');
@@ -5773,6 +5914,7 @@ function updatePasteButtonState() {
   if (window.globalCutParagraphs && window.globalCutParagraphs.length > 0) {
     pasteBtn.style.display = 'flex';
     pasteBtn.classList.add('pulse-delete-active');
+    if (cancelInlineBtn) cancelInlineBtn.style.display = 'flex';
     if (cancelBtn) cancelBtn.style.display = 'none';
     if (attachBtn) attachBtn.style.display = 'none';
     if (delBtn) delBtn.style.display = 'none';
@@ -5780,6 +5922,7 @@ function updatePasteButtonState() {
   } else {
     pasteBtn.style.display = 'none';
     pasteBtn.classList.remove('pulse-delete-active');
+    if (cancelInlineBtn) cancelInlineBtn.style.display = 'none';
     if (cancelBtn) cancelBtn.style.display = 'none';
     if (attachBtn) attachBtn.style.display = '';
     if (delBtn) delBtn.style.display = '';
