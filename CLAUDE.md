@@ -677,8 +677,8 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=832, style.css?v=697, tiptap.bundle.js?v=4）
-app.js              — アプリ全体（約5,500行）
+index.html          — エントリポイント（app.js?v=837, style.css?v=702, tiptap.bundle.js?v=4）
+app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
@@ -688,14 +688,25 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=697`
+- `style.css?v=702`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=832`
+- `app.js?v=837`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-06-24）
+
+- **画像❌ボタンをYouTube削除ボタンと同じ静的表示方式に変更（完了）**: `refreshYoutubeDeleteButtons`で静的にinject、編集モードでのみ表示（閲覧モードは無反応）、小さい赤い×マーク（16px丸型）
+- **複数段落カット誤動作修正（完了）**: `data-cut-id`属性で対象を一意に特定、カット後に即時保存（`saveEditorContentDirectly()`）でモード変更時の復元を防止
+- **カード内容消失防止（完了）**: `_isNewCard`フラグとFirebaseデータの両方をチェックし、既存カードが誤って空にされることを防止
+- **ペーストキャンセルボタン改善（完了）**: 長押しキャンセルを廃止、ペーストボタン横に「取消」ボタン（42px、font-size: 0.85rem）を表示
+- **ログイン時オレンジ枠エラー抑制（完了）**: `_authInProgress`フラグで認証処理中のエラーを無視、ResizeObserverエラーも除外
+- **検索機能に置換機能追加（完了）**: 検索モーダルに置換ワード入力欄と「置換」ボタンを追加、`performFullReplace()`で全カードを一括置換
+- **自動エクスポート実装（実装中）**: 起動500ms後に`autoExportOnStartup()`を実行、localStorageにバックアップを保存、PC（File System Access API対応）では同じファイルに上書き保存を試みる
+- **PC版カード一覧Ctrl+クリック（完了）**: Ctrl/Cmd+クリックでスワイプメニュー（ピン留め・複写・移動・削除）を表示
 
 ## 直近の対応（2026-06-23）
 
@@ -703,11 +714,6 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - **右フリップ判定改善（完了）**: 横移動が縦移動の1.5倍以上の場合のみフリップと判定。縦スクロールはフリップ判定しない（`isHorizontalSwipe`判定）
 - **カード一覧スクロール固まり修正（完了）**: `touchmove`でスクロール検出を追加し、縦に10px以上動いたら`_alScrolled=true`でフリップ判定を無効化
 - **NotebookLM引用番号自動削除（完了）**: `cleanMarkdownForPaste`・貼り付け時・`onUpdate`イベントの3段階で`[\s*\d+\s*(?:,\s*\d+\s*)*]`パターンを監視・削除
-- **画像❌ボタン重複生成問題修正（完了）**: グローバル変数`_imgDeleteBtnState`でシングルトン管理、`editor._imgDeleteInitialized`フラグでイベントリスナー重複登録を防止
-- **複数段落カット時の誤動作修正（完了）**: `selectedParas`をArray.fromで配列にコピーしてから処理、`p.parentNode`を確認してから削除
-- **ペーストアイコン点滅永続化（完了）**: 5秒タイムアウトを削除、キャンセルするまで点滅し続ける
-- **ペーストボタン長押しキャンセル（完了）**: 800ms長押しでペーストをキャンセル（`touchstart`/`touchend`/`touchmove`リスナー）
-- **PC版カード一覧Ctrl+クリック（完了）**: Ctrl/Cmd+クリックでスワイプメニュー（ピン留め・複写・移動・削除）を表示
 - **ゲスト用100均ブログボタン（完了）**: ホーム画面左下に「📱100均」ボタンを追加（`state.isAnonymous`の場合のみ表示）、https://apps100kin.web.app/ へリンク
 
 ## 直近の対応（2026-06-22）
@@ -786,10 +792,14 @@ howto-v2側で `?guest=true` パラメータを検出すると、未ログイン
 
 ## 次のステップ
 
-### 1. Stripeを本番環境に切り替える
+### 1. 自動エクスポートの上書き保存を完成させる
+- iOSでは File System Access API が非対応のため、上書き保存の代替手段を検討
+- 現状: localStorageにバックアップを保存、PC（Chrome等）では同じファイルに上書き可能
+
+### 2. Stripeを本番環境に切り替える
 - 本番用Stripeアカウントで価格・Payment Linkを作成
 - howto-v2の `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
 - 100kin-blogの購入ボタンURLも本番用に差し替え
 
-### 2. スクリーンショット追加
+### 3. スクリーンショット追加
 - 100kin-blogの絵文字プレースホルダーを実際のスクリーンショット画像に差し替え
