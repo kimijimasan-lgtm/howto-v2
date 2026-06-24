@@ -6176,121 +6176,133 @@ function setupImageDragAndDrop(editor) {
 
 // 画像削除ボタン（ゴミ箱アイコン）の表示・制御
 // 編集モードでのみ表示する（閲覧モードでの画像タップは拡大モーダルを優先するため）
-// グローバル変数でシングルトン管理（イベントリスナー重複登録を防止）
-let _imgDeleteBtnState = { activeBtn: null, activeImg: null, initialized: false };
+// グローバル変数でシングルトン管理
+let _imgDeleteBtn = null;
+let _imgDeleteTarget = null;
+let _imgDeleteDebounce = 0;
+
+function _removeImageDeleteBtn() {
+  if (_imgDeleteBtn && _imgDeleteBtn.parentNode) {
+    _imgDeleteBtn.parentNode.removeChild(_imgDeleteBtn);
+  }
+  _imgDeleteBtn = null;
+  _imgDeleteTarget = null;
+}
+window._removeImageDeleteBtn = _removeImageDeleteBtn;
+
+function _showImageDeleteBtn(img) {
+  if (!img || !img.parentNode) return;
+  if (state.editorMode !== 'edit') return;
+
+  // 同じ画像に既にボタンがある場合は何もしない
+  if (_imgDeleteTarget === img && _imgDeleteBtn && _imgDeleteBtn.parentNode) return;
+
+  // 既存のボタンを削除
+  _removeImageDeleteBtn();
+
+  // デバウンス: 50ms以内の連続呼び出しを無視
+  const now = Date.now();
+  if (now - _imgDeleteDebounce < 50) return;
+  _imgDeleteDebounce = now;
+
+  _imgDeleteTarget = img;
+
+  const parentP = img.closest('p');
+  if (!parentP) return;
+
+  // 親段落を相対配置に設定
+  if (!parentP.style.position || parentP.style.position === 'static') {
+    parentP.style.position = 'relative';
+  }
+
+  const btn = document.createElement('button');
+  btn.className = 'img-delete-btn';
+  btn.innerHTML = '✖';
+  btn.title = '画像を削除';
+  btn.contentEditable = 'false';
+  btn.style.cssText = 'position:absolute;z-index:150;';
+
+  // 画像の左上に配置
+  const imgRect = img.getBoundingClientRect();
+  const parentRect = parentP.getBoundingClientRect();
+  btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
+  btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
+
+  btn.onmousedown = e => e.preventDefault();
+  btn.ontouchstart = e => e.stopPropagation();
+
+  btn.onclick = e => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (confirm('この画像を削除しますか？')) {
+      lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+      img.remove();
+      _removeImageDeleteBtn();
+      if (tiptapEditor) {
+        tiptapEditor.commands.setContent(getCleanPMHTML());
+      }
+    }
+  };
+
+  parentP.appendChild(btn);
+  _imgDeleteBtn = btn;
+}
 
 function setupImageDeleteButtons(editor) {
   if (!editor) return;
-
-  // 既に初期化済みの場合はスキップ（イベントリスナー重複防止）
   if (editor._imgDeleteInitialized) return;
   editor._imgDeleteInitialized = true;
 
-  const removeDeleteBtn = () => {
-    // DOM全体から全ての削除ボタンを確実に削除
-    document.querySelectorAll('.img-delete-btn').forEach(btn => btn.remove());
-    _imgDeleteBtnState.activeBtn = null;
-    _imgDeleteBtnState.activeImg = null;
-  };
-  // 画面遷移（閲覧モードへの切替）時に外部から削除ボタンを消せるように公開
-  window._removeImageDeleteBtn = removeDeleteBtn;
+  // タッチデバイス判定
+  let isTouchDevice = false;
 
-  const showDeleteBtnFor = (img) => {
-    // 同じ画像への重複表示を防止
-    if (_imgDeleteBtnState.activeImg === img && _imgDeleteBtnState.activeBtn && _imgDeleteBtnState.activeBtn.parentNode) return;
+  // touchstartが発生したらタッチデバイスとして扱う
+  editor.addEventListener('touchstart', () => {
+    isTouchDevice = true;
+  }, { passive: true, once: true });
 
-    // まずDOM全体から既存の削除ボタンを全て削除（重複防止の徹底）
-    removeDeleteBtn();
-
-    _imgDeleteBtnState.activeImg = img;
-
-    // 画像の親段落（p要素）を取得し、その中に削除ボタンを配置
-    // これによりスクロールしても画像と一緒にボタンが動く
-    const parentP = img.closest('p');
-    if (!parentP) return;
-
-    // 親段落を相対配置に設定（ボタンの絶対配置の基準にする）
-    const originalPosition = parentP.style.position;
-    if (!originalPosition || originalPosition === 'static') {
-      parentP.style.position = 'relative';
-    }
-
-    const btn = document.createElement('button');
-    btn.className = 'img-delete-btn';
-    btn.innerHTML = '✖';
-    btn.title = '画像を削除';
-    btn.contentEditable = 'false';
-    btn.style.position = 'absolute';
-    btn.style.zIndex = '150';
-
-    // 画像の左上に配置（親段落を基準とした相対座標）
-    const imgRect = img.getBoundingClientRect();
-    const parentRect = parentP.getBoundingClientRect();
-    btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
-    btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
-
-    // mousedownでフォーカスがエディタから移動するのを防ぎ、blurイベントによるボタン消滅を防ぐ
-    btn.onmousedown = (event) => {
-      event.preventDefault();
-    };
-
-    btn.onclick = (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      if (confirm('この画像を削除しますか？')) {
-        lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-        img.remove();
-        removeDeleteBtn();
-        if (tiptapEditor) {
-          tiptapEditor.commands.setContent(getCleanPMHTML());
-        }
-      }
-    };
-
-    parentP.appendChild(btn);
-    _imgDeleteBtnState.activeBtn = btn;
-  };
-
-  // PC: 画像の上にホバーしたときに削除ボタンを表示（編集モードのみ）
+  // PC: マウスホバーで表示（タッチデバイスでは無効）
   editor.addEventListener('mouseover', e => {
-    const img = e.target;
-    if (state.editorMode === 'edit' && img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
-      showDeleteBtnFor(img);
-    } else if (!(_imgDeleteBtnState.activeBtn && (e.target === _imgDeleteBtnState.activeBtn || _imgDeleteBtnState.activeBtn.contains(e.target)))) {
-      removeDeleteBtn();
-    }
-  });
-
-  // スマホ: 編集モード中に画像をタップしたら削除ボタンを表示
-  // （閲覧モードのタップは document.body の click リスナーが拡大モーダルを開く）
-  editor.addEventListener('click', e => {
-    if (_multiTouchActive) return; // ピンチ操作の延長で誤発火させない
+    if (isTouchDevice) return;
     if (state.editorMode !== 'edit') return;
     const img = e.target;
     if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
-      e.stopPropagation();
-      showDeleteBtnFor(img);
-    } else if (!(_imgDeleteBtnState.activeBtn && (e.target === _imgDeleteBtnState.activeBtn || _imgDeleteBtnState.activeBtn.contains(e.target)))) {
-      removeDeleteBtn();
+      _showImageDeleteBtn(img);
     }
   });
 
-  // エディタからマウスが外れたら削除ボタンを消す
-  editor.addEventListener('mouseleave', e => {
+  editor.addEventListener('mouseout', e => {
+    if (isTouchDevice) return;
+    // ボタン自体へのmouseoutは無視
+    if (_imgDeleteBtn && (e.relatedTarget === _imgDeleteBtn || _imgDeleteBtn.contains(e.relatedTarget))) return;
+    // 画像へのmouseoutも、ボタンに入る場合は無視
+    if (e.target === _imgDeleteTarget && e.relatedTarget === _imgDeleteBtn) return;
+
     setTimeout(() => {
-      if (_imgDeleteBtnState.activeBtn) {
-        const isHoverBtn = _imgDeleteBtnState.activeBtn.matches(':hover');
-        const isHoverImg = _imgDeleteBtnState.activeImg && _imgDeleteBtnState.activeImg.matches(':hover');
-        if (!isHoverBtn && !isHoverImg) {
-          removeDeleteBtn();
-        }
+      if (_imgDeleteBtn && !_imgDeleteBtn.matches(':hover') && (!_imgDeleteTarget || !_imgDeleteTarget.matches(':hover'))) {
+        _removeImageDeleteBtn();
       }
-    }, 150);
+    }, 100);
   });
 
-  // スクロールや入力、フォーカスが外れたら位置がズレるので消去
-  editor.addEventListener('scroll', removeDeleteBtn, { passive: true });
-  editor.addEventListener('input', removeDeleteBtn);
-  editor.addEventListener('blur', () => setTimeout(removeDeleteBtn, 200));
+  // スマホ: タップで表示（pointerupを使用、click/mouseoverより先に発火）
+  editor.addEventListener('pointerup', e => {
+    if (e.pointerType !== 'touch') return;
+    if (_multiTouchActive) return;
+    if (state.editorMode !== 'edit') return;
+
+    const img = e.target;
+    if (img.tagName === 'IMG' && img.classList.contains('inserted-img')) {
+      e.stopPropagation();
+      _showImageDeleteBtn(img);
+    } else if (_imgDeleteBtn && e.target !== _imgDeleteBtn && !_imgDeleteBtn.contains(e.target)) {
+      _removeImageDeleteBtn();
+    }
+  });
+
+  // スクロール・入力・blur時に消去
+  editor.addEventListener('scroll', _removeImageDeleteBtn, { passive: true });
+  editor.addEventListener('input', _removeImageDeleteBtn);
+  editor.addEventListener('blur', () => setTimeout(_removeImageDeleteBtn, 200));
 }
 
