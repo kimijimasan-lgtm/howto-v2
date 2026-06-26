@@ -677,7 +677,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=837, style.css?v=702, tiptap.bundle.js?v=4）
+index.html          — エントリポイント（app.js?v=838, style.css?v=702, tiptap.bundle.js?v=4）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -690,7 +690,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=702`
 - `tiptap.bundle.js?v=4`
-- `app.js?v=837`
+- `app.js?v=838`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -706,6 +706,16 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
   - 3行目: 緑系（フォレスト→グリーン→ライム→ライムグリーン→ミント→エメラルド）
   - 4行目: 暖色系（レッド→ピンク→ローズ→オレンジ→アンバー→イエロー）
   - 5行目: ダーク系（ブラウン→バーガンディ→チャコール→グレー→スレート→ブラック）
+- **カード内容消失バグの根本修正（完了）**: `_contentLoaded`フラグを導入し、Firebaseからのコンテンツ読み込み完了前は一切保存しないように修正
+  - **根本原因**: カードをタップ→エディターが開く→TipTap初期化（空の`<p></p>`）→Firebaseから非同期でデータ取得中にユーザーが戻るボタンを押す→`forceSaveEditorContent()`が呼ばれる→**空の内容でFirebaseを上書き**→データ消失
+  - **修正内容**:
+    1. `_contentLoaded`フラグ追加（グローバル変数）
+    2. `renderEditor()`冒頭で`_contentLoaded = false`にリセット
+    3. Firebaseの`.once('value')`コールバック内でデータ読み込み完了後に`_contentLoaded = true`をセット
+    4. `forceSaveEditorContent()`: `_contentLoaded`がfalseなら保存をスキップ（ログ出力のみ）
+    5. `onUpdate`内のタイマー保存: `_contentLoaded`がfalseなら処理をスキップ
+    6. `saveEditorContentDirectly()`: `_contentLoaded`がfalseなら保存をスキップ
+  - **app.js?v=838**
 
 ## 直近の対応（2026-06-24）
 

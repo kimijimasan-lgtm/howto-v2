@@ -291,6 +291,7 @@ let pasteAutoHideTimer = null;   // カット後5秒で貼り付けボタンを�
 let tiptapEditor = null;         // TipTapエディターインスタンス
 let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列
 let _multiTouchActive = false;   // 2本指以上の操作中はスワイプ戻る/段落選択ジェスチャーを無効化（画像ピンチとの競合防止）
+let _contentLoaded = false;      // Firebaseからコンテンツ読み込み完了フラグ（読み込み前の保存を防ぐ）
 
 // ── 画面切り替え高速化用キャッシュ ──────────────────────
 // 一度読んだFirebaseデータを保持し、再訪問時はキャッシュから即座に描画してから
@@ -305,6 +306,20 @@ function forceSaveEditorContent() {
   if (state.screen !== 'editor' || !state.articleId || !state.categoryId || !state.uid) return;
 
   if (saveTimer) clearTimeout(saveTimer);
+
+  // 【重要】Firebaseからのコンテンツ読み込みが完了していない場合は保存しない
+  // これにより、カードを開いた直後にすぐ戻った場合に空データで上書きされることを防ぐ
+  if (!_contentLoaded) {
+    console.log('forceSaveEditorContent: コンテンツ読み込み前のため保存をスキップ');
+    // TipTapインスタンスは破棄する（リソース解放）
+    if (tiptapEditor) {
+      tiptapEditor.destroy();
+      tiptapEditor = null;
+    }
+    const editor = document.getElementById('edContent');
+    if (editor) cleanupNativeParagraphListeners(editor);
+    return;
+  }
 
   let cleanHTML = '';
   if (tiptapEditor) {
@@ -2226,6 +2241,10 @@ async function createArticle(noTransition = false) {
 //  SCREEN C: 記事エディター（リッチ対応）
 // ============================================
 function renderEditor(container) {
+  // 【重要】エディター画面開始時にコンテンツ読み込みフラグをリセット
+  // Firebaseからのデータ取得完了まで保存を禁止し、空データでの上書きを防ぐ
+  _contentLoaded = false;
+
   container.innerHTML = `
     <div class="screen-editor">
       <header class="app-header editor-header">
@@ -3289,6 +3308,10 @@ function renderEditor(container) {
         return;
       }
 
+      // 【重要】コンテンツ読み込み完了前は編集状態の表示・保存処理をスキップ
+      // これにより、Firebaseからのデータ取得前に誤って空データが保存されることを防ぐ
+      if (!_contentLoaded) return;
+
       if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
       updateUndoButtonVisibility();
       clearTimeout(saveTimer);
@@ -3589,6 +3612,9 @@ function renderEditor(container) {
       }
       if (status) { status.textContent = '保存済み ✓'; status.className = 'save-status saved'; }
     }
+
+    // 【重要】Firebaseからのコンテンツ読み込み完了 - これ以降は保存を許可する
+    _contentLoaded = true;
 
     // setContent がUndo履歴に残るのを防ぐ（ロード前の空状態へのUndoを不可能にする）
     // EditorState.createで同じdocを持つが履歴が空の新鮮な状態に差し替える
@@ -4523,6 +4549,11 @@ function getCleanEditorHTML(editor) {
 // 直接FirebaseにクリーンHTMLを同期保存
 function saveEditorContentDirectly() {
   if (!state.articleId || !state.categoryId || !state.uid) return;
+  // 【重要】コンテンツ読み込み完了前は保存をスキップ
+  if (!_contentLoaded) {
+    console.log('saveEditorContentDirectly: コンテンツ読み込み前のため保存をスキップ');
+    return;
+  }
   const content = getCleanEditorHTML();
   db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
     content,
