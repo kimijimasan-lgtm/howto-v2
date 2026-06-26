@@ -4999,73 +4999,62 @@ function refreshYoutubeDeleteButtons(mode) {
   const pm = tiptapEditor.view.dom;
 
   // 既存のオーバーレイをすべてクリーンアップ
-  pm.querySelectorAll('.yt-del-btn').forEach(b => b.remove());
+  pm.querySelectorAll('.yt-del-btn-static').forEach(b => b.remove());
   pm.querySelectorAll('.para-drag-handle').forEach(h => h.remove());
-  pm.querySelectorAll('[data-youtube-video]').forEach(yt => {
-    if (yt._ytEnter) yt.removeEventListener('mouseenter', yt._ytEnter);
-    if (yt._ytLeave) yt.removeEventListener('mouseleave', yt._ytLeave);
-    yt.classList.remove('yt-hovered');
-    delete yt._ytEnter;
-    delete yt._ytLeave;
-  });
 
   // ロック中のカードは削除ボタン・ドラッグハンドルを一切注入しない
   if (state.cardLocked) return;
 
-  // 画像削除ボタンはNodeViewで静的に生成されるため、ここでは何もしない
-  // 編集モード時はCSSで .ProseMirror.mode-edit .img-del-btn-static { display: flex } により表示
-  if (mode === 'edit') {
-    return; // 編集モードではYouTube削除ボタン・ドラッグハンドルは不要
-  }
-
-  // 以下は閲覧モード（mode === 'view'）のみ
-  if (mode !== 'view') return;
-
-  // YouTube削除ボタン
+  // YouTube削除ボタン（画像と同じ方式：常にDOMに存在し、CSSで編集モード時のみ表示）
+  // モード変更のたびに既存を削除→再生成するため重複しない
   pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
+    ytDiv.style.position = 'relative';
+
     const btn = document.createElement('button');
-    btn.className = 'yt-del-btn';
+    btn.className = 'yt-del-btn-static';
+    btn.type = 'button';
     btn.contentEditable = 'false';
     btn.title = 'YouTube動画を削除';
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
-
-    // CSS :hover が動かない環境向けのJS補完
-    ytDiv._ytEnter = () => ytDiv.classList.add('yt-hovered');
-    ytDiv._ytLeave = () => ytDiv.classList.remove('yt-hovered');
-    ytDiv.addEventListener('mouseenter', ytDiv._ytEnter);
-    ytDiv.addEventListener('mouseleave', ytDiv._ytLeave);
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
 
     btn.onclick = (e) => {
       e.stopPropagation();
       e.preventDefault();
-      lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-      ytDiv.remove();
-      if (tiptapEditor) {
-        tiptapEditor.commands.setContent(getCleanPMHTML());
-        refreshYoutubeDeleteButtons('view');
+      if (!tiptapEditor || !tiptapEditor.isEditable) return;
+      if (confirm('このYouTube動画を削除しますか？')) {
+        lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+        ytDiv.remove();
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(getCleanPMHTML());
+        }
+        showToast('YouTube動画を削除しました');
       }
-      showToast('YouTube動画を削除しました');
     };
 
     ytDiv.appendChild(btn);
   });
 
-  // ドラッグハンドルを全段落・見出し・YouTube要素に inject
-  pm.querySelectorAll('p, h1, h2, [data-youtube-video]').forEach(el => {
-    el.style.position = 'relative';
-    const handle = document.createElement('span');
-    handle.className = 'para-drag-handle';
-    handle.contentEditable = 'false';
-    handle.innerHTML = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><rect x="0" y="0" width="3" height="3" rx="0.5"/><rect x="7" y="0" width="3" height="3" rx="0.5"/><rect x="0" y="5.5" width="3" height="3" rx="0.5"/><rect x="7" y="5.5" width="3" height="3" rx="0.5"/><rect x="0" y="11" width="3" height="3" rx="0.5"/><rect x="7" y="11" width="3" height="3" rx="0.5"/></svg>`;
-    // 画像のみを含む段落はハンドルを上部に配置（画像中央に重なると紛らわしいため）
-    const hasImgOnly = el.tagName === 'P' && el.querySelector('img.inserted-img') &&
-      el.textContent.trim() === '';
-    if (hasImgOnly) {
-      handle.style.top = '8px';
-      handle.style.transform = 'none';
-    }
-    el.insertBefore(handle, el.firstChild);
-  });
+  // 画像削除ボタンはNodeViewで静的に生成されるため、ここでは何もしない
+  // 編集モード時はCSSで .ProseMirror.mode-edit .img-del-btn-static { display: flex } により表示
+
+  // ドラッグハンドル（閲覧モードのみ）
+  if (mode === 'view') {
+    pm.querySelectorAll('p, h1, h2, [data-youtube-video]').forEach(el => {
+      el.style.position = 'relative';
+      const handle = document.createElement('span');
+      handle.className = 'para-drag-handle';
+      handle.contentEditable = 'false';
+      handle.innerHTML = `<svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><rect x="0" y="0" width="3" height="3" rx="0.5"/><rect x="7" y="0" width="3" height="3" rx="0.5"/><rect x="0" y="5.5" width="3" height="3" rx="0.5"/><rect x="7" y="5.5" width="3" height="3" rx="0.5"/><rect x="0" y="11" width="3" height="3" rx="0.5"/><rect x="7" y="11" width="3" height="3" rx="0.5"/></svg>`;
+      // 画像のみを含む段落はハンドルを上部に配置（画像中央に重なると紛らわしいため）
+      const hasImgOnly = el.tagName === 'P' && el.querySelector('img.inserted-img') &&
+        el.textContent.trim() === '';
+      if (hasImgOnly) {
+        handle.style.top = '8px';
+        handle.style.transform = 'none';
+      }
+      el.insertBefore(handle, el.firstChild);
+    });
+  }
 }
 
 // ── PCからスマホへの同期用QRコードモーダル ──────────
