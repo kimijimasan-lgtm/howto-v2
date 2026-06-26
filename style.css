@@ -2120,20 +2120,25 @@ body.yt-fullscreen-active {
   100% { opacity: 0; }
 }
 
-/* 画像削除ボタン（小さい赤い×マーク・閲覧モードで常時表示） */
+/* 画像削除ボタン（小さい赤い×マーク・編集モードでのみ表示） */
+/* 画像の直後に兄弟要素として配置し、ネガティブマージンで画像の左上に重ねる */
 .img-delete-btn {
-  position: absolute;
+  position: relative;
   z-index: 20;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
+  margin-left: -28px;
+  margin-top: 8px;
+  margin-right: 8px;
+  vertical-align: top;
   background: #ef4444;
   border: none;
   border-radius: 50%;
   color: white;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: bold;
   line-height: 1;
   cursor: pointer;

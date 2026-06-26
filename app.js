@@ -2708,10 +2708,14 @@ function renderEditor(container) {
         });
 
         // カット後に残った孤立した空段落を除去して上に詰める
+        // 注意: textContentが空でない段落は削除しない（誤削除防止）
         Array.from(pm.querySelectorAll('p')).forEach(p => {
-          if (!p.querySelector('img') &&
-              (p.childNodes.length === 0 ||
-               (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR'))) {
+          // 画像・YouTube・テキストを含む段落は削除しない
+          if (p.querySelector('img, [data-youtube-video]')) return;
+          if (p.textContent.trim() !== '') return;
+          // 完全に空の段落のみ削除
+          if (p.childNodes.length === 0 ||
+              (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR')) {
             p.remove();
           }
         });
@@ -3314,9 +3318,11 @@ function renderEditor(container) {
       // NotebookLM等の引用番号 [1] [1,2] などが残っていたら自動削除
       // 貼り付け直後や編集中も常に監視
       const currentHtml = editor.getHTML();
+      // 注意: test()を使うとgフラグ付き正規表現のlastIndexが更新されてしまうため、
+      // replace()の戻り値で変化があったかどうかを判定する
       const refPattern = /\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g;
-      if (refPattern.test(currentHtml)) {
-        const cleanedHtml = currentHtml.replace(refPattern, '');
+      const cleanedHtml = currentHtml.replace(refPattern, '');
+      if (cleanedHtml !== currentHtml) {
         setTimeout(() => {
           if (tiptapEditor && !tiptapEditor.isDestroyed) {
             const pos = tiptapEditor.state.selection.from;
@@ -3458,6 +3464,8 @@ function renderEditor(container) {
   };
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateEditorHeight);
+    // 初期化時にも一度呼び出し、FABの表示状態を正しく設定する
+    updateEditorHeight();
   }
   listeners.push(() => {
     if (window.visualViewport) {
@@ -4984,28 +4992,33 @@ function refreshYoutubeDeleteButtons(mode) {
 
   // 画像削除ボタン（編集モードでのみ表示）
   if (mode === 'edit') {
-    pm.querySelectorAll('img.inserted-img').forEach(img => {
+    pm.querySelectorAll('img.inserted-img').forEach((img, idx) => {
       const parentP = img.closest('p');
       if (!parentP) return;
       parentP.style.position = 'relative';
 
+      // 画像にユニークIDを付与（ボタンとの関連付け用）
+      const imgId = `img-del-target-${idx}`;
+      img.setAttribute('data-img-del-id', imgId);
+
       const btn = document.createElement('button');
       btn.className = 'img-delete-btn';
+      btn.setAttribute('data-for-img', imgId);
       btn.contentEditable = 'false';
       btn.title = '画像を削除';
       btn.textContent = '✕';
 
-      // 画像の左上に配置
-      const imgRect = img.getBoundingClientRect();
-      const parentRect = parentP.getBoundingClientRect();
-      btn.style.top = `${imgRect.top - parentRect.top + 8}px`;
-      btn.style.left = `${imgRect.left - parentRect.left + 8}px`;
+      // ボタンを画像の直後に挿入（兄弟要素として配置）
+      // CSSで画像に対して相対位置に配置する
+      img.insertAdjacentElement('afterend', btn);
 
       btn.onclick = (e) => {
         e.stopPropagation();
         e.preventDefault();
         if (confirm('この画像を削除しますか？')) {
           lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+          // ボタンも一緒に削除
+          btn.remove();
           img.remove();
           if (tiptapEditor) {
             tiptapEditor.commands.setContent(getCleanPMHTML());
@@ -5014,8 +5027,6 @@ function refreshYoutubeDeleteButtons(mode) {
           showToast('画像を削除しました');
         }
       };
-
-      parentP.appendChild(btn);
     });
     return; // 編集モードではYouTube削除ボタン・ドラッグハンドルは不要
   }
