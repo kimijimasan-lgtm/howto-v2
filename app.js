@@ -2428,6 +2428,7 @@ function renderEditor(container) {
       if (tiptapEditor) tiptapEditor.setEditable(true);
       if (proseMirrorEl) {
         proseMirrorEl.classList.remove('mode-view');
+        proseMirrorEl.classList.add('mode-edit'); // 画像削除ボタン表示用
         cleanupAllSwipedParagraphs(proseMirrorEl);
       }
       updateUndoButtonVisibility();
@@ -2440,7 +2441,10 @@ function renderEditor(container) {
         tiptapEditor.setEditable(false);
         tiptapEditor.commands.blur();
       }
-      if (proseMirrorEl) proseMirrorEl.classList.add('mode-view');
+      if (proseMirrorEl) {
+        proseMirrorEl.classList.remove('mode-edit'); // 画像削除ボタン非表示用
+        proseMirrorEl.classList.add('mode-view');
+      }
       const edContent = document.getElementById('edContent');
       if (edContent) {
         const marker = edContent.querySelector('.paste-insert-line');
