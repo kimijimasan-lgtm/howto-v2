@@ -3176,12 +3176,18 @@ function renderEditor(container) {
 
         // 見出し内でEnter → 新しい段落は見出しを引き継がず地の文に戻す
         if (event.key === 'Enter' && !event.shiftKey) {
-          const { $from: hFrom, empty: hEmpty } = view.state.selection;
-          if (hEmpty && hFrom.parent.type.name === 'heading') {
-            event.preventDefault();
-            tiptapEditor.chain().splitBlock().setParagraph().run();
-            tiptapEditor.view.dispatch(tiptapEditor.state.tr.setStoredMarks([]));
-            return true;
+          try {
+            const { $from: hFrom, empty: hEmpty } = view.state.selection;
+            if (hEmpty && hFrom.parent.type.name === 'heading') {
+              event.preventDefault();
+              tiptapEditor.chain().splitBlock().setParagraph().run();
+              tiptapEditor.view.dispatch(tiptapEditor.state.tr.setStoredMarks([]));
+              return true;
+            }
+          } catch (err) {
+            // Enter処理でのエラーはユーザー体験を損なわないよう握りつぶし、デフォルト動作に委ねる
+            console.warn('見出しEnter処理でエラー:', err);
+            return false;
           }
         }
 
@@ -3249,15 +3255,28 @@ function renderEditor(container) {
         if (firstNode && firstNode.type.name === 'paragraph' && firstNode.textContent.trim() !== '') {
           _autoH1Done = true;
           setTimeout(() => {
-            if (!tiptapEditor || tiptapEditor.isDestroyed) return;
-            // 現在のカーソル位置を保存
-            const currentPos = tiptapEditor.state.selection.from;
-            // 1行目を選択してH1に変換
-            tiptapEditor.chain()
-              .setTextSelection({ from: 1, to: 1 + firstNode.nodeSize - 2 })
-              .setHeading({ level: 1 })
-              .setTextSelection(currentPos)
-              .run();
+            try {
+              if (!tiptapEditor || tiptapEditor.isDestroyed) return;
+              // setTimeout後にドキュメントが変更されている可能性があるため、最新の1行目を再取得
+              const currentFirstNode = tiptapEditor.state.doc.firstChild;
+              if (!currentFirstNode || currentFirstNode.type.name !== 'paragraph') return;
+              // 1行目のサイズを最新のドキュメントから計算
+              const firstNodeEnd = 1 + currentFirstNode.nodeSize - 2;
+              const docSize = tiptapEditor.state.doc.content.size;
+              // 範囲がドキュメントサイズを超えていないかチェック
+              if (firstNodeEnd > docSize) return;
+              // 現在のカーソル位置を保存
+              const currentPos = Math.min(tiptapEditor.state.selection.from, docSize);
+              // 1行目を選択してH1に変換
+              tiptapEditor.chain()
+                .setTextSelection({ from: 1, to: firstNodeEnd })
+                .setHeading({ level: 1 })
+                .setTextSelection(Math.min(currentPos, tiptapEditor.state.doc.content.size))
+                .run();
+            } catch (err) {
+              // 自動H1変換でのエラーはユーザー体験を損なわないよう握りつぶす
+              console.warn('自動H1変換でエラー:', err);
+            }
           }, 0);
         }
       }
