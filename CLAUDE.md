@@ -677,7 +677,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=838, style.css?v=702, tiptap.bundle.js?v=4）
+index.html          — エントリポイント（app.js?v=844, style.css?v=705, tiptap.bundle.js?v=5）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -688,9 +688,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=702`
-- `tiptap.bundle.js?v=4`
-- `app.js?v=838`
+- `style.css?v=705`
+- `tiptap.bundle.js?v=5`
+- `app.js?v=844`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -701,25 +701,26 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 - **起動時自動エクスポート機能を完全削除（完了）**: `autoExportOnStartup()`関数と起動時の呼び出し（`setTimeout`）を削除。手動エクスポート（ホーム画面ヘッダーのボタン→`exportAllPanels()`）は元のまま残存
 - **パネル色選択カラーパレット整理（完了）**: 色系統別・グラデーション順に再配置（30色）
-  - 1行目: 紫系（ダークパープル→パープル→バイオレット→インディゴ→藤色→ラベンダー）
-  - 2行目: 青系（ネイビー→ブルー→スカイ→シアン→ターコイズ→ティール）
-  - 3行目: 緑系（フォレスト→グリーン→ライム→ライムグリーン→ミント→エメラルド）
-  - 4行目: 暖色系（レッド→ピンク→ローズ→オレンジ→アンバー→イエロー）
-  - 5行目: ダーク系（ブラウン→バーガンディ→チャコール→グレー→スレート→ブラック）
 - **カード内容消失バグの根本修正（完了）**: `_contentLoaded`フラグを導入し、Firebaseからのコンテンツ読み込み完了前は一切保存しないように修正
-  - **根本原因**: カードをタップ→エディターが開く→TipTap初期化（空の`<p></p>`）→Firebaseから非同期でデータ取得中にユーザーが戻るボタンを押す→`forceSaveEditorContent()`が呼ばれる→**空の内容でFirebaseを上書き**→データ消失
-  - **修正内容**:
-    1. `_contentLoaded`フラグ追加（グローバル変数）
-    2. `renderEditor()`冒頭で`_contentLoaded = false`にリセット
-    3. Firebaseの`.once('value')`コールバック内でデータ読み込み完了後に`_contentLoaded = true`をセット
-    4. `forceSaveEditorContent()`: `_contentLoaded`がfalseなら保存をスキップ（ログ出力のみ）
-    5. `onUpdate`内のタイマー保存: `_contentLoaded`がfalseなら処理をスキップ
-    6. `saveEditorContentDirectly()`: `_contentLoaded`がfalseなら保存をスキップ
-  - **app.js?v=838**
+- **新規カード1行目Enter時にパネル一覧に戻る問題（完了）**: 自動H1処理で古いドキュメント参照を使っていたためRangeErrorが発生しグローバルエラーハンドラーが`goTo('home')`を呼んでいた。`setTimeout`内で最新のドキュメントからfirstNodeを再取得し、try-catchでエラーを握りつぶすよう修正
+- **画像削除ボタンをTipTap NodeView方式に移行（完了）**: 動的DOM追加でモード変更のたびに増え続ける問題を根本解決
+  - `.tiptap-build/entry.js`に`addNodeView()`を追加
+  - 画像ノードと削除ボタンをセットでレンダリング
+  - CSSで`.ProseMirror.mode-edit .img-del-btn-static { display: flex }`により編集モード時のみ表示
+  - グローバル関数`window._showToast`/`window._setLastDeletedContent`を公開
+- **編集モード時のProseMirrorにmode-editクラス追加（完了）**: `setEditorMode('edit')`で`mode-view`を削除するだけで`mode-edit`を追加していなかった問題を修正
+- **キーボード表示時のクリップアイコン（FAB）表示改善（完了）**: TipTapのfocus/blurイベント、setEditorModeからも`updateEditorHeight()`を呼び出すよう修正
+- **YouTube削除ボタンを画像と同じ方式に統一（作業中）**: 編集モード時のみ表示、CSSクラス`.yt-del-btn-static`で制御。実装済みだが動作確認が必要
+
+## 次のステップ
+
+1. **YouTube削除ボタンの動作確認** - 編集モードで表示されるか実機確認
+2. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・URL差し替え
+3. **100kin-blogにスクリーンショット追加** - 絵文字プレースホルダーを実際の画像に差し替え
+4. **決済完了後のGoogleログイン促進モーダル実装** - `?payment=success`で戻った際のモーダル表示
 
 ## 直近の対応（2026-06-24）
 
-- **画像❌ボタンをYouTube削除ボタンと同じ静的表示方式に変更（完了）**: `refreshYoutubeDeleteButtons`で静的にinject、編集モードでのみ表示（閲覧モードは無反応）、小さい赤い×マーク（16px丸型）
 - **複数段落カット誤動作修正（完了）**: `data-cut-id`属性で対象を一意に特定、カット後に即時保存（`saveEditorContentDirectly()`）でモード変更時の復元を防止
 - **カード内容消失防止（完了）**: `_isNewCard`フラグとFirebaseデータの両方をチェックし、既存カードが誤って空にされることを防止
 - **ペーストキャンセルボタン改善（完了）**: 長押しキャンセルを廃止、ペーストボタン横に「取消」ボタン（42px、font-size: 0.85rem）を表示
