@@ -146,36 +146,43 @@ function showThemePicker() {
   document.body.appendChild(overlay);
 }
 
-// ── カラーパレット（24色・白テキストとのコントラスト保証） ──────────
+// ── カラーパレット（30色・白テキストとのコントラスト保証） ──────────
 const COLORS = [
-  // ブルー系
-  { label: 'インディゴ',   grad: 'linear-gradient(135deg,#4f46e5,#6366f1)' },
-  { label: 'バイオレット', grad: 'linear-gradient(135deg,#7c3aed,#8b5cf6)' },
-  { label: 'ブルー',       grad: 'linear-gradient(135deg,#1d4ed8,#3b82f6)' },
-  { label: 'スカイ',       grad: 'linear-gradient(135deg,#0284c7,#0ea5e9)' },
-  { label: 'シアン',       grad: 'linear-gradient(135deg,#0891b2,#06b6d4)' },
-  { label: 'ネイビー',     grad: 'linear-gradient(135deg,#1e3a5f,#1e40af)' },
-  // グリーン系
-  { label: 'ティール',     grad: 'linear-gradient(135deg,#0d9488,#14b8a6)' },
-  { label: 'エメラルド',   grad: 'linear-gradient(135deg,#059669,#10b981)' },
-  { label: 'グリーン',     grad: 'linear-gradient(135deg,#16a34a,#22c55e)' },
-  { label: 'ライム',       grad: 'linear-gradient(135deg,#4d7c0f,#65a30d)' },
-  { label: 'フォレスト',   grad: 'linear-gradient(135deg,#14532d,#166534)' },
-  { label: 'オリーブ',     grad: 'linear-gradient(135deg,#713f12,#854d0e)' },
-  // レッド・ピンク・オレンジ系
-  { label: 'レッド',       grad: 'linear-gradient(135deg,#b91c1c,#ef4444)' },
-  { label: 'ローズ',       grad: 'linear-gradient(135deg,#9d174d,#db2777)' },
-  { label: 'ピンク',       grad: 'linear-gradient(135deg,#be185d,#ec4899)' },
-  { label: 'オレンジ',     grad: 'linear-gradient(135deg,#c2410c,#f97316)' },
-  { label: 'アンバー',     grad: 'linear-gradient(135deg,#b45309,#f59e0b)' },
-  { label: 'イエロー',     grad: 'linear-gradient(135deg,#a16207,#ca8a04)' },
-  // ダーク・ニュートラル系
-  { label: 'バーガンディ', grad: 'linear-gradient(135deg,#7f1d1d,#991b1b)' },
-  { label: 'ブラウン',     grad: 'linear-gradient(135deg,#431407,#7c2d12)' },
-  { label: 'スレート',     grad: 'linear-gradient(135deg,#334155,#64748b)' },
-  { label: 'グレー',       grad: 'linear-gradient(135deg,#374151,#6b7280)' },
-  { label: 'チャコール',   grad: 'linear-gradient(135deg,#111827,#374151)' },
-  { label: 'ブラック',     grad: 'linear-gradient(135deg,#030712,#1f2937)' },
+  // 1行目：紫系（濃い紫→薄紫）
+  { label: 'ダークパープル', grad: 'linear-gradient(135deg,#3b0764,#581c87)' },
+  { label: 'パープル',       grad: 'linear-gradient(135deg,#6b21a8,#7c3aed)' },
+  { label: 'バイオレット',   grad: 'linear-gradient(135deg,#7c3aed,#8b5cf6)' },
+  { label: 'インディゴ',     grad: 'linear-gradient(135deg,#4f46e5,#6366f1)' },
+  { label: '藤色',           grad: 'linear-gradient(135deg,#8b5cf6,#a78bfa)' },
+  { label: 'ラベンダー',     grad: 'linear-gradient(135deg,#a78bfa,#c4b5fd)' },
+  // 2行目：青系（濃い青→青緑）
+  { label: 'ネイビー',       grad: 'linear-gradient(135deg,#1e3a5f,#1e40af)' },
+  { label: 'ブルー',         grad: 'linear-gradient(135deg,#1d4ed8,#3b82f6)' },
+  { label: 'スカイ',         grad: 'linear-gradient(135deg,#0284c7,#0ea5e9)' },
+  { label: 'シアン',         grad: 'linear-gradient(135deg,#0891b2,#06b6d4)' },
+  { label: 'ターコイズ',     grad: 'linear-gradient(135deg,#0d9488,#14b8a6)' },
+  { label: 'ティール',       grad: 'linear-gradient(135deg,#115e59,#0d9488)' },
+  // 3行目：緑系（濃い緑→エメラルド）
+  { label: 'フォレスト',     grad: 'linear-gradient(135deg,#14532d,#166534)' },
+  { label: 'グリーン',       grad: 'linear-gradient(135deg,#16a34a,#22c55e)' },
+  { label: 'ライム',         grad: 'linear-gradient(135deg,#4d7c0f,#65a30d)' },
+  { label: 'ライムグリーン', grad: 'linear-gradient(135deg,#65a30d,#84cc16)' },
+  { label: 'ミント',         grad: 'linear-gradient(135deg,#10b981,#34d399)' },
+  { label: 'エメラルド',     grad: 'linear-gradient(135deg,#059669,#10b981)' },
+  // 4行目：赤・暖色系（赤→黄色）
+  { label: 'レッド',         grad: 'linear-gradient(135deg,#b91c1c,#ef4444)' },
+  { label: 'ピンク',         grad: 'linear-gradient(135deg,#be185d,#ec4899)' },
+  { label: 'ローズ',         grad: 'linear-gradient(135deg,#9d174d,#db2777)' },
+  { label: 'オレンジ',       grad: 'linear-gradient(135deg,#c2410c,#f97316)' },
+  { label: 'アンバー',       grad: 'linear-gradient(135deg,#b45309,#f59e0b)' },
+  { label: 'イエロー',       grad: 'linear-gradient(135deg,#a16207,#ca8a04)' },
+  // 5行目：ダーク・ニュートラル系（茶色→黒）
+  { label: 'ブラウン',       grad: 'linear-gradient(135deg,#431407,#7c2d12)' },
+  { label: 'バーガンディ',   grad: 'linear-gradient(135deg,#7f1d1d,#991b1b)' },
+  { label: 'チャコール',     grad: 'linear-gradient(135deg,#111827,#374151)' },
+  { label: 'グレー',         grad: 'linear-gradient(135deg,#374151,#6b7280)' },
+  { label: 'スレート',       grad: 'linear-gradient(135deg,#334155,#64748b)' },
+  { label: 'ブラック',       grad: 'linear-gradient(135deg,#030712,#1f2937)' },
 ];
 const DEFAULT_GRAD = COLORS[0].grad;
 
@@ -2151,122 +2158,6 @@ function downloadViaLink(blob, fileName, panelCount, cardCount) {
   showExportCompleteDialog(panelCount, cardCount);
 }
 
-// 起動時の自動エクスポート（バックグラウンドで実行）
-// PC: File System Access APIで同じファイルに上書き保存
-// iOS/Android: localStorageにバックアップを保存（ダウンロードは手動）
-async function autoExportOnStartup() {
-  try {
-    if (!state.uid) return;
-    const catSnap = await db.ref(`users/${state.uid}/categories`).once('value');
-    const catData = catSnap.val();
-    if (!catData) return;
-
-    const categories = Object.entries(catData)
-      .map(([id, cat]) => ({ id, ...cat }))
-      .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
-
-    const lines = [];
-    const dateStr = new Date().toLocaleString('ja-JP');
-    lines.push('==================================================');
-    lines.push('  PCスマホ連動メモ - 自動バックアップ');
-    lines.push('  エクスポート日時: ' + dateStr);
-    lines.push('==================================================');
-    lines.push('');
-
-    let panelCount = 0;
-    let cardCount = 0;
-
-    for (const cat of categories) {
-      try {
-        const artSnap = await db.ref(`users/${state.uid}/articles/${cat.id}`).once('value');
-        const artData = artSnap.val() || {};
-        const articles = Object.entries(artData)
-          .map(([id, a]) => ({ id, ...a }))
-          .sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999));
-
-        lines.push('');
-        lines.push('[パネル] ' + cat.name);
-        lines.push('─'.repeat(30));
-
-        articles.forEach((art, idx) => {
-          const artLines = htmlToLines(art.content || '');
-          const title = artLines[0] || '（タイトルなし）';
-          lines.push('');
-          lines.push('  [' + (idx + 1) + '] ' + title);
-          artLines.slice(1).forEach(line => {
-            if (line.trim()) lines.push('      ' + line);
-          });
-          cardCount++;
-        });
-        panelCount++;
-      } catch (e) { /* skip */ }
-    }
-
-    lines.push('');
-    lines.push('==================================================');
-    lines.push('  完了: ' + panelCount + 'パネル / ' + cardCount + 'カード');
-    lines.push('==================================================');
-
-    const allTextData = lines.join('\r\n');
-
-    // localStorageにバックアップを保存（全環境共通）
-    try {
-      localStorage.setItem('autoBackup_data', allTextData);
-      localStorage.setItem('autoBackup_date', new Date().toISOString());
-      console.log('[AutoBackup] Saved to localStorage:', panelCount, 'panels,', cardCount, 'cards');
-    } catch (e) {
-      console.warn('[AutoBackup] localStorage save failed:', e);
-    }
-
-    // PC（File System Access API対応）: 同じファイルに上書き保存
-    if (window.showSaveFilePicker && window._autoBackupFileHandle) {
-      try {
-        const writable = await window._autoBackupFileHandle.createWritable();
-        await writable.write(allTextData);
-        await writable.close();
-        console.log('[AutoBackup] Overwritten to file');
-        return;
-      } catch (e) {
-        console.warn('[AutoBackup] File overwrite failed:', e);
-      }
-    }
-
-    // 初回またはファイルハンドルがない場合: ダウンロード
-    const fileName = 'memo_backup.txt';
-    const blob = new Blob([allTextData], { type: 'text/plain' });
-
-    // File System Access APIが使える場合、ファイルハンドルを保存
-    if (window.showSaveFilePicker && !window._autoBackupFileHandle) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: fileName,
-          types: [{ description: 'Text Files', accept: { 'text/plain': ['.txt'] } }]
-        });
-        window._autoBackupFileHandle = handle;
-        const writable = await handle.createWritable();
-        await writable.write(allTextData);
-        await writable.close();
-        console.log('[AutoBackup] Saved to file (first time)');
-        return;
-      } catch (e) {
-        if (e.name !== 'AbortError') console.warn('[AutoBackup] File picker failed:', e);
-      }
-    }
-
-    // フォールバック: 通常のダウンロード
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    console.log('[AutoBackup] Downloaded:', panelCount, 'panels,', cardCount, 'cards');
-  } catch (e) {
-    console.error('[AutoBackup] Failed:', e);
-  }
-}
 
 // エクスポート完了ダイアログを表示
 function showExportCompleteDialog(panelCount, cardCount) {
@@ -5735,9 +5626,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       // TipTapエディターの初期化コストを先払いしておく
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
       idle(() => warmUpTipTap());
-      // 起動時に自動で全パネルをエクスポート（バックアップ）
-      // ホーム画面の描画が落ち着いた直後に実行
-      setTimeout(() => autoExportOnStartup(), 500);
     } else {
       // null の場合: signInWithRedirect 後は処理完了前に null で先発火するため
       // getRedirectResult() で結果を確認してから判断する
