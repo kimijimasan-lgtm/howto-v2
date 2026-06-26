@@ -2120,39 +2120,52 @@ body.yt-fullscreen-active {
   100% { opacity: 0; }
 }
 
-/* 画像削除ボタン（小さい赤い×マーク・編集モードでのみ表示） */
-/* 画像の直後に兄弟要素として配置し、ネガティブマージンで画像の左上に重ねる */
-.img-delete-btn {
+/* 画像NodeView用コンテナ */
+.img-node-view {
   position: relative;
+  display: inline-block;
+}
+
+/* 画像削除ボタン（静的・NodeViewで生成、編集モード時のみ表示） */
+/* YouTubeゴミ箱と同じデザイン */
+.img-del-btn-static {
+  position: absolute;
+  top: 8px;
+  left: 8px;
   z-index: 20;
-  display: inline-flex;
+  display: none; /* デフォルト非表示、mode-editで表示 */
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin-left: -28px;
-  margin-top: 8px;
-  margin-right: 8px;
-  vertical-align: top;
+  width: 28px;
+  height: 28px;
   background: #ef4444;
   border: none;
-  border-radius: 50%;
+  border-radius: 6px;
   color: white;
-  font-size: 11px;
-  font-weight: bold;
-  line-height: 1;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  transition: background 0.15s, transform 0.15s;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: background 0.15s, transform 0.15s, opacity 0.15s;
   user-select: none;
   -webkit-user-select: none;
+  opacity: 0.9;
 }
-.img-delete-btn:hover {
+
+/* 編集モード時のみ表示 */
+.ProseMirror.mode-edit .img-del-btn-static {
+  display: flex;
+}
+
+.img-del-btn-static:hover {
   background: #dc2626;
-  transform: scale(1.15);
+  transform: scale(1.1);
+  opacity: 1;
 }
-.img-delete-btn:active {
-  transform: scale(0.9);
+.img-del-btn-static:active {
+  transform: scale(0.95);
+}
+
+.img-del-btn-static svg {
+  pointer-events: none;
 }
 
 /* 🔘 画面最下部モード切り替えトグルバー（2行表示） */

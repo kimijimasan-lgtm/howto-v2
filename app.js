@@ -4977,7 +4977,6 @@ function refreshYoutubeDeleteButtons(mode) {
 
   // 既存のオーバーレイをすべてクリーンアップ
   pm.querySelectorAll('.yt-del-btn').forEach(b => b.remove());
-  pm.querySelectorAll('.img-delete-btn').forEach(b => b.remove());
   pm.querySelectorAll('.para-drag-handle').forEach(h => h.remove());
   pm.querySelectorAll('[data-youtube-video]').forEach(yt => {
     if (yt._ytEnter) yt.removeEventListener('mouseenter', yt._ytEnter);
@@ -4990,44 +4989,9 @@ function refreshYoutubeDeleteButtons(mode) {
   // ロック中のカードは削除ボタン・ドラッグハンドルを一切注入しない
   if (state.cardLocked) return;
 
-  // 画像削除ボタン（編集モードでのみ表示）
+  // 画像削除ボタンはNodeViewで静的に生成されるため、ここでは何もしない
+  // 編集モード時はCSSで .ProseMirror.mode-edit .img-del-btn-static { display: flex } により表示
   if (mode === 'edit') {
-    pm.querySelectorAll('img.inserted-img').forEach((img, idx) => {
-      const parentP = img.closest('p');
-      if (!parentP) return;
-      parentP.style.position = 'relative';
-
-      // 画像にユニークIDを付与（ボタンとの関連付け用）
-      const imgId = `img-del-target-${idx}`;
-      img.setAttribute('data-img-del-id', imgId);
-
-      const btn = document.createElement('button');
-      btn.className = 'img-delete-btn';
-      btn.setAttribute('data-for-img', imgId);
-      btn.contentEditable = 'false';
-      btn.title = '画像を削除';
-      btn.textContent = '✕';
-
-      // ボタンを画像の直後に挿入（兄弟要素として配置）
-      // CSSで画像に対して相対位置に配置する
-      img.insertAdjacentElement('afterend', btn);
-
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        if (confirm('この画像を削除しますか？')) {
-          lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
-          // ボタンも一緒に削除
-          btn.remove();
-          img.remove();
-          if (tiptapEditor) {
-            tiptapEditor.commands.setContent(getCleanPMHTML());
-            refreshYoutubeDeleteButtons('edit');
-          }
-          showToast('画像を削除しました');
-        }
-      };
-    });
     return; // 編集モードではYouTube削除ボタン・ドラッグハンドルは不要
   }
 
@@ -6083,6 +6047,10 @@ function processToastQueue() {
     }, 300);
   }, 2200);
 }
+
+// TipTap NodeView用グローバル関数を公開（画像削除ボタンから呼び出される）
+window._showToast = showToast;
+window._setLastDeletedContent = (html) => { lastDeletedContent = html; };
 
 // スマホ・PC共用 画像長押しドラッグ＆ドロップ移動の制御
 function setupImageDragAndDrop(editor) {
