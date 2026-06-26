@@ -2453,6 +2453,10 @@ function renderEditor(container) {
     }
     refreshParaSortable(mode);
     refreshYoutubeDeleteButtons(mode);
+    // モード切替時にFAB表示状態を更新
+    if (typeof window._updateEditorHeight === 'function') {
+      window._updateEditorHeight();
+    }
   }
   // initializeNativeParagraphActions等の外部関数から呼べるように登録
   window._setEditorMode = setEditorMode;
@@ -3466,15 +3470,30 @@ function renderEditor(container) {
       fab.style.display = shouldShow ? 'flex' : 'none';
     }
   };
+  // グローバルに公開してsetEditorModeから呼べるようにする
+  window._updateEditorHeight = updateEditorHeight;
+
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', updateEditorHeight);
     // 初期化時にも一度呼び出し、FABの表示状態を正しく設定する
     updateEditorHeight();
   }
+
+  // TipTapのfocus/blurでもFAB表示を更新（visualViewport.resizeだけでは不十分な場合がある）
+  if (tiptapEditor) {
+    tiptapEditor.on('focus', () => {
+      setTimeout(updateEditorHeight, 100); // キーボードアニメーション後
+    });
+    tiptapEditor.on('blur', () => {
+      setTimeout(updateEditorHeight, 100);
+    });
+  }
+
   listeners.push(() => {
     if (window.visualViewport) {
       window.visualViewport.removeEventListener('resize', updateEditorHeight);
     }
+    window._updateEditorHeight = null;
     if (app) app.style.height = ''; // エディタ離脱時に CSS デフォルト(100dvh)に戻す
     const edContent = document.getElementById('edContent');
     if (edContent) { edContent.style.height = ''; edContent.style.flex = ''; }
