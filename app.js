@@ -1432,7 +1432,7 @@ function renderCategory(container) {
   }
 
   // 選択したカードを連結する
-  async function mergeSelectedCards(deleteOriginals = true) {
+  async function mergeSelectedCards(deleteOriginals = false, mergedName = null) {
     if (!lastArtsData || selectedCardIds.size < 2) return;
 
     // 現在の表示順でカードをソート
@@ -1460,8 +1460,12 @@ function renderCategory(container) {
     // 選択されたカードを表示順で抽出
     const selectedArts = sortedArts.filter(a => selectedCardIds.has(a.id));
 
-    // 内容を連結（各カードの内容を順に結合、画像・YouTube等も全て引き継ぐ）
+    // 連結後のカード名を1行目として追加（mergedNameが指定されている場合）
+    // 元のカードの内容は2行目以降に連結
     let mergedContent = '';
+    if (mergedName) {
+      mergedContent = `<h1>${esc(mergedName)}</h1>`;
+    }
     for (const art of selectedArts) {
       if (art.content) {
         mergedContent += art.content;
@@ -1499,33 +1503,61 @@ function renderCategory(container) {
       return;
     }
 
+    // 選択されたカードの名前を取得（表示順で）
+    const all = Object.entries(lastArtsData || {}).map(([id, v]) => ({ id, ...v }));
+    const pinned = all.filter(a => a.pinned).sort((a, b) => (b.order || 0) - (a.order || 0));
+    let unpinned = all.filter(a => !a.pinned);
+    if (sortField === 'name') {
+      unpinned.sort((a, b) => {
+        const ta = (htmlToLines(a.content)[0] || '').toLowerCase();
+        const tb = (htmlToLines(b.content)[0] || '').toLowerCase();
+        return sortDir === 'asc' ? ta.localeCompare(tb, 'ja') : tb.localeCompare(ta, 'ja');
+      });
+    } else if (sortField === 'date') {
+      unpinned.sort((a, b) => sortDir === 'asc'
+        ? (a.updatedAt || 0) - (b.updatedAt || 0)
+        : (b.updatedAt || 0) - (a.updatedAt || 0));
+    } else {
+      unpinned.sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined) return b.order - a.order;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+    }
+    const sortedArts = [...pinned, ...unpinned];
+    const selectedArts = sortedArts.filter(a => selectedCardIds.has(a.id));
+    const cardNames = selectedArts.map(a => {
+      const lines = htmlToLines(a.content);
+      return lines[0] || '（無題）';
+    });
+    const mergedName = cardNames.join(' + ');
+
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="modal-box" style="max-width: 340px;">
-        <h3 style="margin-bottom: 1rem; color: #fff; font-weight: 700;">カードを連結</h3>
-        <p style="margin-bottom: 1rem; color: var(--text-sub); font-size: 0.9rem;">
-          ${selectedCardIds.size}枚のカードを1つに連結します。<br>
-          画像・YouTube動画も全て引き継がれます。
+      <div class="modal-box" style="max-width: 360px;">
+        <h3 style="margin-bottom: 1rem; color: #eab308; font-weight: 700;">カードを連結</h3>
+        <p style="margin-bottom: 0.75rem; color: #eab308; font-size: 0.9rem;">
+          ${selectedCardIds.size}枚のカードを1つに連結します。
         </p>
-        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem; cursor: pointer; color: #fff;">
-          <input type="checkbox" id="chkDeleteOriginals" checked style="width: 18px; height: 18px; accent-color: #a855f7;">
+        <p style="margin-bottom: 1rem; color: #eab308; font-size: 0.85rem; word-break: break-all;">
+          連結後のカード名：<br><strong>${esc(mergedName)}</strong>
+        </p>
+        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem; cursor: pointer; color: #eab308;">
+          <input type="checkbox" id="chkDeleteOriginals" style="width: 18px; height: 18px; accent-color: #eab308;">
           <span>元のカードを削除する</span>
         </label>
-        <div style="display: flex; gap: 0.75rem;">
-          <button class="btn-secondary" id="btnMergeCancel" style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 700; color: #fff;">キャンセル</button>
-          <button class="btn-primary" id="btnMergeConfirm" style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 700; background: #a855f7; color: #fff; border: none;">連結する</button>
+        <div style="display: flex; justify-content: center;">
+          <button class="btn-primary" id="btnMergeConfirm" style="padding: 0.75rem 2rem; border-radius: 8px; font-weight: 700; background: #eab308; color: #000; border: none;">連結する</button>
         </div>
       </div>
     `;
 
     document.getElementById('modal-root').appendChild(modal);
 
-    modal.querySelector('#btnMergeCancel').onclick = () => modal.remove();
     modal.querySelector('#btnMergeConfirm').onclick = async () => {
       const deleteOriginals = modal.querySelector('#chkDeleteOriginals').checked;
       modal.remove();
-      await mergeSelectedCards(deleteOriginals);
+      await mergeSelectedCards(deleteOriginals, mergedName);
     };
     modal.onclick = (e) => {
       if (e.target === modal) modal.remove();
