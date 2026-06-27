@@ -27,7 +27,7 @@ var TipTapBundle = (() => {
     TaskList: () => TaskList,
     TextStyleExtension: () => ColorTextStyle,
     UnderlineExtension: () => Underline,
-    YoutubeExtension: () => CustomYoutubeExtension
+    YoutubeExtension: () => Youtube
   });
 
   // node_modules/orderedmap/dist/index.js
@@ -18870,66 +18870,6 @@ img.ProseMirror-separator {
   });
 
   // entry.js
-  var CustomYoutubeExtension = Youtube.extend({
-    addNodeView() {
-      return ({ node, editor, getPos }) => {
-        const container = document.createElement("div");
-        container.className = "yt-node-view";
-        container.setAttribute("data-youtube-video", "");
-        container.style.position = "relative";
-        const iframe = document.createElement("iframe");
-        iframe.src = node.attrs.src;
-        iframe.width = node.attrs.width || 640;
-        iframe.height = node.attrs.height || 480;
-        iframe.setAttribute("allowfullscreen", "");
-        iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
-        iframe.setAttribute("frameborder", "0");
-        iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
-        iframe.style.border = "0";
-        iframe.style.width = "100%";
-        iframe.style.aspectRatio = "16/9";
-        iframe.style.borderRadius = "12px";
-        container.appendChild(iframe);
-        const delBtn = document.createElement("button");
-        delBtn.className = "yt-del-btn-static";
-        delBtn.type = "button";
-        delBtn.contentEditable = "false";
-        delBtn.title = "YouTube\u52D5\u753B\u3092\u524A\u9664";
-        delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
-        delBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!editor.isEditable) return;
-          if (confirm("\u3053\u306EYouTube\u52D5\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B\uFF1F")) {
-            if (typeof window !== "undefined" && window._setLastDeletedContent) {
-              window._setLastDeletedContent(editor.getHTML());
-            }
-            const pos = typeof getPos === "function" ? getPos() : null;
-            if (pos !== null) {
-              editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
-            }
-            if (typeof window !== "undefined" && window._showToast) {
-              window._showToast("YouTube\u52D5\u753B\u3092\u524A\u9664\u3057\u307E\u3057\u305F");
-            }
-          }
-        });
-        container.appendChild(delBtn);
-        return {
-          dom: container,
-          contentDOM: null,
-          update: (updatedNode) => {
-            if (updatedNode.type.name !== "youtube") return false;
-            iframe.src = updatedNode.attrs.src;
-            if (updatedNode.attrs.width) iframe.width = updatedNode.attrs.width;
-            if (updatedNode.attrs.height) iframe.height = updatedNode.attrs.height;
-            return true;
-          },
-          destroy: () => {
-          }
-        };
-      };
-    }
-  });
   var ColorTextStyle = TextStyle.extend({
     addAttributes() {
       return {

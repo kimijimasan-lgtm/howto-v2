@@ -1877,10 +1877,8 @@ img.inserted-img.landscape-img {
 }
 
 /* TipTap YouTube ノード — レスポンシブ 16:9 */
-/* NodeView方式（.yt-node-view）と従来方式両方に対応 */
 .editor-content [data-youtube-video],
-.editor-content .ProseMirror [data-youtube-video],
-.editor-content .yt-node-view {
+.editor-content .ProseMirror [data-youtube-video] {
   position: relative;
   width: 100%;
   max-width: 100%;
@@ -1892,8 +1890,7 @@ img.inserted-img.landscape-img {
 }
 
 .editor-content [data-youtube-video] iframe,
-.editor-content .ProseMirror [data-youtube-video] iframe,
-.editor-content .yt-node-view iframe {
+.editor-content .ProseMirror [data-youtube-video] iframe {
   position: absolute;
   top: 0;
   left: 0;
@@ -1906,8 +1903,7 @@ img.inserted-img.landscape-img {
 /* PC: hover削除ボタンは yt-del-btn CSS で継続提供 */
 
 /* 選択中の YouTube ノードのビジュアル */
-.editor-content [data-youtube-video].para-selected,
-.editor-content .yt-node-view.para-selected {
+.editor-content [data-youtube-video].para-selected {
   outline: 2px dashed rgba(249, 115, 22, 0.5);
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12), 0 4px 16px rgba(0, 0, 0, 0.35);
 }

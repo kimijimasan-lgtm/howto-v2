@@ -3464,21 +3464,11 @@ function renderEditor(container) {
     onUpdate: ({ editor }) => {
       if (isComposing || isRemovingTrailingP) return;
 
-      // YouTube動画のNodeView再レンダリング（貼り付け直後の表示崩れ対策）
-      // TipTapのペーストルールで挿入されたYouTube動画が正しくNodeViewでレンダリングされるよう、
-      // 現在のコンテンツを再設定して強制的に再レンダリングする
+      // YouTube動画が追加されたら削除ボタンを追加（data属性で重複防止）
       const pm = editor.view.dom;
-      const ytNodes = pm.querySelectorAll('[data-youtube-video]:not(.yt-node-view)');
-      if (ytNodes.length > 0) {
-        setTimeout(() => {
-          if (tiptapEditor && !tiptapEditor.isDestroyed) {
-            const currentHtml = tiptapEditor.getHTML();
-            const pos = tiptapEditor.state.selection.from;
-            tiptapEditor.commands.setContent(currentHtml, false);
-            try { tiptapEditor.commands.setTextSelection(Math.min(pos, tiptapEditor.state.doc.content.size)); } catch (_) {}
-          }
-        }, 50);
-        return;
+      const newYtNodes = pm.querySelectorAll('[data-youtube-video]:not([data-yt-del-btn])');
+      if (newYtNodes.length > 0) {
+        refreshYoutubeDeleteButtons(state.editorMode);
       }
 
       // 1行目が空の状態から文字を入力した瞬間にH1を自動適用
@@ -5212,25 +5202,55 @@ function refreshParaSortable(mode) {
   }
 }
 
-// YouTube削除ボタン・画像削除ボタン・ドラッグハンドルをDOMに直接inject
-// YouTube/ドラッグハンドル: 閲覧モードで表示、画像削除: 編集モードで表示
+// YouTube削除ボタン・ドラッグハンドルをDOMに直接inject
+// 削除ボタン: 編集モード時はCSSで表示、閲覧モード時はCSSで非表示
+// ドラッグハンドル: 閲覧モードのみ表示
 function refreshYoutubeDeleteButtons(mode) {
   if (!tiptapEditor) return;
   const pm = tiptapEditor.view.dom;
 
-  // ドラッグハンドルのみクリーンアップ（YouTube/画像削除ボタンはNodeViewで静的生成）
+  // ドラッグハンドルをクリーンアップ
   pm.querySelectorAll('.para-drag-handle').forEach(h => h.remove());
 
-  // ロック中のカードはドラッグハンドルを一切注入しない
+  // ロック中のカードは削除ボタン・ドラッグハンドルを一切注入しない
   if (state.cardLocked) return;
 
-  // YouTube削除ボタン・画像削除ボタンはNodeViewで静的に生成されるため、ここでは何もしない
-  // 編集モード時はCSSで .ProseMirror.mode-edit .yt-del-btn-static { display: flex } により表示
+  // YouTube削除ボタン: まだ追加されていないノードにのみ追加（data-yt-del-btn属性で管理）
+  pm.querySelectorAll('[data-youtube-video]').forEach(ytDiv => {
+    if (ytDiv.hasAttribute('data-yt-del-btn')) return; // 既に追加済み
+    ytDiv.setAttribute('data-yt-del-btn', 'true');
+    ytDiv.style.position = 'relative';
+
+    const btn = document.createElement('button');
+    btn.className = 'yt-del-btn-static';
+    btn.type = 'button';
+    btn.contentEditable = 'false';
+    btn.title = 'YouTube動画を削除';
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>`;
+
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!tiptapEditor || !tiptapEditor.isEditable) return;
+      if (confirm('このYouTube動画を削除しますか？')) {
+        lastDeletedContent = tiptapEditor ? tiptapEditor.getHTML() : '';
+        ytDiv.remove();
+        if (tiptapEditor) {
+          tiptapEditor.commands.setContent(getCleanPMHTML());
+        }
+        showToast('YouTube動画を削除しました');
+      }
+    };
+
+    ytDiv.appendChild(btn);
+  });
+
+  // 画像削除ボタンはNodeViewで静的に生成されるため、ここでは何もしない
   // 編集モード時はCSSで .ProseMirror.mode-edit .img-del-btn-static { display: flex } により表示
 
   // ドラッグハンドル（閲覧モードのみ）
   if (mode === 'view') {
-    pm.querySelectorAll('p, h1, h2, .yt-node-view').forEach(el => {
+    pm.querySelectorAll('p, h1, h2, [data-youtube-video]').forEach(el => {
       el.style.position = 'relative';
       const handle = document.createElement('span');
       handle.className = 'para-drag-handle';

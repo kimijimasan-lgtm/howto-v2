@@ -1,86 +1,9 @@
 export { Editor } from '@tiptap/core';
 export { default as StarterKit } from '@tiptap/starter-kit';
-import Youtube from '@tiptap/extension-youtube';
+export { default as YoutubeExtension } from '@tiptap/extension-youtube';
 export { default as TaskList } from '@tiptap/extension-task-list';
 export { default as TaskItem } from '@tiptap/extension-task-item';
 export { default as UnderlineExtension } from '@tiptap/extension-underline';
-
-// YouTube削除ボタン付きNodeViewを持つ拡張
-const CustomYoutubeExtension = Youtube.extend({
-  addNodeView() {
-    return ({ node, editor, getPos }) => {
-      // コンテナ（div）を作成
-      const container = document.createElement('div');
-      container.className = 'yt-node-view';
-      container.setAttribute('data-youtube-video', '');
-      container.style.position = 'relative';
-
-      // iframe要素（Safari/iOS互換性のため属性を正しく設定）
-      const iframe = document.createElement('iframe');
-      iframe.src = node.attrs.src;
-      iframe.width = node.attrs.width || 640;
-      iframe.height = node.attrs.height || 480;
-      // Safari用: setAttribute()でHTML属性として設定する必要がある
-      iframe.setAttribute('allowfullscreen', '');
-      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
-      iframe.setAttribute('frameborder', '0');
-      // referrerpolicy: Safari対応
-      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-      // スタイル
-      iframe.style.border = '0';
-      iframe.style.width = '100%';
-      iframe.style.aspectRatio = '16/9';
-      iframe.style.borderRadius = '12px';
-      container.appendChild(iframe);
-
-      // 削除ボタン（常にDOMに存在、CSSで表示/非表示を制御）
-      const delBtn = document.createElement('button');
-      delBtn.className = 'yt-del-btn-static';
-      delBtn.type = 'button';
-      delBtn.contentEditable = 'false';
-      delBtn.title = 'YouTube動画を削除';
-      delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
-
-      delBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!editor.isEditable) return;
-        if (confirm('このYouTube動画を削除しますか？')) {
-          // Undo用にHTMLを保存（グローバル変数経由）
-          if (typeof window !== 'undefined' && window._setLastDeletedContent) {
-            window._setLastDeletedContent(editor.getHTML());
-          }
-          const pos = typeof getPos === 'function' ? getPos() : null;
-          if (pos !== null) {
-            editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
-          }
-          if (typeof window !== 'undefined' && window._showToast) {
-            window._showToast('YouTube動画を削除しました');
-          }
-        }
-      });
-
-      container.appendChild(delBtn);
-
-      return {
-        dom: container,
-        contentDOM: null,
-        update: (updatedNode) => {
-          if (updatedNode.type.name !== 'youtube') return false;
-          iframe.src = updatedNode.attrs.src;
-          if (updatedNode.attrs.width) iframe.width = updatedNode.attrs.width;
-          if (updatedNode.attrs.height) iframe.height = updatedNode.attrs.height;
-          return true;
-        },
-        destroy: () => {
-          // クリーンアップ（必要に応じて）
-        },
-      };
-    };
-  },
-});
-
-export { CustomYoutubeExtension as YoutubeExtension };
 
 import { TextStyle } from '@tiptap/extension-text-style';
 
