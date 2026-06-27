@@ -1284,6 +1284,11 @@ function renderCategory(container) {
           </svg>
         </button>
         <h2 class="screen-title" id="catTitle">…</h2>
+        <button class="btn-icon" id="btnMergeCards" title="選択したカードを連結" style="display:none; background:rgba(168,85,247,0.2); border:1px solid #a855f7; color:#a855f7; margin-right:0.5rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>
+          </svg>
+        </button>
         <button class="btn-icon" id="btnExportAll" title="このカテゴリの全メモを一括エクスポート">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -1302,6 +1307,22 @@ function renderCategory(container) {
 
   document.getElementById('btnHome').onclick   = () => goTo('home');
   document.getElementById('btnExportAll').onclick = () => showExportAllModal(state.categoryId);
+
+  // 連結ボタン
+  document.getElementById('btnMergeCards').onclick = async () => {
+    if (selectedCardIds.size < 2) {
+      showToast('2枚以上のカードを選択してください');
+      return;
+    }
+    if (categoryLocked) {
+      showToast('このパネルのカードは連結できません');
+      return;
+    }
+    if (!confirm(`${selectedCardIds.size}枚のカードを連結します。\n元のカードは削除されます。\nよろしいですか？`)) {
+      return;
+    }
+    await mergeSelectedCards();
+  };
 
   // ─── ソート状態 ───
   let sortField = 'name'; // 'name' | 'date' | null（デフォルト: 名前昇順）
@@ -1364,6 +1385,88 @@ function renderCategory(container) {
   let catColor = DEFAULT_GRAD;
   // 解説パネル等のロック状態（開発者以外はピン留め・複写・移動・削除を禁止）
   let categoryLocked = false;
+  // カード選択モード（連結機能用）
+  let selectedCardIds = new Set();
+
+  // 連結ボタンの表示状態を更新
+  function updateMergeButtonVisibility() {
+    const btn = document.getElementById('btnMergeCards');
+    if (!btn) return;
+    btn.style.display = selectedCardIds.size >= 2 ? 'flex' : 'none';
+  }
+
+  // カードの選択状態を切り替える
+  function toggleCardSelection(cardId, checkbox) {
+    if (selectedCardIds.has(cardId)) {
+      selectedCardIds.delete(cardId);
+      checkbox.checked = false;
+    } else {
+      selectedCardIds.add(cardId);
+      checkbox.checked = true;
+    }
+    updateMergeButtonVisibility();
+  }
+
+  // 選択したカードを連結する
+  async function mergeSelectedCards() {
+    if (!lastArtsData || selectedCardIds.size < 2) return;
+
+    // 現在の表示順でカードをソート
+    const all = Object.entries(lastArtsData).map(([id, v]) => ({ id, ...v }));
+    const pinned = all.filter(a => a.pinned).sort((a, b) => (b.order || 0) - (a.order || 0));
+    let unpinned = all.filter(a => !a.pinned);
+    if (sortField === 'name') {
+      unpinned.sort((a, b) => {
+        const ta = (htmlToLines(a.content)[0] || '').toLowerCase();
+        const tb = (htmlToLines(b.content)[0] || '').toLowerCase();
+        return sortDir === 'asc' ? ta.localeCompare(tb, 'ja') : tb.localeCompare(ta, 'ja');
+      });
+    } else if (sortField === 'date') {
+      unpinned.sort((a, b) => sortDir === 'asc'
+        ? (a.updatedAt || 0) - (b.updatedAt || 0)
+        : (b.updatedAt || 0) - (a.updatedAt || 0));
+    } else {
+      unpinned.sort((a, b) => {
+        if (a.order !== undefined && b.order !== undefined) return b.order - a.order;
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+    }
+    const sortedArts = [...pinned, ...unpinned];
+
+    // 選択されたカードを表示順で抽出
+    const selectedArts = sortedArts.filter(a => selectedCardIds.has(a.id));
+
+    // 内容を連結（各カードの内容を順に結合）
+    let mergedContent = '';
+    for (const art of selectedArts) {
+      if (art.content) {
+        mergedContent += art.content;
+      }
+    }
+
+    // 新しいカードを作成
+    const newRef = db.ref(`users/${state.uid}/articles/${state.categoryId}`).push();
+    const now = Date.now();
+    await newRef.set({
+      content: mergedContent,
+      createdAt: now,
+      updatedAt: now,
+      order: now
+    });
+
+    // 元のカードを削除
+    const deletePromises = selectedArts.map(art =>
+      db.ref(`users/${state.uid}/articles/${state.categoryId}/${art.id}`).remove()
+    );
+    await Promise.all(deletePromises);
+
+    // 選択状態をクリア
+    selectedCardIds.clear();
+    updateMergeButtonVisibility();
+
+    showToast(`${selectedArts.length}枚のカードを連結しました`);
+  }
+
   function applyCategoryMeta(val) {
     if (!val) return;
     const titleEl = document.getElementById('catTitle');
@@ -1483,6 +1586,10 @@ function renderCategory(container) {
           }, 2000);
         }
         li.innerHTML = `
+          <label class="card-select-checkbox" onclick="event.stopPropagation()">
+            <input type="checkbox" class="card-checkbox" data-card-id="${art.id}">
+            <span class="checkbox-visual"></span>
+          </label>
           ${art.pinned ? '<span class="pin-indicator">📌</span>' : ''}
           <div class="article-inner">
             <div class="article-text">
@@ -1610,6 +1717,15 @@ function renderCategory(container) {
           // トグル動作
           li.classList.toggle('swiped');
         });
+
+        // チェックボックスの状態変更
+        const checkbox = li.querySelector('.card-checkbox');
+        if (checkbox) {
+          checkbox.checked = selectedCardIds.has(art.id);
+          checkbox.addEventListener('change', () => {
+            toggleCardSelection(art.id, checkbox);
+          });
+        }
 
         list.appendChild(li);
       });
@@ -2496,6 +2612,29 @@ function renderEditor(container) {
       saveEditorContentDirectly();
       updateUndoButtonVisibility();
     };
+  }
+
+  // エディターヘッダーをダブルタップ → コンテンツをトップにスクロール
+  // （iOSステータスバータップの代替機能）
+  const editorHeader = container.querySelector('.editor-header');
+  if (editorHeader) {
+    let lastTapTime = 0;
+    editorHeader.addEventListener('touchend', (e) => {
+      // ボタン類のタップは除外
+      if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        // ダブルタップ検出
+        e.preventDefault();
+        const edContent = document.getElementById('edContent');
+        if (edContent) {
+          edContent.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+      }
+    }, { passive: false });
   }
 
   // 閲覧モード中にエディタ本文をタップ → 編集モードに自動切替してカーソル点滅
@@ -3791,7 +3930,7 @@ function insertSingleImageIntoTipTap(data) {
 // 縦画像をグループ（2枚 or 4枚）として1段落にまとめて挿入
 function insertPortraitGroupIntoTipTap(imageData) {
   if (!tiptapEditor) return;
-  const imgHtml = imageData.map(d => `<img class="portrait-img" src="${d.src}">`).join('');
+  const imgHtml = imageData.map(d => `<img class="inserted-img portrait-img" src="${d.src}">`).join('');
   _insertImageBlock(`<p>${imgHtml}</p>`);
 }
 

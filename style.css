@@ -633,6 +633,50 @@ body {
   pointer-events: none;
 }
 
+/* カード選択チェックボックス（連結機能用） */
+.card-select-checkbox {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.card-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.checkbox-visual {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(255,255,255,0.6);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.card-checkbox:checked + .checkbox-visual {
+  background: #a855f7;
+  border-color: #a855f7;
+}
+.card-checkbox:checked + .checkbox-visual::after {
+  content: '✓';
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+}
+/* チェックボックスがある分、article-innerを右にずらす */
+.article-inner {
+  padding-left: 2.5rem !important;
+}
+
 /* ソートバー: 常に濃い暗色背景でテーマ問わず視認性を確保 */
 .sort-bar {
   display: flex;
