@@ -1284,10 +1284,18 @@ function renderCategory(container) {
           </svg>
         </button>
         <h2 class="screen-title" id="catTitle">…</h2>
-        <button class="btn-icon" id="btnMergeCards" title="選択したカードを連結" style="display:none; background:rgba(168,85,247,0.2); border:1px solid #a855f7; color:#a855f7; margin-right:0.5rem;">
+        <button class="btn-icon" id="btnEnterMergeMode" title="連結モード" style="background:rgba(168,85,247,0.2); border:1px solid #a855f7; color:#a855f7; margin-right:0.5rem;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
             <path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>
           </svg>
+        </button>
+        <button class="btn-icon" id="btnCancelMergeMode" title="連結モードを解除" style="display:none; background:rgba(107,114,128,0.3); border:1px solid #6b7280; color:#fff; margin-right:0.5rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <button class="btn-icon" id="btnExecuteMerge" title="選択したカードを連結" style="display:none; background:rgba(34,197,94,0.3); border:1px solid #22c55e; color:#22c55e; margin-right:0.5rem; font-size:0.75rem; font-weight:700;">
+          連結
         </button>
         <button class="btn-icon" id="btnExportAll" title="このカテゴリの全メモを一括エクスポート">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -1308,21 +1316,10 @@ function renderCategory(container) {
   document.getElementById('btnHome').onclick   = () => goTo('home');
   document.getElementById('btnExportAll').onclick = () => showExportAllModal(state.categoryId);
 
-  // 連結ボタン
-  document.getElementById('btnMergeCards').onclick = async () => {
-    if (selectedCardIds.size < 2) {
-      showToast('2枚以上のカードを選択してください');
-      return;
-    }
-    if (categoryLocked) {
-      showToast('このパネルのカードは連結できません');
-      return;
-    }
-    if (!confirm(`${selectedCardIds.size}枚のカードを連結します。\n元のカードは削除されます。\nよろしいですか？`)) {
-      return;
-    }
-    await mergeSelectedCards();
-  };
+  // 連結モードボタン
+  document.getElementById('btnEnterMergeMode').onclick = () => enterMergeMode();
+  document.getElementById('btnCancelMergeMode').onclick = () => exitMergeMode();
+  document.getElementById('btnExecuteMerge').onclick = () => showMergeConfirmDialog();
 
   // ─── ソート状態 ───
   let sortField = 'name'; // 'name' | 'date' | null（デフォルト: 名前昇順）
@@ -1385,14 +1382,41 @@ function renderCategory(container) {
   let catColor = DEFAULT_GRAD;
   // 解説パネル等のロック状態（開発者以外はピン留め・複写・移動・削除を禁止）
   let categoryLocked = false;
-  // カード選択モード（連結機能用）
+  // 連結モード（連結機能用）
+  let mergeMode = false;
   let selectedCardIds = new Set();
 
-  // 連結ボタンの表示状態を更新
-  function updateMergeButtonVisibility() {
-    const btn = document.getElementById('btnMergeCards');
-    if (!btn) return;
-    btn.style.display = selectedCardIds.size >= 2 ? 'flex' : 'none';
+  // 連結モードのUI更新
+  function updateMergeModeUI() {
+    const btnEnter = document.getElementById('btnEnterMergeMode');
+    const btnCancel = document.getElementById('btnCancelMergeMode');
+    const btnExecute = document.getElementById('btnExecuteMerge');
+    const artList = document.getElementById('artList');
+
+    if (btnEnter) btnEnter.style.display = mergeMode ? 'none' : 'flex';
+    if (btnCancel) btnCancel.style.display = mergeMode ? 'flex' : 'none';
+    if (btnExecute) btnExecute.style.display = (mergeMode && selectedCardIds.size >= 2) ? 'flex' : 'none';
+    if (artList) artList.classList.toggle('merge-mode', mergeMode);
+  }
+
+  // 連結モードに入る
+  function enterMergeMode() {
+    if (categoryLocked) {
+      showToast('このパネルのカードは連結できません');
+      return;
+    }
+    mergeMode = true;
+    selectedCardIds.clear();
+    updateMergeModeUI();
+  }
+
+  // 連結モードを解除
+  function exitMergeMode() {
+    mergeMode = false;
+    selectedCardIds.clear();
+    // チェックボックスをすべてオフにする
+    document.querySelectorAll('.card-checkbox').forEach(cb => cb.checked = false);
+    updateMergeModeUI();
   }
 
   // カードの選択状態を切り替える
@@ -1404,11 +1428,11 @@ function renderCategory(container) {
       selectedCardIds.add(cardId);
       checkbox.checked = true;
     }
-    updateMergeButtonVisibility();
+    updateMergeModeUI();
   }
 
   // 選択したカードを連結する
-  async function mergeSelectedCards() {
+  async function mergeSelectedCards(deleteOriginals = true) {
     if (!lastArtsData || selectedCardIds.size < 2) return;
 
     // 現在の表示順でカードをソート
@@ -1436,7 +1460,7 @@ function renderCategory(container) {
     // 選択されたカードを表示順で抽出
     const selectedArts = sortedArts.filter(a => selectedCardIds.has(a.id));
 
-    // 内容を連結（各カードの内容を順に結合）
+    // 内容を連結（各カードの内容を順に結合、画像・YouTube等も全て引き継ぐ）
     let mergedContent = '';
     for (const art of selectedArts) {
       if (art.content) {
@@ -1454,17 +1478,58 @@ function renderCategory(container) {
       order: now
     });
 
-    // 元のカードを削除
-    const deletePromises = selectedArts.map(art =>
-      db.ref(`users/${state.uid}/articles/${state.categoryId}/${art.id}`).remove()
-    );
-    await Promise.all(deletePromises);
+    // deleteOriginals が true の場合のみ元のカードを削除
+    if (deleteOriginals) {
+      const deletePromises = selectedArts.map(art =>
+        db.ref(`users/${state.uid}/articles/${state.categoryId}/${art.id}`).remove()
+      );
+      await Promise.all(deletePromises);
+    }
 
-    // 選択状態をクリア
-    selectedCardIds.clear();
-    updateMergeButtonVisibility();
+    // 連結モードを解除
+    exitMergeMode();
 
     showToast(`${selectedArts.length}枚のカードを連結しました`);
+  }
+
+  // 連結確認ダイアログを表示
+  function showMergeConfirmDialog() {
+    if (selectedCardIds.size < 2) {
+      showToast('2枚以上のカードを選択してください');
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width: 340px;">
+        <h3 style="margin-bottom: 1rem; color: #fff; font-weight: 700;">カードを連結</h3>
+        <p style="margin-bottom: 1rem; color: var(--text-sub); font-size: 0.9rem;">
+          ${selectedCardIds.size}枚のカードを1つに連結します。<br>
+          画像・YouTube動画も全て引き継がれます。
+        </p>
+        <label style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem; cursor: pointer; color: #fff;">
+          <input type="checkbox" id="chkDeleteOriginals" checked style="width: 18px; height: 18px; accent-color: #a855f7;">
+          <span>元のカードを削除する</span>
+        </label>
+        <div style="display: flex; gap: 0.75rem;">
+          <button class="btn-secondary" id="btnMergeCancel" style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 700; color: #fff;">キャンセル</button>
+          <button class="btn-primary" id="btnMergeConfirm" style="flex: 1; padding: 0.75rem; border-radius: 8px; font-weight: 700; background: #a855f7; color: #fff; border: none;">連結する</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('modal-root').appendChild(modal);
+
+    modal.querySelector('#btnMergeCancel').onclick = () => modal.remove();
+    modal.querySelector('#btnMergeConfirm').onclick = async () => {
+      const deleteOriginals = modal.querySelector('#chkDeleteOriginals').checked;
+      modal.remove();
+      await mergeSelectedCards(deleteOriginals);
+    };
+    modal.onclick = (e) => {
+      if (e.target === modal) modal.remove();
+    };
   }
 
   function applyCategoryMeta(val) {
@@ -3931,7 +3996,20 @@ function insertSingleImageIntoTipTap(data) {
 function insertPortraitGroupIntoTipTap(imageData) {
   if (!tiptapEditor) return;
   const imgHtml = imageData.map(d => `<img class="inserted-img portrait-img" src="${d.src}">`).join('');
+  console.log('[DEBUG] insertPortraitGroupIntoTipTap - input HTML:', `<p>${imgHtml}</p>`);
   _insertImageBlock(`<p>${imgHtml}</p>`);
+  // 挿入後のDOM構造を確認
+  setTimeout(() => {
+    const pm = tiptapEditor?.view?.dom;
+    if (pm) {
+      const portraitPs = pm.querySelectorAll('p:has(img.portrait-img)');
+      console.log('[DEBUG] After insert - paragraphs with portrait-img:', portraitPs.length);
+      portraitPs.forEach((p, i) => {
+        console.log(`[DEBUG] p[${i}] innerHTML:`, p.innerHTML);
+        console.log(`[DEBUG] p[${i}] children:`, Array.from(p.children).map(c => c.tagName + '.' + c.className));
+      });
+    }
+  }, 100);
 }
 
 // 複数画像を向き・枚数に応じてレイアウト分けして挿入

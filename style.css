@@ -633,17 +633,21 @@ body {
   pointer-events: none;
 }
 
-/* カード選択チェックボックス（連結機能用） */
+/* カード選択チェックボックス（連結機能用・連結モード時のみ表示） */
 .card-select-checkbox {
   position: absolute;
   top: 50%;
   left: 8px;
   transform: translateY(-50%);
   z-index: 5;
-  display: flex;
+  display: none; /* デフォルトは非表示 */
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+/* 連結モード時のみチェックボックスを表示 */
+.article-list.merge-mode .card-select-checkbox {
+  display: flex;
 }
 .card-checkbox {
   position: absolute;
@@ -672,9 +676,9 @@ body {
   font-size: 14px;
   font-weight: bold;
 }
-/* チェックボックスがある分、article-innerを右にずらす */
-.article-inner {
-  padding-left: 2.5rem !important;
+/* 連結モード時のみarticle-innerを右にずらす */
+.article-list.merge-mode .article-item .article-inner {
+  padding-left: 2.75rem;
 }
 
 /* ソートバー: 常に濃い暗色背景でテーマ問わず視認性を確保 */
@@ -1758,17 +1762,24 @@ img.inserted-img.landscape-img {
 /* ── 縦画像グループレイアウト ── */
 
 /* 縦画像を含む段落: 枚数問わず flex で2列横並び */
-.editor-content p:has(> img.portrait-img) {
+/* NodeViewが span.img-node-view > img 構造を作るため、それに対応 */
+.editor-content p:has(img.portrait-img) {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin: 0.75rem 0;
 }
 
-/* flex段落内の縦画像: 50%幅固定（1枚でも2枚でも同サイズ） */
-.editor-content p:has(> img.portrait-img) > img.inserted-img.portrait-img {
+/* flex段落内の縦画像コンテナ: 50%幅固定 */
+.editor-content p:has(img.portrait-img) > .img-node-view:has(img.portrait-img) {
   flex: 0 0 calc(50% - 2px);
   width: calc(50% - 2px);
+  display: block;
+}
+
+/* flex段落内の縦画像: コンテナ内で100%幅 */
+.editor-content p:has(img.portrait-img) > .img-node-view > img.inserted-img.portrait-img {
+  width: 100%;
   height: auto;
   max-height: 66vh;
   margin: 0;
