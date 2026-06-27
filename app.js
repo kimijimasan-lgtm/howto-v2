@@ -789,7 +789,9 @@ function renderHome(container) {
       ${_homeUser?.isAnonymous ? `<a href="https://apps100kin.web.app/" target="_blank" class="blog-link-fab" id="btnBlogLink" title="100均アプリブログ">
         <span style="font-size:1.1rem;line-height:1;">📱</span>
         <span style="font-size:0.7rem;font-weight:600;white-space:nowrap;">100均</span>
-      </a>` : ''}
+      </a>` : `<a href="shareddocuments://" class="files-link-fab" id="btnFilesLink" title="ファイルアプリを開く">
+        <span style="font-size:1.3rem;line-height:1;">📁</span>
+      </a>`}
     </div>`;
 
   document.getElementById('btnAddCat').onclick = () => showCategoryModal();
