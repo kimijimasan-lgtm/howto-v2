@@ -688,14 +688,19 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=711`
+- `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=851`
+- `app.js?v=854`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-06-28）
+
+- **カード内容が別カードに置き換わるバグの根本修正（完了）**: `setTimeout`内の遅延処理（カット処理500ms、デバウンス保存1000ms）で`state.articleId`を直接参照していたため、遅延中に画面遷移が発生すると別カードに保存されるバグがあった。処理開始時に`articleId`/`categoryId`をキャプチャし、遅延処理実行時に一致確認→不一致なら処理中断するよう修正
+- **ファイルアプリボタン追加（完了）**: パネル一覧画面左下に📁ボタン（赤背景・白CSSフォルダアイコン）を追加。正規ログインユーザーのみ表示。`shareddocuments://`でiPhoneのファイルアプリを開く
 
 ## 直近の対応（2026-06-27）
 

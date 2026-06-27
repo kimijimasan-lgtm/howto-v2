@@ -2891,6 +2891,10 @@ function renderEditor(container) {
       const selectedParas = Array.from(pm.querySelectorAll('p.para-selected, h1.para-selected, h2.para-selected, [data-youtube-video].para-selected'));
       if (selectedParas.length === 0) return;
 
+      // 【重要】カット開始時のカードIDをキャプチャ（500ms後に別カードに保存されるバグを防ぐ）
+      const cutStartArticleId = state.articleId;
+      const cutStartCategoryId = state.categoryId;
+
       // 各選択段落に一意のIDを付与（確実に削除対象を特定するため）
       const cutId = 'cut-' + Date.now();
       selectedParas.forEach((el, i) => el.setAttribute('data-cut-id', cutId + '-' + i));
@@ -2915,6 +2919,16 @@ function renderEditor(container) {
       selectedParas.forEach(p => p.classList.add('para-cut-animating'));
 
       setTimeout(() => {
+        // 【重要】カット処理中に別のカードに移動した場合は処理を中断
+        // 500msの間に画面遷移が発生すると、別カードのデータを破壊する可能性がある
+        if (state.articleId !== cutStartArticleId || state.categoryId !== cutStartCategoryId) {
+          console.log('カット処理中断: カードが変更されました', {
+            開始時: cutStartArticleId,
+            現在: state.articleId
+          });
+          return;
+        }
+
         // data-cut-idを持つ要素のみを削除（確実に対象を特定）
         pm.querySelectorAll(`[data-cut-id^="${cutId}"]`).forEach(el => {
           if (el.parentNode) el.remove();
@@ -3560,10 +3574,22 @@ function renderEditor(container) {
       if (status) { status.textContent = '編集中…'; status.className = 'save-status editing'; }
       updateUndoButtonVisibility();
       clearTimeout(saveTimer);
+      // 【重要】保存処理開始時のカードIDをキャプチャ（1秒後に別カードに保存されるバグを防ぐ）
+      const saveTargetArticleId = state.articleId;
+      const saveTargetCategoryId = state.categoryId;
+      const saveTargetUid = state.uid;
       saveTimer = setTimeout(async () => {
+        // 【重要】保存処理中に別のカードに移動した場合は保存をスキップ
+        if (state.articleId !== saveTargetArticleId || state.categoryId !== saveTargetCategoryId) {
+          console.log('デバウンス保存スキップ: カードが変更されました', {
+            開始時: saveTargetArticleId,
+            現在: state.articleId
+          });
+          return;
+        }
         try {
           const content = stripTrailingEmptyP(restoreOriginalSrcs(editor.getHTML(), origDataUrls));
-          await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).update({
+          await db.ref(`users/${saveTargetUid}/articles/${saveTargetCategoryId}/${saveTargetArticleId}`).update({
             content, updatedAt: Date.now()
           });
           const s = document.getElementById('saveStatus');
