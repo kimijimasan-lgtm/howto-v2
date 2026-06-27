@@ -637,13 +637,14 @@ body {
 .card-select-checkbox {
   position: absolute;
   top: 50%;
-  left: 8px;
+  left: 6px;
   transform: translateY(-50%);
   z-index: 5;
   display: none; /* デフォルトは非表示 */
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  padding: 8px; /* タップ領域を広げる */
 }
 /* 連結モード時のみチェックボックスを表示 */
 .article-list.merge-mode .card-select-checkbox {
@@ -656,11 +657,11 @@ body {
   height: 0;
 }
 .checkbox-visual {
-  width: 22px;
-  height: 22px;
-  border: 2px solid rgba(255,255,255,0.6);
-  border-radius: 5px;
-  background: rgba(0,0,0,0.3);
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255,255,255,0.7);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -673,12 +674,12 @@ body {
 .card-checkbox:checked + .checkbox-visual::after {
   content: '✓';
   color: white;
-  font-size: 14px;
+  font-size: 20px;
   font-weight: bold;
 }
 /* 連結モード時のみarticle-innerを右にずらす */
 .article-list.merge-mode .article-item .article-inner {
-  padding-left: 2.75rem;
+  padding-left: 3.5rem;
 }
 
 /* ソートバー: 常に濃い暗色背景でテーマ問わず視認性を確保 */
