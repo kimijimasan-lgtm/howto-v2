@@ -688,14 +688,21 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=705`
-- `tiptap.bundle.js?v=5`
-- `app.js?v=844`
+- `style.css?v=711`
+- `tiptap.bundle.js?v=8`
+- `app.js?v=851`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-06-27）
+
+- **YouTube削除ボタンをNodeView方式から動的生成方式に戻す（完了）**: NodeView方式ではiPhone SafariでYouTube動画が表示されない（空の四角い枠のみ）問題が発生。元の`@tiptap/extension-youtube`を使い、`refreshYoutubeDeleteButtons()`で動的に削除ボタンを追加する方式に戻した。`data-yt-del-btn`属性で重複を防止
+- **カード連結機能実装（完了）**: カード一覧トップバーに「連結」ボタンを追加。連結モードに入るとチェックボックス（32px、紫）が表示され、2枚以上選択して「連結」タップで確認ダイアログ→新規カードに内容を結合。関連関数: `enterMergeMode()`, `exitMergeMode()`, `mergeSelectedCards()`, `showMergeConfirmDialog()`
+- **トップバーダブルタップでトップスクロール（完了）**: カード編集画面のトップバー（`.editor-header`）をダブルタップすると`edContent.scrollTop = 0`でカード先頭にスクロール。iOSステータスバータップの代替機能。300ms以内の連続タップを検知
+- **100kin-blogにスクリーンショット追加（完了）**: `images/`フォルダに10枚のスクリーンショットを追加し、`app-detail.html`の絵文字プレースホルダーを実際の画像スライドショーに変更。`STATIC_SLIDES`配列で静的に管理（Firestore非依存）
 
 ## 直近の対応（2026-06-26）
 
@@ -710,14 +717,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
   - グローバル関数`window._showToast`/`window._setLastDeletedContent`を公開
 - **編集モード時のProseMirrorにmode-editクラス追加（完了）**: `setEditorMode('edit')`で`mode-view`を削除するだけで`mode-edit`を追加していなかった問題を修正
 - **キーボード表示時のクリップアイコン（FAB）表示改善（完了）**: TipTapのfocus/blurイベント、setEditorModeからも`updateEditorHeight()`を呼び出すよう修正
-- **YouTube削除ボタンを画像と同じ方式に統一（作業中）**: 編集モード時のみ表示、CSSクラス`.yt-del-btn-static`で制御。実装済みだが動作確認が必要
 
 ## 次のステップ
 
-1. **YouTube削除ボタンの動作確認** - 編集モードで表示されるか実機確認
+1. **100kin-blogの404エラーを解消する** - GitHub Pages設定を確認、imagesフォルダがデプロイされているか確認
 2. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・URL差し替え
-3. **100kin-blogにスクリーンショット追加** - 絵文字プレースホルダーを実際の画像に差し替え
-4. **決済完了後のGoogleログイン促進モーダル実装** - `?payment=success`で戻った際のモーダル表示
+3. **決済完了後のGoogleログイン促進モーダル実装** - `?payment=success`で戻った際のモーダル表示
 
 ## 直近の対応（2026-06-24）
 
@@ -812,13 +817,15 @@ howto-v2側で `?guest=true` パラメータを検出すると、未ログイン
 
 ## 次のステップ
 
-### 1. カラーパレット整理の確認
-- 実機でパネル色選択を開いて30色が正しく表示されるか確認
+### 1. 100kin-blogの404エラーを解消する
+- GitHub Pages設定を確認
+- imagesフォルダがデプロイされているか確認
+- 画像パスが正しいか確認
 
 ### 2. Stripeを本番環境に切り替える
 - 本番用Stripeアカウントで価格・Payment Linkを作成
 - howto-v2の `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
 - 100kin-blogの購入ボタンURLも本番用に差し替え
 
-### 3. スクリーンショット追加
-- 100kin-blogの絵文字プレースホルダーを実際のスクリーンショット画像に差し替え
+### 3. 決済完了後のGoogleログイン促進モーダル実装
+- `?payment=success`で戻った際のモーダル表示
