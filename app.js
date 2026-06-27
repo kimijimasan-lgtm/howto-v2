@@ -790,7 +790,7 @@ function renderHome(container) {
         <span style="font-size:1.1rem;line-height:1;">📱</span>
         <span style="font-size:0.7rem;font-weight:600;white-space:nowrap;">100均</span>
       </a>` : `<a href="shareddocuments://" class="files-link-fab" id="btnFilesLink" title="ファイルアプリを開く">
-        <span style="font-size:1.3rem;line-height:1;">📁</span>
+        <span class="folder-icon"></span>
       </a>`}
     </div>`;
 

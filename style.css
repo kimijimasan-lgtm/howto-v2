@@ -2445,12 +2445,11 @@ body.yt-fullscreen-active {
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  box-shadow: 0 3px 12px rgba(99, 102, 241, 0.4);
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  box-shadow: 0 3px 12px rgba(239, 68, 68, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   text-decoration: none;
   cursor: pointer;
   z-index: 1000;
@@ -2460,7 +2459,24 @@ body.yt-fullscreen-active {
 }
 .files-link-fab:active {
   transform: scale(0.93);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+.files-link-fab .folder-icon {
+  position: relative;
+  width: 20px;
+  height: 16px;
+  background: #fff;
+  border-radius: 0 3px 3px 3px;
+}
+.files-link-fab .folder-icon::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 8px;
+  height: 5px;
+  background: #fff;
+  border-radius: 2px 2px 0 0;
 }
 
 /* 検索モーダル */
