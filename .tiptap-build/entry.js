@@ -15,13 +15,18 @@ const CustomYoutubeExtension = Youtube.extend({
       container.setAttribute('data-youtube-video', '');
       container.style.position = 'relative';
 
-      // iframe要素
+      // iframe要素（Safari/iOS互換性のため属性を正しく設定）
       const iframe = document.createElement('iframe');
       iframe.src = node.attrs.src;
       iframe.width = node.attrs.width || 640;
       iframe.height = node.attrs.height || 480;
-      iframe.allowFullscreen = true;
-      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      // Safari用: setAttribute()でHTML属性として設定する必要がある
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      iframe.setAttribute('frameborder', '0');
+      // referrerpolicy: Safari対応
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      // スタイル
       iframe.style.border = '0';
       iframe.style.width = '100%';
       iframe.style.aspectRatio = '16/9';

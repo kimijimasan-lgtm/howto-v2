@@ -3464,6 +3464,23 @@ function renderEditor(container) {
     onUpdate: ({ editor }) => {
       if (isComposing || isRemovingTrailingP) return;
 
+      // YouTube動画のNodeView再レンダリング（貼り付け直後の表示崩れ対策）
+      // TipTapのペーストルールで挿入されたYouTube動画が正しくNodeViewでレンダリングされるよう、
+      // 現在のコンテンツを再設定して強制的に再レンダリングする
+      const pm = editor.view.dom;
+      const ytNodes = pm.querySelectorAll('[data-youtube-video]:not(.yt-node-view)');
+      if (ytNodes.length > 0) {
+        setTimeout(() => {
+          if (tiptapEditor && !tiptapEditor.isDestroyed) {
+            const currentHtml = tiptapEditor.getHTML();
+            const pos = tiptapEditor.state.selection.from;
+            tiptapEditor.commands.setContent(currentHtml, false);
+            try { tiptapEditor.commands.setTextSelection(Math.min(pos, tiptapEditor.state.doc.content.size)); } catch (_) {}
+          }
+        }, 50);
+        return;
+      }
+
       // 1行目が空の状態から文字を入力した瞬間にH1を自動適用
       if (!_autoH1Done && _firstLineWasEmpty && state.editorMode === 'edit') {
         const firstNode = editor.state.doc.firstChild;

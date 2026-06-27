@@ -18881,8 +18881,10 @@ img.ProseMirror-separator {
         iframe.src = node.attrs.src;
         iframe.width = node.attrs.width || 640;
         iframe.height = node.attrs.height || 480;
-        iframe.allowFullscreen = true;
-        iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+        iframe.setAttribute("allowfullscreen", "");
+        iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+        iframe.setAttribute("frameborder", "0");
+        iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
         iframe.style.border = "0";
         iframe.style.width = "100%";
         iframe.style.aspectRatio = "16/9";
