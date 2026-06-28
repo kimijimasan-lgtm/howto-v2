@@ -690,7 +690,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=854`
+- `app.js?v=856`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -700,7 +700,10 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 ## 直近の対応（2026-06-28）
 
 - **カード内容が別カードに置き換わるバグの根本修正（完了）**: `setTimeout`内の遅延処理（カット処理500ms、デバウンス保存1000ms）で`state.articleId`を直接参照していたため、遅延中に画面遷移が発生すると別カードに保存されるバグがあった。処理開始時に`articleId`/`categoryId`をキャプチャし、遅延処理実行時に一致確認→不一致なら処理中断するよう修正
+- **Gemini貼り付け時のMarkdown自動除去（実装済み）**: `cleanMarkdownForPaste()`関数で見出し（`##`等）、太字（`**text**`）、水平線（`---`）を自動削除。NotebookLMの引用番号`[1]`等も同様に除去
+- **ゲストユーザーへのアナウンス統一（完了）**: 全ての制限ダイアログ・ログアウト確認を「100円でアップグレードすると無制限で使えます。」に統一。ログアウト確認ダイアログのボタンも「100円でアップグレード」に変更
 - **ファイルアプリボタン追加（完了）**: パネル一覧画面左下に📁ボタン（赤背景・白CSSフォルダアイコン）を追加。正規ログインユーザーのみ表示。`shareddocuments://`でiPhoneのファイルアプリを開く
+- **100kin-blog画像配置修正（完了）**: トップページに4枚（IMG_9266〜9270）、詳細ページに6枚（IMG_9271〜9277）を配置。`.nojekyll`追加で404エラー解消
 
 ## 直近の対応（2026-06-27）
 
@@ -725,9 +728,8 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 次のステップ
 
-1. **100kin-blogの404エラーを解消する** - GitHub Pages設定を確認、imagesフォルダがデプロイされているか確認
-2. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・URL差し替え
-3. **決済完了後のGoogleログイン促進モーダル実装** - `?payment=success`で戻った際のモーダル表示
+1. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・URL差し替え
+2. **決済完了後のGoogleログイン促進モーダル実装** - `?payment=success`で戻った際のモーダル表示
 
 ## 直近の対応（2026-06-24）
 
