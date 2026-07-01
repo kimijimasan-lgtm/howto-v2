@@ -200,6 +200,31 @@ function isLockedCategory(catData) {
   return catData.locked === true || catData.name === '解説';
 }
 
+// ── 無課金ユーザーの作成上限（累計カウント方式） ─────────────
+// 上限は「現在の個数」ではなく「これまでに作成した累計数」で判定する。
+// 削除して枠を空けて作り直す抜け道を防ぐため、カウントは削除しても減らない。
+// 保存先: Realtime Database `users/{uid}/stats/`（同一アカウントなら端末をまたいで維持）。
+// テンプレート由来の初期パネル・カードや、パネル新規作成時・最後の1枚削除時に
+// システムが自動補充する空カードはカウント対象外（ユーザーが明示的に作成した分のみ加算）。
+const FREE_PANEL_CREATE_LIMIT = 3;
+const FREE_CARD_CREATE_LIMIT = 7;
+
+function isCreateLimitedUser() {
+  // 100円決済済み（isPremium）と開発者のみ無制限。ゲスト・無料Googleログインは制限対象
+  return !state.isPremium && !isDeveloperAccount();
+}
+
+async function getCreatedCount(key) {
+  const snap = await db.ref(`users/${state.uid}/stats/${key}`).once('value');
+  const v = snap.val();
+  return typeof v === 'number' ? v : 0;
+}
+
+function bumpCreatedCount(key) {
+  db.ref(`users/${state.uid}/stats/${key}`).transaction(v => (v || 0) + 1)
+    .catch(err => console.error('stats update failed:', err));
+}
+
 // ── 状態管理 ─────────────────────────────────
 let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view', isPremium: false, isAnonymous: false };
 let activePasteMarkerP = null;
@@ -812,7 +837,7 @@ function renderHome(container) {
 
   const guestUpgradeBtn = document.getElementById('btnGuestUpgradeHint');
   if (guestUpgradeBtn) {
-    guestUpgradeBtn.onclick = () => showLimitModal('100円でアップグレードすると無制限で使えます。');
+    guestUpgradeBtn.onclick = () => showGoogleSyncModal();
   }
 
   const signoutBtn = document.getElementById('btnSignOut');
@@ -1234,15 +1259,15 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
     if (catId) {
       await db.ref(`users/${state.uid}/categories/${catId}`).update({ name, color: selectedGrad });
     } else {
-      // ゲストのパネル上限チェック（3個まで）
-      if (!catId && state.isAnonymous) {
-        const snapshot = await db.ref(`users/${state.uid}/categories`).once('value');
-        const currentCount = snapshot.exists() ? Object.keys(snapshot.val()).length : 0;
-        if (currentCount >= 3) {
+      // 無課金ユーザーのパネル作成上限チェック（累計3つまで・削除しても減らない）
+      if (isCreateLimitedUser()) {
+        const created = await getCreatedCount('panelsCreated');
+        if (created >= FREE_PANEL_CREATE_LIMIT) {
           close();
-          showLimitModal('ゲストはパネル3つまでです。\n100円でアップグレードすると無制限で使えます。');
+          showLimitModal(`パネルの作成は累計${FREE_PANEL_CREATE_LIMIT}つまでです。\n100円で無制限に使えます。`);
           return;
         }
+        bumpCreatedCount('panelsCreated');
       }
       const newCatRef = db.ref(`users/${state.uid}/categories`).push();
       const newCatId = newCatRef.key;
@@ -2381,14 +2406,14 @@ function showExportCompleteDialog(panelCount, cardCount) {
 }
 
 async function createArticle(noTransition = false) {
-  // ゲストのカード上限チェック（6枚まで）
-  if (state.isAnonymous) {
-    const snap = await db.ref(`users/${state.uid}/articles/${state.categoryId}`).once('value');
-    const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-    if (count >= 6) {
-      showLimitModal('ゲストはパネルごとに6枚までです。\n100円でアップグレードすると無制限で使えます。');
+  // 無課金ユーザーのカード作成上限チェック（累計7枚まで・削除しても減らない）
+  if (isCreateLimitedUser()) {
+    const created = await getCreatedCount('cardsCreated');
+    if (created >= FREE_CARD_CREATE_LIMIT) {
+      showLimitModal(`カードの作成は累計${FREE_CARD_CREATE_LIMIT}枚までです。\n100円で無制限に使えます。`);
       return;
     }
+    bumpCreatedCount('cardsCreated');
   }
 
   // 通信を待たずにクライアント側で即座に一意なID（キー）を生成（遅延ゼロ）
@@ -4095,6 +4120,15 @@ async function deleteArticleSilently() {
 
 // 既存のメモを複製してコピー元のすぐ上に挿入する
 async function duplicateArticle(artId, categoryId) {
+  // 複写もカード作成として累計にカウントする（作成上限の抜け道防止）
+  if (isCreateLimitedUser()) {
+    const created = await getCreatedCount('cardsCreated');
+    if (created >= FREE_CARD_CREATE_LIMIT) {
+      showLimitModal(`カードの作成は累計${FREE_CARD_CREATE_LIMIT}枚までです。\n100円で無制限に使えます。`);
+      return;
+    }
+    bumpCreatedCount('cardsCreated');
+  }
   try {
     // 1. 対象カードのデータを取得
     const snap = await db.ref(`users/${state.uid}/articles/${categoryId}/${artId}`).once('value');
@@ -5506,6 +5540,59 @@ function showLimitModal(message) {
     root.innerHTML = '';
     startStripePayment();
   };
+}
+
+// Googleログインの案内モーダル（データ同期用・上限解除とは別軸）
+// ゲストuidをそのままGoogleアカウントに昇格（linkWithPopup）するため、
+// 作成済みのパネル・カード・累計作成数・isPremiumフラグはすべて引き継がれる。
+function showGoogleSyncModal() {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-overlay" id="googleSyncModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
+      <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+        <div style="font-size:2.5rem;margin-bottom:0.75rem;">☁️</div>
+        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;white-space:pre-line;">Googleアカウントでログインすると\nPCとスマホでデータが同期され、\n端末を変えてもデータが消えません。\n作成したデータはそのまま引き継がれます。</p>
+        <button id="btnGoogleSync" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">Googleでログイン</button>
+        <button id="btnGoogleSyncClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">閉じる</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('btnGoogleSyncClose').onclick = () => { root.innerHTML = ''; };
+  document.getElementById('googleSyncModal').onclick = (e) => { if (e.target.id === 'googleSyncModal') root.innerHTML = ''; };
+  document.getElementById('btnGoogleSync').onclick = async () => {
+    root.innerHTML = '';
+    await linkGuestToGoogle();
+  };
+}
+
+// ゲスト（匿名）アカウントをGoogleアカウントに昇格する
+async function linkGuestToGoogle() {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try {
+    await user.linkWithPopup(provider);
+    state.isAnonymous = false;
+    goTo('home');
+    showToast('Googleアカウントと連携しました');
+  } catch (err) {
+    if (err.code === 'auth/credential-already-in-use') {
+      // このGoogleアカウントは既に別ユーザーとして存在 → ゲストデータは引き継げない
+      if (confirm('このGoogleアカウントは既にご利用実績があります。\nゲストで作成したデータは引き継がれませんが、ログインしますか？')) {
+        try {
+          await firebase.auth().signInWithCredential(err.credential);
+        } catch (e) {
+          console.error('Google Sign-In Error:', e);
+          showToast('ログインに失敗しました');
+        }
+      }
+    } else if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+      await user.linkWithRedirect(provider).catch(() => {});
+    } else if (err.code !== 'auth/popup-closed-by-user') {
+      console.error('Google Link Error:', err);
+      showToast('ログインに失敗しました');
+    }
+  }
 }
 
 // Stripe Payment Linkで決済を開始

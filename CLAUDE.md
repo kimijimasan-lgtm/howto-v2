@@ -210,13 +210,11 @@ let state = {
 ### ★アイコン（ゲストのみ表示）
 - ホーム画面ヘッダーに表示（`_homeUser?.isAnonymous` の場合）
 - `title="Googleアカウントでログイン"`
-- クリック → `showLimitModal('Googleアカウントでログインすると\nパネル・メモが無制限に使えます。\nゲストのデータはそのまま引き継がれます。')`
+- クリック → `showGoogleSyncModal()`（データ同期の案内。詳細は「制限・課金」セクションの「Googleログイン案内」参照）
 
 ### アップグレードボタン（`showLimitModal` 内）の動作
-- **ゲスト**: confirm「ゲストのデータをGoogleアカウントに引き継ぎます…」→ `linkWithPopup(GoogleAuthProvider)`
-  - `auth/credential-already-in-use` → **データ引き継ぎ不可の警告**ダイアログ → 確認後 `signInWithCredential`
-- **正規ユーザー**: `https://buy.stripe.com/YOUR_PAYMENT_LINK_ID` を開く（現在プレースホルダー）
-  - ただし正規ユーザーには上限がないため、このルートに到達するケースは事実上ない
+- ユーザー種別を問わず `startStripePayment()` で Stripe Payment Link（100円・現在テストリンク）へ遷移
+- 決済完了後は `handlePaymentCallback()` が `users/{uid}/isPremium = true` を設定 → 無制限化
 
 ## 新規ユーザーの初期テンプレート機能
 
@@ -253,25 +251,36 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 
 ## 制限・課金
 
-### ユーザー種別と制限（2026-06 改定）
+### ユーザー種別と制限（2026-07-02 改定・累計カウント方式）
 
-| 種別 | パネル上限 | カード上限/パネル |
-|------|-----------|----------------|
-| ゲスト（匿名・`isAnonymous`）| 3つ | 6枚 |
-| 正規ログイン（Google）| **無制限** | **無制限** |
-| 課金済み（`isPremium: true`）| 無制限 | 無制限 |
+| 種別 | パネル作成上限 | カード作成上限 |
+|------|-------------|-------------|
+| ゲスト（匿名）| 累計3つ | 累計7枚 |
+| 無料Googleログイン | 累計3つ | 累計7枚 |
+| 課金済み（`isPremium: true`）| **無制限** | **無制限** |
+| 開発者（`kimijimasan@gmail.com`）| 無制限 | 無制限 |
 
-- 制限チェックの判定条件は `!state.isPremium` から **`state.isAnonymous`** に変更
-- 正規ログイン（Google）ユーザーは課金不要で完全無制限
+- 判定条件は `isCreateLimitedUser()` = `!state.isPremium && !isDeveloperAccount()`（**無料Googleログインも制限対象**。旧仕様の「Googleログインで無制限」は廃止）
+- **累計カウント方式**: 上限は「現在の個数」ではなく「これまでに作成した累計数」で判定。削除してもカウントは減らない（「削除して枠を空けて作り直す」抜け道の防止）
+- カウント保存先: RTDB `users/{uid}/stats/panelsCreated` / `users/{uid}/stats/cardsCreated`（`transaction` でインクリメント）
+- カウント対象はユーザーが明示的に作成した分のみ。**テンプレート由来の初期データ、パネル新規作成時の自動カード、最後の1枚削除時の自動補充カードはカウントしない**
+- 定数: `FREE_PANEL_CREATE_LIMIT = 3` / `FREE_CARD_CREATE_LIMIT = 7`
 
-### 制限チェックの実装箇所
-- **パネル**: `showCategoryModal` の保存ボタン → `state.isAnonymous && categories >= 3` で `showLimitModal()`
-- **カード**: `createArticle()` 冒頭 → `state.isAnonymous && articles >= 6` で `showLimitModal()`
+### 制限チェックの実装箇所（3箇所）
+- **パネル**: `showCategoryModal` の保存ボタン（新規作成分岐のみ）
+- **カード**: `createArticle()` 冒頭
+- **カード複写**: `duplicateArticle()` 冒頭（複写もカード作成としてカウント。抜け道防止）
+- カード移動（`showMoveModal`）は総数が増えないためチェックなし
 
 ### `showLimitModal(message)`
-オレンジ→ピンクの「アップグレードする」ボタン + 「閉じる」ボタン。  
-**Stripe 課金は未実装**（`paymentUrl = 'https://buy.stripe.com/YOUR_PAYMENT_LINK_ID'` のプレースホルダー）。  
-正規ユーザーに上限がないため、Stripe経路に到達するケースは現在ない。
+上限到達時の案内。「100円で無制限に使えます」→「アップグレードする（100円）」ボタン → `startStripePayment()`（Stripe Payment Link、現在テストリンク）。
+
+### Googleログイン案内（データ同期用・上限解除とは別軸）
+- ホーム画面の★アイコン（ゲストのみ表示）→ `showGoogleSyncModal()`
+- 文言は「PCとスマホでデータが同期される」趣旨のみ。**無制限になるとは案内しない**（無料Googleログインは制限対象のため）
+- 「Googleでログイン」→ `linkGuestToGoogle()`: `linkWithPopup` でゲストuidをそのままGoogleアカウントに昇格（パネル・カード・累計カウント・isPremiumすべて引き継がれる）
+  - `auth/credential-already-in-use`（既存Googleユーザー）→ データ引き継ぎ不可の confirm 後 `signInWithCredential`
+  - popup ブロック時は `linkWithRedirect` にフォールバック
 
 ## UI詳細
 
