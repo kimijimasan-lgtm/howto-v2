@@ -592,8 +592,13 @@ function cleanMarkdownForPaste(text) {
       continue;
     }
 
-    // 見出し: # ## ### ... → テキスト部分のみ
-    line = line.replace(/^#{1,6}\s+/, '');
+    // 見出し: # ## ### ... → H2変換用マーカー(\x01)で保持
+    let isHeading = false;
+    const headingMatch = line.match(/^#{1,6}\s+(.*)/);
+    if (headingMatch) {
+      isHeading = true;
+      line = headingMatch[1];
+    }
 
     // 太字: **text** / __text__ → text（先に処理）
     line = line.replace(/\*\*(.+?)\*\*/g, '$1');
@@ -621,7 +626,7 @@ function cleanMarkdownForPaste(text) {
     // 水平線: --- / *** / ___ → 除去（行全体）
     if (/^[\-\*_]{3,}\s*$/.test(line.trim())) continue;
 
-    result.push(line);
+    result.push(isHeading ? '\x01' + line : line);
   }
 
   // NotebookLM等の引用番号 [1] [1,2] [1, 2] [1, 2, 3] などを除去
@@ -3378,14 +3383,19 @@ function renderEditor(container) {
         if (!cleaned.trim()) return true;
 
         // 改行ごとに段落へ変換（空行は除去して詰める）
+        // \x01 プレフィックス付き行は見出し（H2）として変換
         const lines = cleaned.split('\n');
         const html = lines
           .filter(l => l.trim() !== '')
           .map(l => {
+            const isH = l.startsWith('\x01');
+            const raw = isH ? l.slice(1) : l;
             // 最終段階でも引用番号を確実に除去（二重チェック）
-            const cleanedLine = l.replace(/\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g, '').replace(/\s{2,}/g, ' ').trim();
-            return `<p>${esc(cleanedLine)}</p>`;
+            const cleanedLine = raw.replace(/\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g, '').replace(/\s{2,}/g, ' ').trim();
+            if (!cleanedLine) return '';
+            return isH ? `<h2>${esc(cleanedLine)}</h2>` : `<p>${esc(cleanedLine)}</p>`;
           })
+          .filter(h => h !== '')
           .join('');
         if (!html) return true;
         tiptapEditor.commands.insertContent(html);
