@@ -255,7 +255,13 @@ function updateSyncQuotaBadge() {
   const badge = document.getElementById('syncQuotaBadge');
   if (!badge) return;
   if (!isSyncLimitedUser()) { badge.remove(); return; }
-  badge.textContent = `☁️ 無料の同期 残り${syncRemaining()}回`;
+  const r = syncRemaining();
+  badge.textContent = `☁️ 無料プラン：データ変更（同期）残り${r}回 ｜ 100円で無制限`;
+  if (r <= 3) {
+    badge.style.background = 'rgba(249,115,22,0.15)';
+    badge.style.borderColor = 'rgba(249,115,22,0.45)';
+    badge.style.color = '#fb923c';
+  }
 }
 
 async function getCreatedCount(key) {
@@ -797,6 +803,17 @@ function renderHome(container) {
   const _homeUser = firebase.auth().currentUser;
   const _isDev = _homeUser?.email === 'kimijimasan@gmail.com';
 
+  // 同期残数バッジ（ログイン済み無料ユーザーには常時表示。残り3回以下で警告色に切り替え）
+  let _syncBadgeHTML = '';
+  if (isSyncLimitedUser()) {
+    const _r = syncRemaining();
+    const _warn = _r <= 3;
+    const _bg = _warn ? 'rgba(249,115,22,0.15)' : 'rgba(96,165,250,0.12)';
+    const _bd = _warn ? 'rgba(249,115,22,0.45)' : 'rgba(96,165,250,0.35)';
+    const _fg = _warn ? '#fb923c' : '#93c5fd';
+    _syncBadgeHTML = `<div id="syncQuotaBadge" style="margin:0.5rem 1rem 0;padding:0.5rem 0.9rem;border-radius:12px;background:${_bg};border:1px solid ${_bd};color:${_fg};font-size:0.82rem;font-weight:700;text-align:center;cursor:pointer;">☁️ 無料プラン：データ変更（同期）残り${_r}回 ｜ 100円で無制限</div>`;
+  }
+
   container.innerHTML = `
     <div class="screen-home">
       <header class="app-header">
@@ -850,7 +867,7 @@ function renderHome(container) {
           </svg>
         </button>
       </header>
-      ${isSyncLimitedUser() && syncRemaining() <= 3 ? `<div id="syncQuotaBadge" style="margin:0.5rem 1rem 0;padding:0.5rem 0.9rem;border-radius:12px;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.45);color:#fb923c;font-size:0.82rem;font-weight:700;text-align:center;cursor:pointer;">☁️ 無料の同期 残り${syncRemaining()}回</div>` : ''}
+      ${_syncBadgeHTML}
       <div class="category-grid" id="catGrid">
         <div class="loading-spinner">読み込み中…</div>
       </div>

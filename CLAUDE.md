@@ -274,7 +274,7 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - ゲート関数: `consumeSyncQuota()` — true なら続行可（必要なら1回消費）、false なら上限到達（`showLimitModal` 表示済み、呼び出し元は中断）
 - **ゲート箇所（データ変更の入口すべて）**: `setEditorMode('edit')`（編集モード入場時。編集開始前にブロックして書いた内容が消える事故を防ぐ）/ パネル作成・編集・削除（`mSave`/`mDel`）/ `createArticle` / `duplicateArticle` / `deleteArticle` / `deleteArticleById` / ピン留め切替 / カード移動（`showMoveModal`）/ カード連結（`mergeSelectedCards`）/ パネル・カード並び替え（Sortable `onEnd`）/ 一括カット（`btnBulkDelete`、閲覧モードからも可能なため）/ 空行削除（`btnRemoveEmptyLines`）
 - 上限到達時モーダル文言: 「無料の同期回数（累計10回）を使い切りました。100円で無制限に同期できます。」→ 既存の `showLimitModal` → `startStripePayment()`
-- **残り回数表示**: 残り3回以下になると (1) 消費時にトースト「無料の同期 残りn回」、(2) ホーム画面ヘッダー下にオレンジのバッジ `#syncQuotaBadge`（タップで案内モーダル）。`updateSyncQuotaBadge()` で更新
+- **残り回数表示**: ホーム画面ヘッダー下のバッジ `#syncQuotaBadge` を**制限対象ユーザーには常時表示**（v=861〜。残り4回以上=青系、残り3回以下=オレンジ警告色。タップで案内モーダル）。ログイン直後はホームに着地するため初回案内を兼ねる。加えて残り3回以下では消費時にトースト「無料の同期 残りn回」。`updateSyncQuotaBadge()` で文言・色を更新
 - `deleteArticleSilently()`（最後の段落削除時のシステム自動削除）は意図的にゲート対象外
 - ⚠️ **`state` 再代入の罠（v=860で修正済みのバグ）**: `goTo()`/`goBack()`/`createArticle()` は `state` を新オブジェクトで丸ごと再代入するため、引き継ぎリストに無いフィールドは画面遷移で消える。`syncCount` の引き継ぎ漏れで制限が一切効かないバグがあった（isPremium/isAnonymousでも過去に同種バグ）。**stateに永続フィールドを追加したら、この3箇所の再代入にも必ず追加すること**
 - 100kin-blog `login.html` の制限説明文も新仕様（ゲスト3/7・ログイン後は同期累計10回）に更新済み
@@ -706,7 +706,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=860`
+- `app.js?v=861`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
