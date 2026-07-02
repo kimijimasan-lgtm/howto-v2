@@ -208,10 +208,54 @@ function isLockedCategory(catData) {
 // システムが自動補充する空カードはカウント対象外（ユーザーが明示的に作成した分のみ加算）。
 const FREE_PANEL_CREATE_LIMIT = 3;
 const FREE_CARD_CREATE_LIMIT = 7;
+const FREE_SYNC_LIMIT = 10;
 
 function isCreateLimitedUser() {
-  // 100円決済済み（isPremium）と開発者のみ無制限。ゲスト・無料Googleログインは制限対象
-  return !state.isPremium && !isDeveloperAccount();
+  // パネル/カード作成上限はゲスト（匿名）のみ。
+  // ログイン済み（非匿名）の無課金ユーザーは「同期回数」制限側（isSyncLimitedUser）で管理する
+  return state.isAnonymous && !state.isPremium && !isDeveloperAccount();
+}
+
+// ── 同期回数制限（ログイン済み無料ユーザー用） ─────────────
+// 同期1回 = アプリを開いてから最初にデータ変更操作をした時点でカウント。
+// 同じ起動（ページ読み込み）中の以降のデータ変更は同じ1回に含まれる。
+// 閲覧だけなら消費しない。累計・生涯カウント（日次リセットなし）で
+// RTDB users/{uid}/stats/syncCount に保存（ログイン時に state.syncCount へ読み込み）。
+let _syncConsumedThisSession = false;
+
+function isSyncLimitedUser() {
+  return !!state.uid && !state.isAnonymous && !state.isPremium && !isDeveloperAccount();
+}
+
+function syncRemaining() {
+  return Math.max(0, FREE_SYNC_LIMIT - (state.syncCount || 0));
+}
+
+// データ変更操作の入口で呼ぶゲート。
+// true  → 操作を続行してよい（必要なら1回分を消費済み）
+// false → 上限到達。案内モーダルを表示済みなので呼び出し元は処理を中断すること
+function consumeSyncQuota() {
+  if (!isSyncLimitedUser()) return true;
+  if (_syncConsumedThisSession) return true;
+  if ((state.syncCount || 0) >= FREE_SYNC_LIMIT) {
+    showLimitModal(`無料の同期回数（累計${FREE_SYNC_LIMIT}回）を使い切りました。\n100円で無制限に同期できます。`);
+    return false;
+  }
+  _syncConsumedThisSession = true;
+  state.syncCount = (state.syncCount || 0) + 1;
+  bumpCreatedCount('syncCount');
+  const remaining = syncRemaining();
+  if (remaining <= 3) showToast(`無料の同期 残り${remaining}回`);
+  updateSyncQuotaBadge();
+  return true;
+}
+
+// ホーム画面の「残りn回」バッジを最新化（表示中のときのみ）
+function updateSyncQuotaBadge() {
+  const badge = document.getElementById('syncQuotaBadge');
+  if (!badge) return;
+  if (!isSyncLimitedUser()) { badge.remove(); return; }
+  badge.textContent = `☁️ 無料の同期 残り${syncRemaining()}回`;
 }
 
 async function getCreatedCount(key) {
@@ -226,7 +270,7 @@ function bumpCreatedCount(key) {
 }
 
 // ── 状態管理 ─────────────────────────────────
-let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view', isPremium: false, isAnonymous: false };
+let state = { screen: 'home', categoryId: null, articleId: null, uid: null, editorMode: 'view', isPremium: false, isAnonymous: false, syncCount: 0 };
 let activePasteMarkerP = null;
 let activePasteLocation = null;
 let isComposing = false;
@@ -806,7 +850,7 @@ function renderHome(container) {
           </svg>
         </button>
       </header>
-      
+      ${isSyncLimitedUser() && syncRemaining() <= 3 ? `<div id="syncQuotaBadge" style="margin:0.5rem 1rem 0;padding:0.5rem 0.9rem;border-radius:12px;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.45);color:#fb923c;font-size:0.82rem;font-weight:700;text-align:center;cursor:pointer;">☁️ 無料の同期 残り${syncRemaining()}回</div>` : ''}
       <div class="category-grid" id="catGrid">
         <div class="loading-spinner">読み込み中…</div>
       </div>
@@ -838,6 +882,16 @@ function renderHome(container) {
   const guestUpgradeBtn = document.getElementById('btnGuestUpgradeHint');
   if (guestUpgradeBtn) {
     guestUpgradeBtn.onclick = () => showGoogleSyncModal();
+  }
+
+  // 同期残数バッジ（残り3回以下のログイン済み無料ユーザーのみ表示）→ タップで案内モーダル
+  const syncBadge = document.getElementById('syncQuotaBadge');
+  if (syncBadge) {
+    syncBadge.onclick = () => showLimitModal(
+      syncRemaining() > 0
+        ? `無料プランではデータ変更（同期）は\n累計${FREE_SYNC_LIMIT}回までです。残り${syncRemaining()}回です。\n100円で無制限に同期できます。`
+        : `無料の同期回数（累計${FREE_SYNC_LIMIT}回）を使い切りました。\n100円で無制限に同期できます。`
+    );
   }
 
   const signoutBtn = document.getElementById('btnSignOut');
@@ -978,6 +1032,7 @@ function renderHome(container) {
               evt.item.classList.remove('category-drag-end-flash');
             }, 600);
           }
+          if (!consumeSyncQuota()) return;
           const cards = grid.querySelectorAll('.category-card');
           const updates = {};
           cards.forEach((c, i) => { updates[`users/${state.uid}/categories/${c.dataset.id}/order`] = i; });
@@ -1256,6 +1311,8 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
   document.getElementById('mSave').onclick = async () => {
     const name = input.value.trim();
     if (!name) { input.focus(); return; }
+    // ログイン済み無料ユーザーの同期回数チェック（パネルの作成・編集どちらも書き込みが発生する）
+    if (!consumeSyncQuota()) { close(); return; }
     if (catId) {
       await db.ref(`users/${state.uid}/categories/${catId}`).update({ name, color: selectedGrad });
     } else {
@@ -1290,6 +1347,7 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
   if (catId) {
     document.getElementById('mDel').onclick = async () => {
       if (!confirm(`「${currentName}」を削除します。\n中のメモもすべて消えます。よろしいですか？`)) return;
+      if (!consumeSyncQuota()) { close(); return; }
       await db.ref(`users/${state.uid}/categories/${catId}`).remove();
       await db.ref(`users/${state.uid}/articles/${catId}`).remove();
       close();
@@ -1465,6 +1523,8 @@ function renderCategory(container) {
 
   // 選択したカードを連結する
   async function mergeSelectedCards(deleteOriginals = false) {
+    // ログイン済み無料ユーザーの同期回数チェック
+    if (!consumeSyncQuota()) return;
     if (!lastArtsData || selectedCardIds.size < 2) return;
 
     // 現在の表示順でカードをソート
@@ -1746,6 +1806,7 @@ function renderCategory(container) {
           e.stopPropagation();
           li.classList.remove('swiped');
           if (categoryLocked) { showToast("このカードは編集できません"); return; }
+          if (!consumeSyncQuota()) return;
           db.ref(`users/${state.uid}/articles/${state.categoryId}/${art.id}`)
             .update({ pinned: !art.pinned });
         };
@@ -1853,6 +1914,7 @@ function renderCategory(container) {
           onEnd: async evt => {
             isDragging = false;
             list.style.overflow = '';
+            if (!consumeSyncQuota()) return;
             const items = list.querySelectorAll('.article-item');
             const updates = {};
             const total = items.length;
@@ -1946,6 +2008,7 @@ async function showMoveModal(artId, currentCatId) {
 
   overlay.querySelectorAll('.move-cat-item').forEach(item => {
     item.onclick = async () => {
+      if (!consumeSyncQuota()) { overlay.remove(); return; }
       const destCatId = item.dataset.catId;
       const artSnap = await db.ref(`users/${state.uid}/articles/${currentCatId}/${artId}`).once('value');
       const artData = artSnap.val();
@@ -1977,6 +2040,8 @@ async function showMoveModal(artId, currentCatId) {
 
 // カードを削除
 async function deleteArticleById(artId, catId) {
+  // ログイン済み無料ユーザーの同期回数チェック
+  if (!consumeSyncQuota()) return;
   // 削除前の記事が最後の1件かどうかチェック
   const srcArticlesSnap = await db.ref(`users/${state.uid}/articles/${catId}`).once('value');
   const srcArticles = srcArticlesSnap.val();
@@ -2406,7 +2471,9 @@ function showExportCompleteDialog(panelCount, cardCount) {
 }
 
 async function createArticle(noTransition = false) {
-  // 無課金ユーザーのカード作成上限チェック（累計7枚まで・削除しても減らない）
+  // ログイン済み無料ユーザーの同期回数チェック
+  if (!consumeSyncQuota()) return;
+  // ゲスト（匿名）のカード作成上限チェック（累計7枚まで・削除しても減らない）
   if (isCreateLimitedUser()) {
     const created = await getCreatedCount('cardsCreated');
     if (created >= FREE_CARD_CREATE_LIMIT) {
@@ -2627,6 +2694,11 @@ function renderEditor(container) {
     // editable を false のまま維持する（TipTap自体をreadonlyにする一番確実な場所）。
     if (mode === 'edit' && state.cardLocked) {
       showToast("このカードは編集できません");
+      mode = 'view';
+    }
+    // ログイン済み無料ユーザー: 同期回数を使い切っていたら編集モードに入れない。
+    // 編集開始前にブロックすることで、書いた内容が保存されずに消える事故を防ぐ
+    if (mode === 'edit' && !consumeSyncQuota()) {
       mode = 'view';
     }
     state.editorMode = mode;
@@ -2914,6 +2986,8 @@ function renderEditor(container) {
   if (bulkDelBtn) {
     bulkDelBtn.onclick = () => {
       if (state.cardLocked) { showToast("このカードはカットできません"); return; }
+      // 閲覧モードからでもカット（データ変更）できるため、ここでも同期回数をチェック
+      if (!consumeSyncQuota()) return;
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
 
@@ -3009,6 +3083,7 @@ function renderEditor(container) {
     removeEmptyLinesBtn.onclick = () => {
       if (state.cardLocked) { showToast("このカードは編集できません"); return; }
       if (!confirm('編集画面の空行をすべて削除します。\nよろしいですか？')) return;
+      if (!consumeSyncQuota()) return;
 
       const pm = tiptapEditor ? tiptapEditor.view.dom : document.getElementById('edContent');
       if (!pm) return;
@@ -4107,6 +4182,7 @@ function handleImageForTipTap(file) {
 
 async function deleteArticle() {
   if (!confirm("このメモを完全に削除します。よろしいですか？")) return;
+  if (!consumeSyncQuota()) return;
   await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).remove();
   goTo('category', state.categoryId, null, true);
 }
@@ -4120,7 +4196,9 @@ async function deleteArticleSilently() {
 
 // 既存のメモを複製してコピー元のすぐ上に挿入する
 async function duplicateArticle(artId, categoryId) {
-  // 複写もカード作成として累計にカウントする（作成上限の抜け道防止）
+  // ログイン済み無料ユーザーの同期回数チェック
+  if (!consumeSyncQuota()) return;
+  // 複写もカード作成として累計にカウントする（ゲストの作成上限の抜け道防止）
   if (isCreateLimitedUser()) {
     const created = await getCreatedCount('cardsCreated');
     if (created >= FREE_CARD_CREATE_LIMIT) {
@@ -5985,6 +6063,14 @@ window.addEventListener('DOMContentLoaded', async () => {
       } catch (e) {
         state.isPremium = false;
       }
+      // 同期回数制限用: 累計カウントを読み込み（アカウント切替に備えセッション消費フラグもリセット）
+      _syncConsumedThisSession = false;
+      try {
+        const syncSnap = await db.ref(`users/${user.uid}/stats/syncCount`).once('value');
+        state.syncCount = typeof syncSnap.val() === 'number' ? syncSnap.val() : 0;
+      } catch (e) {
+        state.syncCount = 0;
+      }
       // 新規ユーザー: カテゴリが1件もなければテンプレートをコピー（開発者は除外）
       try {
         const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
@@ -6007,6 +6093,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         state.uid = null;
         state.isPremium = false;
         state.isAnonymous = false;
+        state.syncCount = 0;
+        _syncConsumedThisSession = false;
         window._authInProgress = false;
         goTo('login');
         revealAppAfterAuth();

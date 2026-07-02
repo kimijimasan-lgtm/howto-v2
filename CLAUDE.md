@@ -251,26 +251,32 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 
 ## 制限・課金
 
-### ユーザー種別と制限（2026-07-02 改定・累計カウント方式）
+### ユーザー種別と制限（2026-07-02 再改定・ログイン済みは同期回数制限）
 
-| 種別 | パネル作成上限 | カード作成上限 |
-|------|-------------|-------------|
-| ゲスト（匿名）| 累計3つ | 累計7枚 |
-| 無料Googleログイン | 累計3つ | 累計7枚 |
-| 課金済み（`isPremium: true`）| **無制限** | **無制限** |
+| 種別 | パネル/カード作成 | データ変更（同期） |
+|------|-----------------|------------------|
+| ゲスト（匿名）| パネル累計3・カード累計7 | 無制限（作成上限側で制御） |
+| 無料Googleログイン | **無制限** | **累計10回まで**（閲覧は無制限） |
+| 課金済み（`isPremium: true`）| 無制限 | 無制限 |
 | 開発者（`kimijimasan@gmail.com`）| 無制限 | 無制限 |
 
-- 判定条件は `isCreateLimitedUser()` = `!state.isPremium && !isDeveloperAccount()`（**無料Googleログインも制限対象**。旧仕様の「Googleログインで無制限」は廃止）
-- **累計カウント方式**: 上限は「現在の個数」ではなく「これまでに作成した累計数」で判定。削除してもカウントは減らない（「削除して枠を空けて作り直す」抜け道の防止）
-- カウント保存先: RTDB `users/{uid}/stats/panelsCreated` / `users/{uid}/stats/cardsCreated`（`transaction` でインクリメント）
-- カウント対象はユーザーが明示的に作成した分のみ。**テンプレート由来の初期データ、パネル新規作成時の自動カード、最後の1枚削除時の自動補充カードはカウントしない**
+**パネル/カード作成上限（ゲストのみ）**
+- 判定: `isCreateLimitedUser()` = `state.isAnonymous && !state.isPremium && !isDeveloperAccount()`（**匿名ユーザーのみ対象**に変更。無料Googleログインは同期回数制限側へ移行）
+- 累計カウント方式（削除しても減らない）。保存先: RTDB `users/{uid}/stats/panelsCreated` / `cardsCreated`
+- テンプレート由来の初期データ・自動補充カードはカウント対象外
 - 定数: `FREE_PANEL_CREATE_LIMIT = 3` / `FREE_CARD_CREATE_LIMIT = 7`
+- チェック箇所: `showCategoryModal` 保存（新規分岐）/ `createArticle()` / `duplicateArticle()`
 
-### 制限チェックの実装箇所（3箇所）
-- **パネル**: `showCategoryModal` の保存ボタン（新規作成分岐のみ）
-- **カード**: `createArticle()` 冒頭
-- **カード複写**: `duplicateArticle()` 冒頭（複写もカード作成としてカウント。抜け道防止）
-- カード移動（`showMoveModal`）は総数が増えないためチェックなし
+**同期回数制限（ログイン済み無料ユーザーのみ・2026-07-02実装）**
+- 判定: `isSyncLimitedUser()` = `!!state.uid && !state.isAnonymous && !state.isPremium && !isDeveloperAccount()`
+- **同期1回の定義 = 編集セッション単位**: アプリを開いて（ページ読み込み後）最初にデータ変更操作をした時点で1回カウント。同じ起動中の以降のデータ変更は同じ1回に含まれる（`_syncConsumedThisSession` フラグ）。閲覧だけなら消費しない
+- 累計・生涯カウント（日次リセットなし）。定数 `FREE_SYNC_LIMIT = 10`。保存先: RTDB `users/{uid}/stats/syncCount`（`transaction` でインクリメント、ログイン時に `state.syncCount` へ読み込み）
+- ゲート関数: `consumeSyncQuota()` — true なら続行可（必要なら1回消費）、false なら上限到達（`showLimitModal` 表示済み、呼び出し元は中断）
+- **ゲート箇所（データ変更の入口すべて）**: `setEditorMode('edit')`（編集モード入場時。編集開始前にブロックして書いた内容が消える事故を防ぐ）/ パネル作成・編集・削除（`mSave`/`mDel`）/ `createArticle` / `duplicateArticle` / `deleteArticle` / `deleteArticleById` / ピン留め切替 / カード移動（`showMoveModal`）/ カード連結（`mergeSelectedCards`）/ パネル・カード並び替え（Sortable `onEnd`）/ 一括カット（`btnBulkDelete`、閲覧モードからも可能なため）/ 空行削除（`btnRemoveEmptyLines`）
+- 上限到達時モーダル文言: 「無料の同期回数（累計10回）を使い切りました。100円で無制限に同期できます。」→ 既存の `showLimitModal` → `startStripePayment()`
+- **残り回数表示**: 残り3回以下になると (1) 消費時にトースト「無料の同期 残りn回」、(2) ホーム画面ヘッダー下にオレンジのバッジ `#syncQuotaBadge`（タップで案内モーダル）。`updateSyncQuotaBadge()` で更新
+- `deleteArticleSilently()`（最後の段落削除時のシステム自動削除）は意図的にゲート対象外
+- 100kin-blog `login.html` の制限説明文も新仕様（ゲスト3/7・ログイン後は同期累計10回）に更新済み
 
 ### `showLimitModal(message)`
 上限到達時の案内。「100円で無制限に使えます」→「アップグレードする（100円）」ボタン → `startStripePayment()`（Stripe Payment Link、現在テストリンク）。
@@ -699,7 +705,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=857`
+- `app.js?v=859`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
