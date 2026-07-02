@@ -5613,7 +5613,7 @@ function showGuestSignoutModal() {
 // 設定手順:
 // 1. Payment Linksで新規作成
 // 2. 価格100円を設定
-// 3. 「決済完了後のURL」に https://kimijimasan-lgtm.github.io/howto-v2/?payment=success を設定
+// 3. 「決済完了後のURL」に https://crossmemo.web.app/?payment=success を設定
 // 4. 生成されたURLをここに貼り付け
 const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01';
 
