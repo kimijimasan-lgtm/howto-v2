@@ -1,8 +1,14 @@
 # howto-v2 プロジェクト状態
 
 ## アプリ概要
-PCスマホ連動メモ — Firebase Realtime Database を使ったカテゴリ別記事管理PWA。  
-GitHub Pages でホスティング: `https://kimijimasan-lgtm.github.io/howto-v2/`
+PCスマホ連動メモ — Firebase Realtime Database を使ったカテゴリ別記事管理PWA。
+
+**ホスティング（2026-07-02にFirebase Hostingへ移行）:**
+- **本番URL: `https://crossmemo.web.app`**（Firebaseプロジェクト `torisetu-234c3` のマルチサイト `crossmemo`）
+- デプロイ手順: `git push`（save.bat）だけでは**Firebase Hostingには反映されない**。`firebase deploy --only hosting:crossmemo` を別途実行すること
+- 旧URL `https://kimijimasan-lgtm.github.io/howto-v2/`（GitHub Pages）は当面残存（save.batのpushで更新され続ける）。ただし `manifest.json` の start_url/scope は `/` に変更済みのため旧URLでのPWAインストールは非対応になった
+- Auth承認済みドメインに `crossmemo.web.app` 追加済み（Firebase Console、2026-07-02）
+- 設定ファイル: `firebase.json`（target: crossmemo、public: "."、md/bat/.tiptap-build除外）、`.firebaserc`（default: torisetu-234c3）
 
 ## 画面構成
 - **home** (`renderHome`) — カテゴリ一覧

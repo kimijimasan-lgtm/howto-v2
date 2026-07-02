@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "target": "crossmemo",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "*.md",
+      "*.bat",
+      ".tiptap-build/**"
+    ]
+  }
+}

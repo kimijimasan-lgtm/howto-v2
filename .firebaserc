@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "torisetu-234c3"
+  },
+  "targets": {
+    "torisetu-234c3": {
+      "hosting": {
+        "crossmemo": [
+          "crossmemo"
+        ]
+      }
+    }
+  }
+}
