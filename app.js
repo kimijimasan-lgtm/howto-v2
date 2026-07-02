@@ -440,7 +440,7 @@ function goTo(screen, categoryId = null, articleId = null, skipSave = false) {
   if (saveTimer) clearTimeout(saveTimer);
   if (tiptapEditor) { tiptapEditor.destroy(); tiptapEditor = null; }
 
-  state = { screen, categoryId, articleId, uid: state.uid, isPremium: state.isPremium, isAnonymous: state.isAnonymous };
+  state = { screen, categoryId, articleId, uid: state.uid, isPremium: state.isPremium, isAnonymous: state.isAnonymous, syncCount: state.syncCount };
 
   const app = document.getElementById('app');
   app.classList.remove('visible');
@@ -482,7 +482,7 @@ function goBack(skipSave = false) {
   if (saveTimer) clearTimeout(saveTimer);
   if (tiptapEditor) { tiptapEditor.destroy(); tiptapEditor = null; }
 
-  state = { screen: prev.screen, categoryId: prev.categoryId, articleId: prev.articleId, uid: state.uid, isPremium: state.isPremium, isAnonymous: state.isAnonymous };
+  state = { screen: prev.screen, categoryId: prev.categoryId, articleId: prev.articleId, uid: state.uid, isPremium: state.isPremium, isAnonymous: state.isAnonymous, syncCount: state.syncCount };
 
   const app = document.getElementById('app');
   app.classList.remove('visible');
@@ -2504,7 +2504,7 @@ async function createArticle(noTransition = false) {
     listeners = [];
     if (saveTimer) clearTimeout(saveTimer);
     navHistory.push({ screen: state.screen, categoryId: state.categoryId, articleId: state.articleId });
-    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true, _isNewCard: true, isPremium: state.isPremium, isAnonymous: state.isAnonymous };
+    state = { screen: 'editor', categoryId: state.categoryId, articleId: newKey, uid: state.uid, pendingAutoEditMode: true, _isNewCard: true, isPremium: state.isPremium, isAnonymous: state.isAnonymous, syncCount: state.syncCount };
     
     const appEl = document.getElementById('app');
     appEl.classList.remove('visible');
