@@ -220,7 +220,7 @@ let state = {
 
 ### アップグレードボタン（`showLimitModal` 内）の動作
 - ユーザー種別を問わず `startStripePayment()` で Stripe Payment Link（100円・現在テストリンク）へ遷移
-- 決済完了後は `handlePaymentCallback()` が `users/{uid}/isPremium = true` を設定 → 無制限化
+- 決済完了後は `?payment=success` で戻り、起動時分岐等で `users/{uid}/isPremium = true` を設定 → 無制限化（付与の3系統は「Stripe課金」セクション参照）
 
 ## 新規ユーザーの初期テンプレート機能
 
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=861`
+- `app.js?v=862`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -750,8 +750,8 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 次のステップ
 
-1. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・URL差し替え
-2. **決済完了後のGoogleログイン促進モーダル実装** - `?payment=success`で戻った際のモーダル表示
+1. **Stripeテスト用Payment Linkの「決済完了後URL」を更新**（ダッシュボード操作）- `https://crossmemo.web.app/?payment=success` に変更 → 一般アカウント（`kimijimasan+test@gmail.com`）でテスト決済し、isPremium付与を確認
+2. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・`app.js`と100kin-blog `login.html` のURL差し替え
 
 ## 直近の対応（2026-06-24）
 
@@ -801,17 +801,27 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - **決済完了後URL**: `https://kimijimasan-lgtm.github.io/howto-v2/?payment=success`
 - **テスト決済**: 動作確認済み（2026-06-21）
 
-### フロー（実装完了 2026-06-22）
-1. ブログ（100kin-blog）の「購入してログイン」ボタンをタップ
+### フロー（実装完了 2026-06-22、isPremium付与を2026-07-02に堅牢化）
+1. ブログ（100kin-blog）の「購入してログイン」ボタン、またはアプリ内「アップグレードする（100円）」（`startStripePayment()`）をタップ
 2. Stripe Payment Linkページで決済
 3. 決済完了後、`?payment=success` でアプリに戻る
 4. 「お支払いありがとうございます！Googleアカウントでログインすると無制限で使えます」モーダル表示
 5. Googleログイン完了 → `isPremium: true` 設定 → ホーム画面へ遷移
 
+### isPremium付与の3系統（2026-07-02実装。Webhook不使用・全てクライアントサイド）
+1. **起動時の `?payment=success` 分岐**: `startStripePayment()` が決済開始時に保存した `localStorage.pending_payment_uid` へ即 `set(true)`。RTDBルール上、書けるのはログイン中の本人uidのみなので、書き込み失敗時は `pending_premium_grant` フラグに退避
+2. **決済成功モーダルの「Googleアカウントでログイン」**: ポップアップ成功時にそのuidへ `set(true)`。押下冒頭で `pending_premium_grant` をセットし、付与成功時に除去（`signInWithRedirect` フォールバックでページ離脱しても消失しない）
+3. **`onAuthStateChanged` の保険**: `localStorage.pending_premium_grant === '1'` なら、確定したログインユーザーへ付与して除去（isPremium読み取りの直前に実行するためstateに即反映）
+
+⚠️ ブログ `login.html` の「購入してログイン」はStripeへの**直リンク**で `startStripePayment()` を経由しないため `pending_payment_uid` が無い。この経路は系統2・3（モーダル→ログイン）でのみ付与される。決済とアカウントの完全自動紐付けにはStripe Webhook + Cloud Functionsが必要（未実装）
+⚠️ Stripeダッシュボードのテスト用Payment Linkの「決済完了後URL」は旧 `github.io/howto-v2/?payment=success` のままの可能性あり → `https://crossmemo.web.app/?payment=success` への更新が必要（localStorageはオリジン単位のため、旧URLに戻ると系統1が機能しない）
+※ 動作検証は開発者アカウント以外（`kimijimasan+test@gmail.com` 等）で行うこと。開発者は制限判定から常に除外されるためisPremiumの効果が観測できない
+
 ### 関連関数
 - `showLimitModal()`: 制限モーダル表示
-- `startStripePayment()`: Payment Linkページに遷移
+- `startStripePayment()`: `pending_payment_uid` 保存 → Payment Linkページに遷移
 - `showPaymentSuccessModal()`: 決済成功後のモーダル（Googleログイン促す）
+- 旧 `handlePaymentCallback()` はどこからも呼ばれていない死にコードだったため2026-07-02に削除済み（実装は起動時分岐へ移動）
 
 ### 本番移行時の変更点
 - `STRIPE_PAYMENT_LINK` を本番用Payment Link URLに変更（`https://buy.stripe.com/live_...`）
@@ -844,17 +854,13 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 ### ?guest=true パラメータ
 howto-v2側で `?guest=true` パラメータを検出すると、未ログイン状態なら自動的に `signInAnonymously()` を実行してゲストログインする。
 
-## 次のステップ
+## 次のステップ（詳細）
 
-### 1. 100kin-blogの404エラーを解消する
-- GitHub Pages設定を確認
-- imagesフォルダがデプロイされているか確認
-- 画像パスが正しいか確認
+### 1. Stripeテスト環境での決済フロー確認
+- Stripeダッシュボードでテスト用Payment Linkの「決済完了後URL」を `https://crossmemo.web.app/?payment=success` に更新
+- 一般アカウント（`kimijimasan+test@gmail.com`）でアプリ内「アップグレードする（100円）」から決済 → isPremium付与を確認
 
 ### 2. Stripeを本番環境に切り替える
-- 本番用Stripeアカウントで価格・Payment Linkを作成
+- 本番用Stripeアカウントで価格・Payment Linkを作成（決済完了後URLは `https://crossmemo.web.app/?payment=success`）
 - howto-v2の `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
-- 100kin-blogの購入ボタンURLも本番用に差し替え
-
-### 3. 決済完了後のGoogleログイン促進モーダル実装
-- `?payment=success`で戻った際のモーダル表示
+- 100kin-blogの購入ボタンURL（`login.html`）も本番用に差し替え

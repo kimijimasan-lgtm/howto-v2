@@ -5708,43 +5708,11 @@ function startStripePayment() {
   window.location.href = STRIPE_PAYMENT_LINK;
 }
 
-// 決済完了後の処理（URLパラメータをチェック）
-// onAuthStateChanged内から呼ばれる想定（userが確定してから）
-async function handlePaymentCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const paymentStatus = params.get('payment');
-
-  if (paymentStatus === 'success') {
-    // URLパラメータをクリア（履歴を汚さないようreplaceState）
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    // localStorageからuidを取得（決済開始時に保存したもの）
-    const uid = localStorage.getItem('pending_payment_uid');
-    if (!uid) {
-      // uidがなくても、Googleアカウントでログインを促すモーダルは表示する
-      showPaymentSuccessModal();
-      return;
-    }
-    localStorage.removeItem('pending_payment_uid');
-
-    // isPremiumフラグを設定
-    try {
-      await db.ref(`users/${uid}/isPremium`).set(true);
-      state.isPremium = true;
-    } catch (err) {
-      console.error('Failed to set isPremium:', err);
-    }
-
-    // Googleアカウントでログインを促すモーダルを表示
-    showPaymentSuccessModal();
-  } else if (paymentStatus === 'cancel') {
-    window.history.replaceState({}, document.title, window.location.pathname);
-    localStorage.removeItem('pending_payment_uid');
-    showToast('決済がキャンセルされました');
-  }
-}
-
 // 決済成功後のモーダル（Googleアカウントでログインを促す）
+// isPremium付与のトリガーは以下の3系統（Webhookは不使用・全てクライアントサイド）:
+// 1. 起動時の ?payment=success 分岐 — pending_payment_uid（決済開始時に保存）へ即付与
+// 2. このモーダルの「Googleアカウントでログイン」— ポップアップ成功時にそのuidへ付与
+// 3. onAuthStateChanged の pending_premium_grant フラグ — 1・2で付与しきれなかった場合の保険
 function showPaymentSuccessModal() {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
@@ -5763,12 +5731,18 @@ function showPaymentSuccessModal() {
     root.innerHTML = '';
     showAuthOverlay();
 
+    // 付与待ちフラグ: ポップアップがブロックされsignInWithRedirectにフォールバックした
+    // 場合やログインが中断した場合でも、次のログイン確定時（onAuthStateChanged）に
+    // 付与を完了させるための保険。付与成功時に必ず除去する
+    localStorage.setItem('pending_premium_grant', '1');
+
     const provider = new firebase.auth.GoogleAuthProvider();
     try {
       const result = await firebase.auth().signInWithPopup(provider);
       const user = result.user;
       // isPremiumフラグを設定
       await db.ref(`users/${user.uid}/isPremium`).set(true);
+      localStorage.removeItem('pending_premium_grant');
       state.uid = user.uid;
       state.isPremium = true;
       state.isAnonymous = false;
@@ -6049,10 +6023,22 @@ window.addEventListener('DOMContentLoaded', async () => {
   const isPaymentSuccess = urlParams.get('payment') === 'success';
   const isGuestParam = urlParams.get('guest') === 'true';
 
-  // ?payment=success の場合：モーダルを表示してGoogleログインを促す
+  // ?payment=success の場合：決済開始時に保存したuidへ即isPremiumを付与してから、
+  // Googleログインを促すモーダルを表示する
   if (isPaymentSuccess) {
     window.history.replaceState({}, document.title, window.location.pathname);
+    const pendingUid = localStorage.getItem('pending_payment_uid');
     localStorage.removeItem('pending_payment_uid');
+    if (pendingUid) {
+      try {
+        // RTDBルール上、書き込めるのはログイン中の本人uidのみ。セッション消失等で
+        // 書けなかった場合は付与待ちフラグに退避し、次のログイン確定時に付与する
+        await db.ref(`users/${pendingUid}/isPremium`).set(true);
+      } catch (err) {
+        console.error('Failed to set isPremium for pending uid:', err);
+        localStorage.setItem('pending_premium_grant', '1');
+      }
+    }
     revealAppAfterAuth();
     showPaymentSuccessModal();
     return; // onAuthStateChangedの登録をスキップ（モーダル内でログイン処理する）
@@ -6074,6 +6060,17 @@ window.addEventListener('DOMContentLoaded', async () => {
       // ログイン済み — 購入状態を読み取り
       state.uid = user.uid;
       state.isAnonymous = user.isAnonymous;
+      // 決済完了後の付与待ち保険: モーダル内での付与がリダイレクトフォールバック等で
+      // 完了しなかった場合、次にログインが確定したユーザーへここで付与する
+      // （直後のisPremium読み取りで即座にstateへ反映される）
+      if (localStorage.getItem('pending_premium_grant') === '1') {
+        try {
+          await db.ref(`users/${user.uid}/isPremium`).set(true);
+          localStorage.removeItem('pending_premium_grant');
+        } catch (e) {
+          console.error('Failed to complete pending premium grant:', e);
+        }
+      }
       try {
         const premSnap = await db.ref(`users/${user.uid}/isPremium`).once('value');
         state.isPremium = premSnap.val() === true;
