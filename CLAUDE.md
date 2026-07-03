@@ -814,11 +814,11 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## Stripe課金（Payment Links方式・サンドボックス環境）
 
-### 現在の設定値（テスト用）
-- **Payment Link URL**: `https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01`（`plink_1TkjHCJHIlRyZ2PYwt9xuLYr`、06/21 11:10作成）
+### 現在の設定値（本番用・2026-07-03移行）
+- **Payment Link URL**: `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00`（本番環境）
 - **価格ID**: `price_1TkgClJHIlRyZ2PYuHomfChN`（100円）
 - **決済完了後URL**: `https://crossmemo.web.app/?payment=success`（2026-07-03に更新済み）
-- **テスト決済**: 動作確認済み（2026-06-21）
+- **テスト決済（旧テスト用Payment Link `test_5kQ2...`）**: 動作確認済み（2026-06-21）
 - もう1つのPayment Link（`test_3cI4gAaU6fov7RVcWD7Re00`、06/21 11:06作成）はコード上どこからも未参照。2026-07-02の完了ページURL更新はこちらに誤って行われていた（旧URL着地バグの原因）。2026-07-03に**無効化済み**（ダッシュボードからいつでも再有効化可能）
 
 ### フロー（実装完了 2026-06-22、isPremium付与を2026-07-02に堅牢化）
@@ -834,7 +834,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 3. **`onAuthStateChanged` の保険**: `localStorage.pending_premium_grant === '1'` なら、確定したログインユーザーへ付与して除去（isPremium読み取りの直前に実行するためstateに即反映）
 
 ⚠️ ブログ `login.html` の「購入してログイン」はStripeへの**直リンク**で `startStripePayment()` を経由しないため `pending_payment_uid` が無い。この経路は系統2・3（モーダル→ログイン）でのみ付与される。決済とアカウントの完全自動紐付けにはStripe Webhook + Cloud Functionsが必要（未実装）
-✅ テスト用Payment Link（`test_5kQ2...`）の「決済完了後URL」は2026-07-03に `https://crossmemo.web.app/?payment=success` へ更新済み（localStorageはオリジン単位のため、旧URLに戻ると系統1が機能しない）
+✅ Payment Linkの「決済完了後URL」は2026-07-03に `https://crossmemo.web.app/?payment=success` へ更新済み（localStorageはオリジン単位のため、旧URLに戻ると系統1が機能しない）
 ※ 動作検証は開発者アカウント以外（`kimijimasan+test@gmail.com` 等）で行うこと。開発者は制限判定から常に除外されるためisPremiumの効果が観測できない
 
 ### 関連関数
@@ -843,10 +843,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - `showPaymentSuccessModal()`: 決済成功後のモーダル（Googleログイン促す）
 - 旧 `handlePaymentCallback()` はどこからも呼ばれていない死にコードだったため2026-07-02に削除済み（実装は起動時分岐へ移動）
 
-### 本番移行時の変更点
-- `STRIPE_PAYMENT_LINK` を本番用Payment Link URLに変更（`https://buy.stripe.com/live_...`）
-- Stripeダッシュボードで本番用Payment Linkを作成
-- 100kin-blogの購入ボタンURLも本番用に差し替え
+### 本番移行（完了・2026-07-03）
+- `STRIPE_PAYMENT_LINK` を本番用Payment Link URL（`https://buy.stripe.com/8x24gAe62bwQaYO07teUU00`）に変更済み
+- 100kin-blogの購入ボタンURLも本番用に差し替え済み
 
 ## 100kin-blog（ブログサイト）
 
@@ -868,7 +867,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 | `save.bat` | ワンクリックでgit push |
 
 ### ボタンリンク
-- **「購入してログイン」**: `https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01`（テスト環境）
+- **「購入してログイン」**: `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00`（本番環境）
 - **「ゲストで試してみる」**: `https://kimijimasan-lgtm.github.io/howto-v2/?guest=true`
 
 ### ?guest=true パラメータ
