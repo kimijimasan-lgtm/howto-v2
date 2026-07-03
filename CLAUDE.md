@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=862`
+- `app.js?v=863`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -748,9 +748,28 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - **編集モード時のProseMirrorにmode-editクラス追加（完了）**: `setEditorMode('edit')`で`mode-view`を削除するだけで`mode-edit`を追加していなかった問題を修正
 - **キーボード表示時のクリップアイコン（FAB）表示改善（完了）**: TipTapのfocus/blurイベント、setEditorModeからも`updateEditorHeight()`を呼び出すよう修正
 
+## セキュリティ（XSS対策、2026-07-03整理・強化）
+
+ユーザー入力の表示は以下の3層で防御。**新しい表示処理を書くときは必ずこの規約に従うこと**:
+
+1. **テキスト補間は `esc()`（app.js）を通す**: パネル名・カード名・プレビュー・検索結果・エクスポート等、テンプレートリテラルでHTMLに埋め込む文字列は全て `${esc(...)}`。`&<>'"` をエンティティ化する
+2. **保存済みHTML（カード本文）の解析は `parseHTMLInert()` を使う**: `DOMParser` の不活性ドキュメントでパースするため、`<img onerror>` 等がパース時に実行されず画像読み込みも起きない。`document.createElement('div') + innerHTML` は**解析用途では使用禁止**（パース時点でonerrorが発火し得る）。適用箇所: `htmlToLines` / `extractThumbnails` / Markdown除去の正規化 / `preprocessHTMLForTipTap` のimg分割
+3. **本文の画面表示はTipTap/ProseMirrorのスキーマ経由**: `setContent` はスキーマ定義済みのノード・属性以外（scriptタグ、on*イベント属性等）を落とすため、実質サニタイザーとして機能する
+
+その他: インラインの `onclick="fn('${変数}')"` は属性注入になるため禁止（`addEventListener` で束縛。添付ファイルカードで2026-07-03に修正済み）。RTDBルールにより他ユーザーのデータは読めないため、保存型XSSの影響範囲は自アカウントに限定される（`templates/default` の書き込みは開発者メールのみ）。
+
+### HTTPセキュリティヘッダー（`firebase.json` の `hosting.headers`、2026-07-03設定）
+全レスポンスに CSP / X-Content-Type-Options:nosniff / X-Frame-Options:DENY / Referrer-Policy / Permissions-Policy を付与（HSTSはFirebaseデフォルト）。**CSPの許可リストはアプリの外部依存と直結しているため、新しい外部オリジン（CDN・API・iframe埋め込み先）を追加したら `firebase.json` のCSPも必ず更新すること**。現在の許可: script=gstatic/jsdelivr/cdnjs/apis.google（+`'unsafe-inline'`）、connect=`*.firebasedatabase.app`(wss)/`*.googleapis.com`/apis.google/authDomain、frame=youtube/apis.google/authDomain、img=`self data: blob: https:`。CSPを変更したら実ブラウザで `securitypolicyviolation` 違反ゼロを再検証する（ヘッダーはローカルサーバでは付与されず本番デプロイ後のみ有効）。診断の全記録は `セキュリティ診断記録.md`。
+
+## 直近の対応（2026-07-03）
+
+- **簡易脆弱性診断＋修正（完了）**: crossmemo.web.app に対しヘッダー検査・CSPライブ検証・依存点検・XSSレビューを実施。①`firebase.json` に CSP等5種のセキュリティヘッダーを追加しデプロイ ②実ブラウザで全画面操作しCSP違反ゼロ・機能停止なしを確認（ホーム→全文検索749件→カード編集のTipTap描画）。Stripe申告書「定期的な脆弱性診断」への根拠。全記録は `セキュリティ診断記録.md`
+- **XSS対策の強化（完了、app.js?v=863）**: ①開発者用テンプレート更新モーダルのパネル名を `esc()` でエスケープ ②保存済みHTMLの解析を不活性な `parseHTMLInert()`（DOMParser）に統一（4箇所）③添付ファイルカードのインラインonclickをaddEventListenerに変更。Chrome実機で新旧解析の等価性（5ケース一致）と `onerror` 非発火を検証済み
+- **Stripe旧URL着地バグの修正（完了）**: 決済完了後URLの更新が未使用リンク（3cI4...）に誤適用されていた。アプリ使用中のリンク（5kQ2...）の完了ページを `crossmemo.web.app/?payment=success` に更新し、未使用リンクは無効化
+
 ## 次のステップ
 
-1. **Stripeテスト用Payment Linkの「決済完了後URL」を更新**（ダッシュボード操作）- `https://crossmemo.web.app/?payment=success` に変更 → 一般アカウント（`kimijimasan+test@gmail.com`）でテスト決済し、isPremium付与を確認
+1. ~~Stripeテスト用Payment Linkの「決済完了後URL」を更新~~（**2026-07-03完了**。アプリ使用中の `test_5kQ2...` リンクの完了ページを `https://crossmemo.web.app/?payment=success` に更新。未使用の `test_3cI4...` リンクは無効化）→ **残タスク: 一般アカウント（`kimijimasan+test@gmail.com`）でテスト決済し、isPremium付与を確認**
 2. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・`app.js`と100kin-blog `login.html` のURL差し替え
 
 ## 直近の対応（2026-06-24）
@@ -796,10 +815,11 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 ## Stripe課金（Payment Links方式・サンドボックス環境）
 
 ### 現在の設定値（テスト用）
-- **Payment Link URL**: `https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01`
+- **Payment Link URL**: `https://buy.stripe.com/test_5kQ28s9Q2ccj0pt9Kr7Re01`（`plink_1TkjHCJHIlRyZ2PYwt9xuLYr`、06/21 11:10作成）
 - **価格ID**: `price_1TkgClJHIlRyZ2PYuHomfChN`（100円）
-- **決済完了後URL**: `https://kimijimasan-lgtm.github.io/howto-v2/?payment=success`
+- **決済完了後URL**: `https://crossmemo.web.app/?payment=success`（2026-07-03に更新済み）
 - **テスト決済**: 動作確認済み（2026-06-21）
+- もう1つのPayment Link（`test_3cI4gAaU6fov7RVcWD7Re00`、06/21 11:06作成）はコード上どこからも未参照。2026-07-02の完了ページURL更新はこちらに誤って行われていた（旧URL着地バグの原因）。2026-07-03に**無効化済み**（ダッシュボードからいつでも再有効化可能）
 
 ### フロー（実装完了 2026-06-22、isPremium付与を2026-07-02に堅牢化）
 1. ブログ（100kin-blog）の「購入してログイン」ボタン、またはアプリ内「アップグレードする（100円）」（`startStripePayment()`）をタップ
@@ -814,7 +834,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 3. **`onAuthStateChanged` の保険**: `localStorage.pending_premium_grant === '1'` なら、確定したログインユーザーへ付与して除去（isPremium読み取りの直前に実行するためstateに即反映）
 
 ⚠️ ブログ `login.html` の「購入してログイン」はStripeへの**直リンク**で `startStripePayment()` を経由しないため `pending_payment_uid` が無い。この経路は系統2・3（モーダル→ログイン）でのみ付与される。決済とアカウントの完全自動紐付けにはStripe Webhook + Cloud Functionsが必要（未実装）
-⚠️ Stripeダッシュボードのテスト用Payment Linkの「決済完了後URL」は旧 `github.io/howto-v2/?payment=success` のままの可能性あり → `https://crossmemo.web.app/?payment=success` への更新が必要（localStorageはオリジン単位のため、旧URLに戻ると系統1が機能しない）
+✅ テスト用Payment Link（`test_5kQ2...`）の「決済完了後URL」は2026-07-03に `https://crossmemo.web.app/?payment=success` へ更新済み（localStorageはオリジン単位のため、旧URLに戻ると系統1が機能しない）
 ※ 動作検証は開発者アカウント以外（`kimijimasan+test@gmail.com` 等）で行うこと。開発者は制限判定から常に除外されるためisPremiumの効果が観測できない
 
 ### 関連関数
@@ -857,7 +877,7 @@ howto-v2側で `?guest=true` パラメータを検出すると、未ログイン
 ## 次のステップ（詳細）
 
 ### 1. Stripeテスト環境での決済フロー確認
-- Stripeダッシュボードでテスト用Payment Linkの「決済完了後URL」を `https://crossmemo.web.app/?payment=success` に更新
+- ~~Stripeダッシュボードでテスト用Payment Linkの「決済完了後URL」を `https://crossmemo.web.app/?payment=success` に更新~~（2026-07-03完了）
 - 一般アカウント（`kimijimasan+test@gmail.com`）でアプリ内「アップグレードする（100円）」から決済 → isPremium付与を確認
 
 ### 2. Stripeを本番環境に切り替える

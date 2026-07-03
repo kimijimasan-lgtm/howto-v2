@@ -616,8 +616,7 @@ function addPullToCreate(el) {
 // ── HTML → 行配列（安全な改行認識） ──────────────
 function htmlToLines(html) {
   if (!html) return [];
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
+  const tmp = parseHTMLInert(html);
 
   // スワイプチェックボックス ✔ など一時要素はパースから排除する
   const checkmarks = tmp.querySelectorAll('.para-checkbox');
@@ -740,8 +739,7 @@ function extractYoutubeId(html) {
 function extractThumbnails(html) {
   if (!html) return [];
   const thumbs = [];
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
+  const tmp = parseHTMLInert(html);
 
   const walk = node => {
     if (thumbs.length >= 2 || node.nodeType !== Node.ELEMENT_NODE) return;
@@ -3998,8 +3996,7 @@ function renderEditor(container) {
         db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`)
           .update({ content: displayHTML, updatedAt: Date.now() }).catch(() => {});
       } else {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = raw;
+        const tmp = parseHTMLInert(raw);
         stripMarkdownFromDOM(tmp);
         displayHTML = tmp.innerHTML || '<p></p>';
         if (displayHTML !== raw) {
@@ -4407,6 +4404,13 @@ function getVirtualLength(str) {
     }
   }
   return len;
+}
+
+// 保存済みHTMLの解析は必ずこれを使う。DOMParserの文書は不活性なため、
+// パース時に<img onerror>等のイベントハンドラが実行されず、画像の読み込みも起きない
+// （document.createElement('div').innerHTML = html だとパース時点でonerrorが発火し得る）
+function parseHTMLInert(html) {
+  return new DOMParser().parseFromString(String(html || ''), 'text/html').body;
 }
 
 function esc(str) {
@@ -4882,8 +4886,7 @@ function preprocessHTMLForTipTap(html) {
   // <p>内にimgとテキストが混在している場合、imgを別<p>に分割
   // portrait-img は連続するものを同一<p>にまとめる（グループを維持）
   {
-    const splitDiv = document.createElement('div');
-    splitDiv.innerHTML = result;
+    const splitDiv = parseHTMLInert(result);
     let splitCount = 0;
     Array.from(splitDiv.querySelectorAll('p')).forEach(p => {
       const childNodes = Array.from(p.childNodes);
@@ -5876,7 +5879,7 @@ async function saveCurrentDataAsTemplate() {
       return `
         <label style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;border-radius:10px;cursor:pointer;background:rgba(255,255,255,0.04);margin-bottom:0.4rem;">
           <input type="checkbox" data-key="${key}" style="width:18px;height:18px;accent-color:#6366f1;cursor:pointer;flex-shrink:0;">
-          <span style="flex:1;color:#fff;font-size:0.9rem;font-weight:600;">${cat.name}</span>
+          <span style="flex:1;color:#fff;font-size:0.9rem;font-weight:600;">${esc(cat.name)}</span>
           <span style="color:rgba(255,255,255,0.4);font-size:0.8rem;">${artCount}枚</span>
         </label>`;
     }).join('');
@@ -6213,7 +6216,7 @@ async function handleAttachedDocument(file, editor) {
       const sizeKB = (file.size / 1024).toFixed(1);
       
       docCard.innerHTML = `
-        <div class="file-card-inner" onclick="downloadBase64File('${base64Data}', '${file.name}')">
+        <div class="file-card-inner">
           <div class="file-card-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -6225,6 +6228,11 @@ async function handleAttachedDocument(file, editor) {
           </div>
         </div>
       `;
+      // ファイル名を属性に文字列展開するとクォート崩れで属性注入が可能になるため、
+      // インラインonclickではなくリスナーで束縛する
+      docCard.querySelector('.file-card-inner').addEventListener('click', () => {
+        downloadBase64File(base64Data, file.name);
+      });
       
       const pDoc = document.createElement('p');
       pDoc.appendChild(docCard);
