@@ -719,6 +719,16 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
+## 直近の対応（2026-07-06）
+
+- **貼り付けMarkdownの太字を実際にスタイル適用（完了、app.js?v=864）**: 従来の`cleanMarkdownForPaste()`は見出し（`##`→H2）以外のMarkdown記法（太字含む）を記号だけ除去してプレーンテキスト化していたが、太字（`**text**`/`__text__`）だけは実際に`<strong>`装飾されるよう変更。
+  - `cleanMarkdownForPaste()`内で太字を`\x02text\x03`マーカー（見出し用`\x01`と同様の内部マーカー、行の`\n`分割・空行圧縮・引用番号除去等の後処理を通過しても壊れない）に置換するよう変更（従来は`$1`で即座に記号除去していた）
+  - 新設: `escWithBoldMarkers(text)`（`esc()`の直後に定義）——`\x02`〜`\x03`区間を`<strong>${esc(...)}</strong>`に変換しつつ、それ以外のテキストは通常通り`esc()`でエスケープするヘルパー
+  - `handlePaste`内のHTML組み立て（見出し/段落生成部分）で`esc(cleanedLine)`を`escWithBoldMarkers(cleanedLine)`に置き換え
+  - イタリック・コード・リスト記号・引用・取り消し線は従来通り記号のみ除去してプレーンテキスト化（変更なし）。画像貼り付け・YouTube・罫線テーブル整形（`cleanAndFormatBorderLines`）は別経路のため無影響
+  - Node.jsでロジックを抽出したシミュレーションで、見出し単独／太字単独／見出し+太字混在／複数太字／他Markdown記号除去／HTMLタグの誤混入（`<script>`等）を含む太字テキストのエスケープを検証済み。既存の実機テスト（TipTap上でのペースト動作）は未実施——次回実機（Chrome/iPhone）で確認すること
+  - 既存のtiptap-markdown等の拡張機能導入は見送り：見出し・記号除去は既存の自前実装（画像貼り付け横取り・YouTube・罫線テーブル整形と統合済み）で十分要件を満たしており、バンドル（`.tiptap-build/entry.js`→esbuild再ビルド）を変更するコストに見合わないため
+
 ## 直近の対応（2026-06-28）
 
 - **カード内容が別カードに置き換わるバグの根本修正（完了）**: `setTimeout`内の遅延処理（カット処理500ms、デバウンス保存1000ms）で`state.articleId`を直接参照していたため、遅延中に画面遷移が発生すると別カードに保存されるバグがあった。処理開始時に`articleId`/`categoryId`をキャプチャし、遅延処理実行時に一致確認→不一致なら処理中断するよう修正

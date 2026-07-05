@@ -674,9 +674,9 @@ function cleanMarkdownForPaste(text) {
       line = headingMatch[1];
     }
 
-    // 太字: **text** / __text__ → text（先に処理）
-    line = line.replace(/\*\*(.+?)\*\*/g, '$1');
-    line = line.replace(/__(.+?)__/g, '$1');
+    // 太字: **text** / __text__ → \x02text\x03（H2見出しの\x01と同様、HTML変換時に<strong>化するためのマーカー。先に処理）
+    line = line.replace(/\*\*(.+?)\*\*/g, '\x02$1\x03');
+    line = line.replace(/__(.+?)__/g, '\x02$1\x03');
 
     // イタリック: *text* / _text_ → text（太字除去後に処理）
     line = line.replace(/\*(.+?)\*/g, '$1');
@@ -3507,8 +3507,8 @@ function renderEditor(container) {
             const raw = isH ? l.slice(1) : l;
             // 最終段階でも引用番号を確実に除去（二重チェック）
             const cleanedLine = raw.replace(/\[\s*\d+\s*(?:,\s*\d+\s*)*\]/g, '').replace(/\s{2,}/g, ' ').trim();
-            if (!cleanedLine) return '';
-            return isH ? `<h2>${esc(cleanedLine)}</h2>` : `<p>${esc(cleanedLine)}</p>`;
+            if (!cleanedLine.replace(/[\x02\x03]/g, '')) return '';
+            return isH ? `<h2>${escWithBoldMarkers(cleanedLine)}</h2>` : `<p>${escWithBoldMarkers(cleanedLine)}</p>`;
           })
           .filter(h => h !== '')
           .join('');
@@ -4417,6 +4417,22 @@ function esc(str) {
   return String(str || '').replace(/[&<>'"]/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])
   );
+}
+
+// ── \x02...\x03（cleanMarkdownForPasteが付与した太字マーカー）を<strong>に変換しつつエスケープ ──
+function escWithBoldMarkers(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const start = text.indexOf('\x02', i);
+    if (start === -1) { out += esc(text.slice(i)); break; }
+    out += esc(text.slice(i, start));
+    const end = text.indexOf('\x03', start + 1);
+    if (end === -1) { out += esc(text.slice(start + 1)); break; } // 閉じマーカー無し→記号として扱わずプレーン化
+    out += `<strong>${esc(text.slice(start + 1, end))}</strong>`;
+    i = end + 1;
+  }
+  return out;
 }
 
 // ── 段落の常時スワイプ一括削除制御 ─────────────────
