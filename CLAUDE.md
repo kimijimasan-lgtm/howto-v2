@@ -782,6 +782,10 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 1. ~~Stripeテスト用Payment Linkの「決済完了後URL」を更新~~（**2026-07-03完了**。アプリ使用中の `test_5kQ2...` リンクの完了ページを `https://crossmemo.web.app/?payment=success` に更新。未使用の `test_3cI4...` リンクは無効化）
 2. ~~Stripeを本番環境に切り替える~~（**2026-07-03完了**。`app.js` の `STRIPE_PAYMENT_LINK` と100kin-blog `login.html` のURLを本番用 `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00` に差し替え済み。詳細は「Stripe課金」セクション参照）
 3. **残タスク: 一般アカウント（`kimijimasan+test@gmail.com`）で実際に100円決済し、isPremium付与を確認**（本番環境のため実際の支払いが発生する）
+4. **残タスク: 貼り付けMarkdown処理（2026-07-06実装、app.js?v=864）の実機確認** — Chrome/iPhoneで`serve.bat`起動→カード編集画面で見出し・太字・その他記号（イタリック・コード・リスト・引用・取り消し線）を含むテキストを貼り付けてテスト
+5. **残タスク: 上記4に伴い、画像貼り付け・YouTube表示に既存の貼り付け処理が影響していないかの確認**
+6. **残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え**
+7. **残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装**
 
 ## 直近の対応（2026-06-24）
 
