@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=844, style.css?v=705, tiptap.bundle.js?v=5）
+index.html          — エントリポイント（app.js?v=863, style.css?v=713, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -769,8 +769,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 次のステップ
 
-1. ~~Stripeテスト用Payment Linkの「決済完了後URL」を更新~~（**2026-07-03完了**。アプリ使用中の `test_5kQ2...` リンクの完了ページを `https://crossmemo.web.app/?payment=success` に更新。未使用の `test_3cI4...` リンクは無効化）→ **残タスク: 一般アカウント（`kimijimasan+test@gmail.com`）でテスト決済し、isPremium付与を確認**
-2. **Stripeを本番環境に切り替える** - 本番用Payment Link作成・`app.js`と100kin-blog `login.html` のURL差し替え
+1. ~~Stripeテスト用Payment Linkの「決済完了後URL」を更新~~（**2026-07-03完了**。アプリ使用中の `test_5kQ2...` リンクの完了ページを `https://crossmemo.web.app/?payment=success` に更新。未使用の `test_3cI4...` リンクは無効化）
+2. ~~Stripeを本番環境に切り替える~~（**2026-07-03完了**。`app.js` の `STRIPE_PAYMENT_LINK` と100kin-blog `login.html` のURLを本番用 `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00` に差し替え済み。詳細は「Stripe課金」セクション参照）
+3. **残タスク: 一般アカウント（`kimijimasan+test@gmail.com`）で実際に100円決済し、isPremium付与を確認**（本番環境のため実際の支払いが発生する）
 
 ## 直近の対応（2026-06-24）
 
@@ -873,13 +874,4 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 ### ?guest=true パラメータ
 howto-v2側で `?guest=true` パラメータを検出すると、未ログイン状態なら自動的に `signInAnonymously()` を実行してゲストログインする。
 
-## 次のステップ（詳細）
-
-### 1. Stripeテスト環境での決済フロー確認
-- ~~Stripeダッシュボードでテスト用Payment Linkの「決済完了後URL」を `https://crossmemo.web.app/?payment=success` に更新~~（2026-07-03完了）
-- 一般アカウント（`kimijimasan+test@gmail.com`）でアプリ内「アップグレードする（100円）」から決済 → isPremium付与を確認
-
-### 2. Stripeを本番環境に切り替える
-- 本番用Stripeアカウントで価格・Payment Linkを作成（決済完了後URLは `https://crossmemo.web.app/?payment=success`）
-- howto-v2の `STRIPE_PAYMENT_LINK` を本番用URLに差し替え
-- 100kin-blogの購入ボタンURL（`login.html`）も本番用に差し替え
+（旧「次のステップ（詳細）」セクションは冒頭の「次のステップ」に統合・削除済み。Stripe関連は全て「Stripe課金」セクション参照）
