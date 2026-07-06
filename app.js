@@ -364,7 +364,8 @@ let justEditedArticleId = null;  // 直前に編集したカードのID（フラ
 let lastDeletedContent = null;   // 削除直前のエディタHTML（Undo用）
 let pasteAutoHideTimer = null;   // カット後5秒で貼り付けボタンを自動非表示
 let tiptapEditor = null;         // TipTapエディターインスタンス
-let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列
+let origDataUrls = [];           // Safari blob: URL 復元用 data: URL 配列（旧方式・現在は未使用のフォールバック情報）
+let _blobToDataUrl = new Map();  // Safari が変換した blob: URL → 元の data: URL の厳密な対応表（カード読み込み時にクリア）
 let _multiTouchActive = false;   // 2本指以上の操作中はスワイプ戻る/段落選択ジェスチャーを無効化（画像ピンチとの競合防止）
 let _contentLoaded = false;      // Firebaseからコンテンツ読み込み完了フラグ（読み込み前の保存を防ぐ）
 
@@ -4006,14 +4007,19 @@ function renderEditor(container) {
       }
 
       origDataUrls = extractDataUrls(displayHTML);
+      _blobToDataUrl.clear();
       displayHTML = preprocessHTMLForTipTap(displayHTML).html;
       tiptapEditor.commands.setContent(displayHTML, false);
+      // Safari が setContent のパース時に data: を blob: に変換した場合、
+      // 「どの blob がどの data: だったか」を位置対応でここで厳密に記録する
+      registerBlobMappingsFromDom(extractAllImgSrcs(displayHTML));
       // setContent 後に TipTap が末尾空段落を自動追加した場合は再 setContent で除去
       {
         const postHTML = tiptapEditor.getHTML();
         const postCleaned = stripTrailingEmptyP(postHTML);
         if (postCleaned !== postHTML) {
           tiptapEditor.commands.setContent(postCleaned, false);
+          registerBlobMappingsFromDom(extractAllImgSrcs(postCleaned));
         }
       }
       // ロード後の1行目状態を確認してauto-H1フラグを初期化
@@ -4961,12 +4967,69 @@ function preprocessHTMLForTipTap(html) {
   return { html: result, logs };
 }
 
+// HTML文字列中の全 <img> の src を出現順に抽出（scheme問わず）
+function extractAllImgSrcs(html) {
+  const srcs = [];
+  html.replace(/<img\b[^>]*\bsrc="([^"]+)"/gi, (_, src) => srcs.push(src));
+  return srcs;
+}
+
+// setContent 直後に呼ぶ: パースへ渡したHTMLのimg src列（preSrcs）と、
+// パース後にエディターDOMへ実際に載ったimg src列を位置対応で突き合わせ、
+// Safari が data: → blob: に変換したものを _blobToDataUrl に記録する。
+// 枚数が一致しない場合は誤対応を避けるため何も記録しない（保存時のcanvas再エンコードで復元される）
+function registerBlobMappingsFromDom(preSrcs) {
+  if (!tiptapEditor || tiptapEditor.isDestroyed) return;
+  const imgs = tiptapEditor.view.dom.querySelectorAll('img');
+  if (imgs.length !== preSrcs.length) return;
+  imgs.forEach((img, i) => {
+    const cur = img.getAttribute('src') || '';
+    const pre = preSrcs[i];
+    if (!cur.startsWith('blob:') || cur === pre) return;
+    // pre が既に blob:（再setContentで二重変換）なら対応表を辿って元の data: に連結する
+    const orig = pre.startsWith('blob:') ? _blobToDataUrl.get(pre) : pre;
+    if (orig && orig.startsWith('data:')) _blobToDataUrl.set(cur, orig);
+  });
+}
+
+// 対応表に無い blob: 画像の最終手段: エディターに表示中の <img> を canvas で再エンコードして data: 化する。
+// （blob はセッション限りのURLなので、そのまま保存すると次回開いたとき画像が消える）
+function reencodeBlobImgToDataUrl(blobUrl) {
+  try {
+    if (!tiptapEditor || tiptapEditor.isDestroyed) return null;
+    const img = tiptapEditor.view.dom.querySelector('img[src="' + blobUrl + '"]');
+    if (!img || !img.complete || !img.naturalWidth) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch (e) {
+    return null;
+  }
+}
+
 // getHTML() 後処理: Safari が data: を blob: に変換した場合に復元
+// 【重要】旧実装は「blob の出現順に origDataUrls（読み込み時のdata:配列）を先頭から当てはめる」
+// インデックス方式だった。読み込み後に画像を途中挿入・削除・並べ替え・カットすると対応がズレて
+// 別の画像に差し替わる／blob:のまま保存されて次回開くと画像が消える不具合の根本原因だった
+// （「画像を入れた後に再編集すると壊れることがある」既知バグの正体。Safariのみ発症）。
+// 現在は blob URL ごとの厳密な対応表（_blobToDataUrl）で復元し、表に無い blob は
+// 表示中の <img> から canvas 再エンコードで復元する。どちらも不能なら、誤った画像に
+// 差し替えるより安全側に倒して blob のまま残す（影響はその1枚のみに限定される）。
 function restoreOriginalSrcs(rawOut, dataUrls) {
-  let idx = 0;
-  return rawOut.replace(/\bsrc="(blob:[^"]+)"/gi, (match) => {
-    const orig = dataUrls[idx++];
-    return orig ? 'src="' + orig + '"' : match;
+  return rawOut.replace(/\bsrc="(blob:[^"]+)"/gi, (match, blobUrl) => {
+    const mapped = _blobToDataUrl.get(blobUrl);
+    if (mapped) return 'src="' + mapped + '"';
+    const reencoded = reencodeBlobImgToDataUrl(blobUrl);
+    if (reencoded) {
+      _blobToDataUrl.set(blobUrl, reencoded);
+      return 'src="' + reencoded + '"';
+    }
+    return match;
   });
 }
 

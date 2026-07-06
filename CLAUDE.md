@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=863, style.css?v=713, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=865, style.css?v=713, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=863`
+- `app.js?v=865`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,10 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-06）
 
+- **「画像を入れた後の再編集」で画像がすり替わる/消えるバグの根本修正（app.js?v=865、実機未検証）**: 既知問題「画像→文章の順なら問題ないが、画像を入れた後に再編集すると不具合が起きることがある」の根本原因を特定し修正。
+  - **根本原因**: iOS Safari は contenteditable 内の `data:` 画像URLを `blob:` URLに勝手に変換する。保存時の `restoreOriginalSrcs()` がこれを元に戻す際、「カード読み込み時に記録した `origDataUrls` 配列を blob の**出現順に先頭から当てはめる**」インデックス方式だったため、読み込み後に画像を途中挿入・削除・並べ替え・カットすると対応がズレ、**別の画像にすり替わる**か **blob: のまま保存されて次回開くと画像が消えていた**（blob URLはセッション限りで無効になるため）。上から順に編集/最後に追加だけなら順序が保たれるため発症しなかった。Safariでのみ発症（Chromeはblob変換をしない）
+  - **修正内容**: ①`_blobToDataUrl`（Map）を新設し、カード読み込みの `setContent` 直後に「パースに渡したHTMLのimg src列」と「DOM上の実際のimg src列」を位置対応で突き合わせて blob→data: の**厳密な対応表**を記録（`registerBlobMappingsFromDom` + `extractAllImgSrcs`。枚数不一致時は誤対応を避け登録しない）②`restoreOriginalSrcs` は対応表で復元し、表に無い blob は表示中の `<img>` から canvas 再エンコード（JPEG 0.85、`reencodeBlobImgToDataUrl`）で復元 ③どちらも不能なら誤った画像に差し替えるより安全側で blob のまま残す（影響はその1枚のみ）。再setContentによる二重blob変換も対応表の連結で追跡
+  - Node.jsシミュレーション8ケース（変更なし/先頭削除/並べ替え/途中挿入/二重変換/枚数不一致/非Safari素通し + 旧方式のバグ再現）全パス。**iPhone Safari実機での確認は未実施——次回必ず「画像入りカードを開く→途中に画像挿入・削除・並べ替え→保存→開き直し」で画像が正しく残ることを確認すること**
 - **貼り付けMarkdownの太字を実際にスタイル適用（完了、app.js?v=864）**: 従来の`cleanMarkdownForPaste()`は見出し（`##`→H2）以外のMarkdown記法（太字含む）を記号だけ除去してプレーンテキスト化していたが、太字（`**text**`/`__text__`）だけは実際に`<strong>`装飾されるよう変更。
   - `cleanMarkdownForPaste()`内で太字を`\x02text\x03`マーカー（見出し用`\x01`と同様の内部マーカー、行の`\n`分割・空行圧縮・引用番号除去等の後処理を通過しても壊れない）に置換するよう変更（従来は`$1`で即座に記号除去していた）
   - 新設: `escWithBoldMarkers(text)`（`esc()`の直後に定義）——`\x02`〜`\x03`区間を`<strong>${esc(...)}</strong>`に変換しつつ、それ以外のテキストは通常通り`esc()`でエスケープするヘルパー
@@ -782,8 +786,8 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 1. ~~Stripeテスト用Payment Linkの「決済完了後URL」を更新~~（**2026-07-03完了**。アプリ使用中の `test_5kQ2...` リンクの完了ページを `https://crossmemo.web.app/?payment=success` に更新。未使用の `test_3cI4...` リンクは無効化）
 2. ~~Stripeを本番環境に切り替える~~（**2026-07-03完了**。`app.js` の `STRIPE_PAYMENT_LINK` と100kin-blog `login.html` のURLを本番用 `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00` に差し替え済み。詳細は「Stripe課金」セクション参照）
 3. **残タスク: 一般アカウント（`kimijimasan+test@gmail.com`）で実際に100円決済し、isPremium付与を確認**（本番環境のため実際の支払いが発生する）
-4. **残タスク: 貼り付けMarkdown処理（2026-07-06実装、app.js?v=864）の実機確認** — Chrome/iPhoneで`serve.bat`起動→カード編集画面で見出し・太字・その他記号（イタリック・コード・リスト・引用・取り消し線）を含むテキストを貼り付けてテスト
-5. **残タスク: 上記4に伴い、画像貼り付け・YouTube表示に既存の貼り付け処理が影響していないかの確認**
+4. ~~貼り付けMarkdown処理（2026-07-06実装、app.js?v=864）の実機確認~~（**2026-07-06 Chrome実機確認完了**。ローカルサーバーは`F:\Claude学習\howto-v2`から直接`python -m http.server 8080`で起動（旧`serve.bat`は退避済みOneDriveパスを指しており使用不可、要修正）。`kimijimasan+test@gmail.com`でテスト実施。太字（`**`/`__`）が正しく`<strong>`適用、見出し（`##`）がH2化、他の記号（イタリック・コード・リスト・引用・取り消し線）はプレーンテキスト化、NotebookLM引用番号除去、いずれも仕様通り動作を確認。**注意**: localhost:8080は以前別プロジェクト「ANKI Photo Card」のService Workerが登録されており、初回アクセス時にそのキャッシュ画面が誤表示された（`navigator.serviceWorker.getRegistrations()`で解除・`caches.delete()`で対応済み）。同じ現象が再発したら同様の手順で解除すること）
+5. ~~上記4に伴い、画像貼り付け・YouTube表示に既存の貼り付け処理が影響していないかの確認~~（**2026-07-06確認完了**。YouTube URL貼り付け→iframe変換は正常動作（プロトコル省略の`youtu.be/...`単体はTipTap側paste rule仕様上マッチせず`https://`必須。これは既存仕様でありMarkdown太字対応による影響ではない）。`<script>`タグ等のHTMLインジェクションも`escWithBoldMarkers`経由で正しくエスケープされ実行されないことを確認（XSS安全）。画像貼り付け自体は`handlePaste`内の別分岐（`dt.files`優先チェック）のため今回の変更の影響を受けない構造
 6. **残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え**
 7. **残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装**
 
