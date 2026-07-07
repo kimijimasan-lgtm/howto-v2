@@ -787,7 +787,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 1. ~~Stripeテスト用Payment Linkの「決済完了後URL」を更新~~（**2026-07-03完了**。アプリ使用中の `test_5kQ2...` リンクの完了ページを `https://crossmemo.web.app/?payment=success` に更新。未使用の `test_3cI4...` リンクは無効化）
 2. ~~Stripeを本番環境に切り替える~~（**2026-07-03完了**。`app.js` の `STRIPE_PAYMENT_LINK` と100kin-blog `login.html` のURLを本番用 `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00` に差し替え済み。詳細は「Stripe課金」セクション参照）
-3. **残タスク: 一般アカウント（`kimijimasan+test@gmail.com`）で実際に100円決済し、isPremium付与を確認**（本番環境のため実際の支払いが発生する）
+3. ~~残タスク: 一般アカウントで実際に100円決済し、isPremium付与を確認~~（**2026-07-07完了**。`siro.usertest@gmail.com`で本番環境の実決済（Apple Pay）を実施し、決済→リダイレクト→Googleログイン→isPremium付与のフローが正常動作することを確認。詳細は「0-8. ¥100本番決済テスト完了」参照）
 4. ~~貼り付けMarkdown処理（2026-07-06実装、app.js?v=864）の実機確認~~（**2026-07-06 Chrome実機確認完了**。ローカルサーバーは`F:\Claude学習\howto-v2`から直接`python -m http.server 8080`で起動（旧`serve.bat`は退避済みOneDriveパスを指しており使用不可、要修正）。`kimijimasan+test@gmail.com`でテスト実施。太字（`**`/`__`）が正しく`<strong>`適用、見出し（`##`）がH2化、他の記号（イタリック・コード・リスト・引用・取り消し線）はプレーンテキスト化、NotebookLM引用番号除去、いずれも仕様通り動作を確認。**注意**: localhost:8080は以前別プロジェクト「ANKI Photo Card」のService Workerが登録されており、初回アクセス時にそのキャッシュ画面が誤表示された（`navigator.serviceWorker.getRegistrations()`で解除・`caches.delete()`で対応済み）。同じ現象が再発したら同様の手順で解除すること）
 5. ~~上記4に伴い、画像貼り付け・YouTube表示に既存の貼り付け処理が影響していないかの確認~~（**2026-07-06確認完了**。YouTube URL貼り付け→iframe変換は正常動作（プロトコル省略の`youtu.be/...`単体はTipTap側paste rule仕様上マッチせず`https://`必須。これは既存仕様でありMarkdown太字対応による影響ではない）。`<script>`タグ等のHTMLインジェクションも`escWithBoldMarkers`経由で正しくエスケープされ実行されないことを確認（XSS安全）。画像貼り付け自体は`handlePaste`内の別分岐（`dt.files`優先チェック）のため今回の変更の影響を受けない構造
 6. **残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え**
@@ -867,6 +867,26 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 ### 本番移行（完了・2026-07-03）
 - `STRIPE_PAYMENT_LINK` を本番用Payment Link URL（`https://buy.stripe.com/8x24gAe62bwQaYO07teUU00`）に変更済み
 - 100kin-blogの購入ボタンURLも本番用に差し替え済み
+
+## 0-8. ¥100本番決済テスト完了（2026-07-07）
+
+**実施日**: 2026-07-07
+**テスト内容**: `siro.usertest@gmail.com` アカウントで、`apps100kin.web.app` の購入ボタンから実際に¥100の本番決済（Apple Pay使用）を実施し、「Stripe課金」セクションに記載の一連のフロー（決済→リダイレクト→Googleログイン→isPremium付与）が本番環境で正常に機能することを実証した。
+
+**確認できたフロー（すべて想定通り）**:
+1. Stripe決済（Apple Pay）が正常に完了
+2. `crossmemo.web.app/?payment=success` への正しいリダイレクトを確認
+3. 「お支払いありがとうございます！Googleアカウントでログインすると無制限で使えます」モーダル（`showPaymentSuccessModal()`）の表示を確認
+4. `siro.usertest@gmail.com` でのGoogleログインを確認（初回ログインのため、Firebase Authenticationに新規ユーザーとして登録された）
+5. ログイン後、ホーム画面の同期回数バッジ（`#syncQuotaBadge`）が消失したことを確認（`isPremium:true`により`isSyncLimitedUser()`がfalseになったため）
+6. Firebase Console（Realtime Database、`torisetu-234c3`プロジェクト）で、該当UIDの`isPremium`フィールドが`true`になっていることを直接確認
+
+**結論**: 決済→リダイレクト→Googleログイン→isPremium付与の一連のフローが、本番環境で正常に機能することを実証済み。
+
+**注意点（今後同様のテストを行う際に踏まえること）**:
+- テスト中、ブラウザに保存されたログイン情報により、アカウント選択の余地なく普段使いのメインGoogleアカウントへ自動ログインしてしまう場面があった
+- プライベートブラウズ（シークレット）モードを使うことで、`siro.usertest@gmail.com` での明示的なログインが可能になった
+- **今後同様のテストを行う際は、事前にシークレット/プライベートブラウズモードを使うと、意図しないアカウントでのログインを防げる**
 
 ## 100kin-blog（ブログサイト）
 
