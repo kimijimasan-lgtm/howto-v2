@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=865, style.css?v=713, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=866, style.css?v=713, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,12 +712,26 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=865`
+- `app.js?v=866`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-07-08）
+
+- **決済成功モーダルの空画面詰みバグ修正（完了・本番デプロイ済み、app.js?v=866）**: 実ユーザーから「購入してログインを選んだが、課金はできたがログインができない」との問い合わせを受け調査。`?payment=success` 起動分岐が `return` で `onAuthStateChanged` の登録ごとスキップしていたため、**モーダルの背後が完全な空画面**になり、①背景タップでモーダルを閉じた ②ポップアップログインに失敗した（閉じた・ブロック等）場合に何も操作できない詰み状態になっていた。修正内容:
+  - 早期returnを廃止し、通常の起動フローで背後にホーム/ログイン画面を描画した後（`goTo` → `revealAppAfterAuth` 直後、初回発火のみ）にモーダルを表示するフラグ方式へ変更
+  - ログイン失敗時（`popup-closed-by-user` 等）は**モーダルを自動再表示**して再試行可能に
+  - モーダル内のisPremium付与・テンプレートコピー・ホーム遷移は `onAuthStateChanged`（`pending_premium_grant` 保険）に一本化（onAuthStateChangedが登録されるようになったため、従来のインライン処理を残すとテンプレート二重コピー等の二重実行になる）。ただし**同一アカウントへの再ログインでは onAuthStateChanged が再発火しないことがある**ため、popup成功時のuidが直前のuidと同じ場合のみインラインで付与＋`goTo('home')` する保険を追加
+  - 検証: ローカル（Chrome・テストアカウント）で「背景タップで閉じる→背後のホーム画面が操作可能」「popup-closed失敗→モーダル再表示・保険フラグ残存」「同一uidログイン成功→ホーム遷移・isPremium反映・フラグ除去」「通常起動が無影響（コンソールエラーゼロ）」を確認。本番（crossmemo.web.app/?payment=success）でもv=866配信・モーダル+背後画面描画・閉じる動作を確認済み。テストで付与したisPremiumは検証後に除去済み
+  - **未検証**: 未ログイン状態でのモーダル表示（ログイン画面が背後に出る側。コードはログイン済み側と対称）と、実Googleポップアップでの成功/redirectフォールバック
+- **モバイルでログインできない問題の調査（原因候補の特定・恒久対応は未実施）**: 上記問い合わせの調査で、空画面詰みの他に以下の構造的問題を特定。
+  - **`signInWithRedirect` がモバイルで機能しない可能性大**: authDomain（`torisetu-234c3.firebaseapp.com`）とアプリ配信ドメイン（`crossmemo.web.app`）が**クロスオリジン**のため、Safari ITP / Chrome M115+ のサードパーティストレージ分割でリダイレクト認証がサイレントに失敗する（Firebase公式の既知問題）。popup がブロックされた端末では popup→redirect の両方が失敗し「何度ログインしてもログイン画面に戻る」状態になる
+  - 恒久対応方針（未実施）: authDomain を `crossmemo.web.app` に変更（app.js 1行 + firebase.json CSPの `frame-src` に `'self'` 追加 + **GCPコンソールでOAuthクライアントに `https://crossmemo.web.app/__/auth/handler` のリダイレクトURI追加が必須**。忘れるとGoogleログイン全滅・ロールバックはapp.js 1行戻し）。既存ログイン済みユーザーへの影響なし（セッションはアプリオリジンのIndexedDB保存のためre-login不要）
+  - アプリ内ブラウザ（LINE等のWebView）では Google OAuth 自体が拒否される（`disallowed_useragent`）。これは対応不能で案内が必要
+  - 救済手段: モーダルのログインボタンを一度でも押していれば `pending_premium_grant` が残るため同じブラウザで後からログイン成功時に自動付与。それ以外は `?payment=success` を手動で開いてもらう（※誰でも無料でisPremiumを取れる抜け道でもあるため案内は個別に）か Firebase Console で手動付与
 
 ## 直近の対応（2026-07-06）
 
@@ -790,8 +804,11 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 3. ~~残タスク: 一般アカウントで実際に100円決済し、isPremium付与を確認~~（**2026-07-07完了**。`siro.usertest@gmail.com`で本番環境の実決済（Apple Pay）を実施し、決済→リダイレクト→Googleログイン→isPremium付与のフローが正常動作することを確認。詳細は「0-8. ¥100本番決済テスト完了」参照）
 4. ~~貼り付けMarkdown処理（2026-07-06実装、app.js?v=864）の実機確認~~（**2026-07-06 Chrome実機確認完了**。ローカルサーバーは`F:\Claude学習\howto-v2`から直接`python -m http.server 8080`で起動（旧`serve.bat`は退避済みOneDriveパスを指しており使用不可、要修正）。`kimijimasan+test@gmail.com`でテスト実施。太字（`**`/`__`）が正しく`<strong>`適用、見出し（`##`）がH2化、他の記号（イタリック・コード・リスト・引用・取り消し線）はプレーンテキスト化、NotebookLM引用番号除去、いずれも仕様通り動作を確認。**注意**: localhost:8080は以前別プロジェクト「ANKI Photo Card」のService Workerが登録されており、初回アクセス時にそのキャッシュ画面が誤表示された（`navigator.serviceWorker.getRegistrations()`で解除・`caches.delete()`で対応済み）。同じ現象が再発したら同様の手順で解除すること）
 5. ~~上記4に伴い、画像貼り付け・YouTube表示に既存の貼り付け処理が影響していないかの確認~~（**2026-07-06確認完了**。YouTube URL貼り付け→iframe変換は正常動作（プロトコル省略の`youtu.be/...`単体はTipTap側paste rule仕様上マッチせず`https://`必須。これは既存仕様でありMarkdown太字対応による影響ではない）。`<script>`タグ等のHTMLインジェクションも`escWithBoldMarkers`経由で正しくエスケープされ実行されないことを確認（XSS安全）。画像貼り付け自体は`handlePaste`内の別分岐（`dt.files`優先チェック）のため今回の変更の影響を受けない構造
-6. **残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え**
-7. **残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装**
+6. ~~残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え~~（**2026-07-07完了**。100kin-blog側のCLAUDE.md・gitログで確認済み）
+7. ~~残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装~~（**2026-07-07完了**。実機iPhone Safariで確認済み。詳細は100kin-blog側CLAUDE.md「0-8」参照）
+8. **authDomainのクロスオリジン問題の恒久対応**（モバイルで `signInWithRedirect` が機能しない問題。詳細は「直近の対応（2026-07-08）」参照。GCPコンソールでのOAuthリダイレクトURI追加→app.js/firebase.json変更→実機検証の順）
+9. **「購入済みなのに反映されない」ユーザーの復元導線**（小: 問い合わせ誘導リンク / 根本: Stripe Webhook + Cloud Functions。Blazeプラン要確認）
+10. **serve.bat修正**（退避済みの旧OneDriveパスを指しており使用不可。`F:\Claude学習\howto-v2` に直す）
 
 ## 直近の対応（2026-06-24）
 
