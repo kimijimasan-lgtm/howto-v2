@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=867, style.css?v=713, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=868, style.css?v=713, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=867`
+- `app.js?v=868`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
+- **authDomainをcrossmemo.web.appに変更（完了・本番デプロイ済み、app.js?v=868）**: モバイルで `signInWithRedirect` がサイレント失敗する問題（下記調査記録参照）の根本対応。
+  - 変更: `app.js` の `authDomain` を `torisetu-234c3.firebaseapp.com` → `crossmemo.web.app`、`firebase.json` のCSP `frame-src` に `'self'` 追加（旧ドメインの許可は移行期間用に残置。GCPのOAuthクライアント登録も旧エントリは削除していないため、ロールバックは `app.js` 1行戻し＋デプロイのみ）
+  - 事前確認: GCPコンソールでOAuthクライアントに `https://crossmemo.web.app` (JS生成元) / `https://crossmemo.web.app/__/auth/handler` (リダイレクトURI) を登録済み。APIレベルで反映を外形検証（`createAuthUri` で実際の認可URLを生成→Googleがエラーなしでサインインページを返す。未登録URIでは `redirect_uri_mismatch` が返ることも対照確認）。`/__/auth/handler`・`/__/auth/iframe` は crossmemo.web.app で200配信済み、かつ firebase.json のカスタムヘッダー（X-Frame-Options等）は予約パス `/__/*` には適用されないことも実レスポンスで確認済み
+  - 検証: ローカル（Chrome）で新authDomain経由の `signInWithPopup` を実ログインで完走（`siro.usertest@gmail.com`、ポップアップに「crossmemo.web.appに移動」表示→ログイン成功→ホーム遷移→isPremium反映）。本番デプロイ後、v=868配信・既存ログインセッション維持（再ログイン不要）・CSP違反ゼロを確認
+  - **残検証（推奨）**: 実機iPhone Safariで「ポップアップブロックON→redirectフォールバックが実際に成功する」ことの確認（本変更の主目的。PCでは再現できないため実機でのみ検証可能）
+  - ⚠️ 検証中の注意: 長時間開きっぱなしの自動化タブでRTDB接続が切断されたまま復帰せず、ログイン後処理（isPremium読み込み）が止まる現象があった。アプリの不具合ではなく検証環境要因（Chromeのタブフリーズ）。タブを開き直せば正常
 - **購入済みユーザー向け問い合わせ導線を追加（完了・本番デプロイ済み、app.js?v=867）**: ログイン画面（`renderLogin`、ゲストボタンの下）と同期回数制限モーダル（`showLimitModal`、閉じるボタンの下）に「ご購入済みなのに反映されない方はこちら」の控えめなテキストリンクを追加。リンク先は100kin-blogの問い合わせページ `https://apps100kin.web.app/contact.html`（Firestore `inquiries` に保存される本番稼働フォーム。管理画面 `admin/inquiries.html` で確認可能）。静的アンカー（`target="_blank" rel="noopener"`）のみでJS処理なし。ローカル・本番の両方で表示とcontact.htmlへの遷移を確認済み。決済がisPremium付与に反映されなかったユーザーの受け皿（恒久対応③-(a)。根本対応のWebhook自動付与③-(b)は未実施）
 - **決済成功モーダルの空画面詰みバグ修正（完了・本番デプロイ済み、app.js?v=866）**: 実ユーザーから「購入してログインを選んだが、課金はできたがログインができない」との問い合わせを受け調査。`?payment=success` 起動分岐が `return` で `onAuthStateChanged` の登録ごとスキップしていたため、**モーダルの背後が完全な空画面**になり、①背景タップでモーダルを閉じた ②ポップアップログインに失敗した（閉じた・ブロック等）場合に何も操作できない詰み状態になっていた。修正内容:
   - 早期returnを廃止し、通常の起動フローで背後にホーム/ログイン画面を描画した後（`goTo` → `revealAppAfterAuth` 直後、初回発火のみ）にモーダルを表示するフラグ方式へ変更
@@ -807,7 +813,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 5. ~~上記4に伴い、画像貼り付け・YouTube表示に既存の貼り付け処理が影響していないかの確認~~（**2026-07-06確認完了**。YouTube URL貼り付け→iframe変換は正常動作（プロトコル省略の`youtu.be/...`単体はTipTap側paste rule仕様上マッチせず`https://`必須。これは既存仕様でありMarkdown太字対応による影響ではない）。`<script>`タグ等のHTMLインジェクションも`escWithBoldMarkers`経由で正しくエスケープされ実行されないことを確認（XSS安全）。画像貼り付け自体は`handlePaste`内の別分岐（`dt.files`優先チェック）のため今回の変更の影響を受けない構造
 6. ~~残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え~~（**2026-07-07完了**。100kin-blog側のCLAUDE.md・gitログで確認済み）
 7. ~~残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装~~（**2026-07-07完了**。実機iPhone Safariで確認済み。詳細は100kin-blog側CLAUDE.md「0-8」参照）
-8. **authDomainのクロスオリジン問題の恒久対応**（モバイルで `signInWithRedirect` が機能しない問題。詳細は「直近の対応（2026-07-08）」参照。GCPコンソールでのOAuthリダイレクトURI追加→app.js/firebase.json変更→実機検証の順）
+8. ~~authDomainのクロスオリジン問題の恒久対応~~（**2026-07-08完了・本番デプロイ済み（v868）**。詳細は「直近の対応（2026-07-08）」参照。残検証: 実機iPhone Safariでポップアップブロック時のredirectフォールバック成功確認）
 9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応（Stripe Webhook + Cloud Functionsで決済とアカウントを自動紐付け。Blazeプラン要確認）は未着手
 10. **serve.bat修正**（退避済みの旧OneDriveパスを指しており使用不可。`F:\Claude学習\howto-v2` に直す）
 
