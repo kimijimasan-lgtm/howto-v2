@@ -5738,7 +5738,7 @@ function showGuestSignoutModal() {
       <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
         <div style="font-size:2.5rem;margin-bottom:0.75rem;">⚠️</div>
         <p style="color:rgba(255,255,255,0.85);font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;">サインアウトするとゲストデータが失われます</p>
-        <p style="color:rgba(255,255,255,0.55);font-size:0.85rem;line-height:1.6;margin-bottom:1.5rem;">100円でアップグレードすると無制限で使えます。</p>
+        <p style="color:rgba(255,255,255,0.55);font-size:0.85rem;line-height:1.6;margin-bottom:1.5rem;">Googleアカウントでログインするには、一度ログオフする必要があります。データを引き継ぎたい場合は、先に「100円でアップグレード」をご検討ください。</p>
         <button id="btnGuestSignoutUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">100円でアップグレード</button>
         <button id="btnGuestSignoutLogoff" style="width:100%;padding:0.7rem;border:2px solid #ffffff;border-radius:14px;background:transparent;color:#ffffff;font-weight:700;font-size:0.85rem;cursor:pointer;margin-bottom:0.4rem;font-family:var(--font);">課金しないでログオフする</button>
         <button id="btnGuestSignoutCancel" style="width:100%;padding:0.6rem;border:2px solid #ffffff;border-radius:14px;background:transparent;color:#ffffff;font-weight:700;font-size:0.8rem;cursor:pointer;font-family:var(--font);">キャンセル</button>
