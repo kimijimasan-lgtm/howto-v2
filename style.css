@@ -463,11 +463,19 @@ body {
   }
 }
 
-/* PC活用促進バナー（画面下部固定・スマホ表示のみ） */
+/* PC活用促進バナー（画面下部固定・スマホ表示のみ）
+   .screen-home は height:100dvh の縦flexで、.category-grid が flex:1 を
+   取るため、このバナーはflexの最終要素として常に画面最下部に接する位置に
+   来る。一方、右下の検索FAB(.search-fab)・左下のファイル/ブログFABは
+   position:fixed; bottom:1.5rem; で高さ最大50px（.search-fab）のため、
+   画面下端から 24px〜74px の帯を常に占有している。バナーに何も余白を
+   取らないとこの帯とバナー本文が重なり、FAB(z-index:1000)がテキストの
+   上に被さって読めなくなる。margin-bottom でこの帯より上に逃がす。 */
 .pc-promo-banner {
   display: none;
   flex-shrink: 0;
-  padding: 0 0.75rem 0.5rem;
+  padding: 0 1.25rem;
+  margin-bottom: calc(1.5rem + 50px + 0.75rem); /* FABオフセット24px+FAB最大高さ50px+ゆとり12px */
 }
 @media (max-width: 600px) {
   .pc-promo-banner {
@@ -483,13 +491,13 @@ body {
   text-align: center;
 }
 .pc-promo-title {
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   font-weight: 800;
   color: #60a5fa;
   margin-bottom: 0.3rem;
 }
 .pc-promo-body {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: #93c5fd;
   line-height: 1.5;
@@ -513,7 +521,7 @@ body {
   border-radius: 10px;
   padding: 0.4rem 0.75rem;
   text-align: center;
-  font-size: 0.75rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #93c5fd;
   cursor: pointer;
