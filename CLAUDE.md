@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=868, style.css?v=713, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=869, style.css?v=713, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=868`
+- `app.js?v=869`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
+- **QRコードモーダルの案内文言を修正（完了・本番デプロイ済み、app.js?v=869、`showQRCodeModal()` 内 `app.js:5558〜5564`）**: `#btnShowQR`（ホーム画面ヘッダー、`.btn-pc-only` によりPC表示時のみ出現）から開くQRコードモーダルの警告文を調査・修正。
+  - **調査で判明した事実**: QRコードは `window.location.href`（現在表示中のURL）をそのままエンコードしているだけで、ログイントークン・セッションID・UID等の認証情報は一切含まれない。画面遷移はJSのstate管理でURL自体は変化せず、`history.replaceState` の2箇所（`app.js:6116`, `6137`）も`?payment=success`等のパラメータを除去するのみで付加はしない。したがって通常表示時のQRは常に単純な `https://crossmemo.web.app/` のみをエンコードする。用途は「PCでQRコードを表示し、スマホのカメラで読み取って同じ画面をスマホで開く」（`.btn-pc-only` がPC限定表示であること、モーダル内の「スマホで表示されない原因」警告文の内容と整合）
+  - **旧文言の問題**: 「このQRコードはあなた専用のFirebase同期URLです。他人に読み取られないよう十分に注意してください！」という、実態（トークンを含まない単なる公開URL）より厳しい警告になっていた
+  - **修正内容**: 見出しを「⚠️【厳重注意】」（赤系配色）→「💡【ご案内】」（青系配色）に変更、本文を「このQRコードをスマホのカメラで読み取ると、同じ画面をスマホでも開けます。パスワード等の情報は含まれていません。」に差し替え
+  - ⚠️ **中間バージョンの誤り（訂正済み）**: 初回修正時は「このQRコードをPCで読み取ると、同じ画面をPCでも開けます」という誤った向き（PC→PC）の文言でいったん実装したが、ユーザー指摘により`.btn-pc-only`の実装とモーダル内警告文を再確認し、正しい向き（PC表示→スマホ読み取り）に訂正した。commit履歴には最終版のみが反映されている
+  - ローカル・本番（crossmemo.web.app、PC幅表示）の両方でモーダル表示・DOM検証（見出し・本文テキスト・色）を確認済み
 - **authDomainをcrossmemo.web.appに変更（完了・本番デプロイ済み、app.js?v=868）**: モバイルで `signInWithRedirect` がサイレント失敗する問題（下記調査記録参照）の根本対応。
   - 変更: `app.js` の `authDomain` を `torisetu-234c3.firebaseapp.com` → `crossmemo.web.app`、`firebase.json` のCSP `frame-src` に `'self'` 追加（旧ドメインの許可は移行期間用に残置。GCPのOAuthクライアント登録も旧エントリは削除していないため、ロールバックは `app.js` 1行戻し＋デプロイのみ）
   - 事前確認: GCPコンソールでOAuthクライアントに `https://crossmemo.web.app` (JS生成元) / `https://crossmemo.web.app/__/auth/handler` (リダイレクトURI) を登録済み。APIレベルで反映を外形検証（`createAuthUri` で実際の認可URLを生成→Googleがエラーなしでサインインページを返す。未登録URIでは `redirect_uri_mismatch` が返ることも対照確認）。`/__/auth/handler`・`/__/auth/iframe` は crossmemo.web.app で200配信済み、かつ firebase.json のカスタムヘッダー（X-Frame-Options等）は予約パス `/__/*` には適用されないことも実レスポンスで確認済み
