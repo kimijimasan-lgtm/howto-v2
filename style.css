@@ -463,18 +463,15 @@ body {
   }
 }
 
-/* PC活用促進バナー（左下FAB・右下検索FABと同じ行の隙間に収める。スマホ表示のみ）
-   両FABはどちらも position:fixed; bottom:1.5rem; で同じ行に並んでいる。
-   バナーの left/right はJS側(renderPcPromoBanner→positionPcPromoBanner、
-   app.js)で両FABの実際の位置をgetBoundingClientRect()で読み取り動的に
-   設定する（左下FABはログイン種別でファイル/ブログの2種あり幅が異なる
-   ため、固定値では隙間がズレる）。ここではbottom/heightのみ固定値で、
-   FABの共通bottomオフセットに合わせている。 */
+/* PC活用促進バナー（スマホ表示のみ）。左右FABの実際の位置はJS側
+   (renderPcPromoBanner→positionPcPromoBanner/positionPcPromoBannerLarge、
+   app.js)でgetBoundingClientRect()を読み取り動的にleft/rightへ反映する
+   （左下FABはログイン種別でファイル/ブログの2種あり幅が異なるため）。
+   小さい版・大きい版でサイズ・配置とも大きく異なるため、bottom/height
+   はそれぞれの専用クラス側で指定する。 */
 .pc-promo-banner {
   display: none;
   position: fixed;
-  bottom: 1.5rem;
-  height: 36px;
   z-index: 999; /* FAB(z-index:1000)より下、他コンテンツより上 */
 }
 @media (max-width: 600px) {
@@ -482,42 +479,89 @@ body {
     display: block;
   }
 }
-.pc-promo-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem;
-  height: 100%;
-  padding: 0 0.6rem;
-  border-radius: 999px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pc-promo-pill.large {
-  background: rgba(96, 165, 250, 0.18);
-  border: 1px solid rgba(96, 165, 250, 0.45);
-  font-size: 0.7rem;
-  font-weight: 800;
-  color: #60a5fa;
+
+/* 小さい版（パネル4枚以上）: 左下FAB・右下検索FABと同じ行の隙間に収める。
+   不透明な濃い紫背景＋黄色太枠で、下にどんな色のパネルカードがあっても
+   文字がはっきり読めるようにする（旧・半透明背景は視認性不足で廃止）。 */
+.pc-promo-banner.pc-promo-banner-small {
+  bottom: 1.5rem;
+  height: 46px;
 }
 .pc-promo-pill.small {
-  background: rgba(96, 165, 250, 0.08);
-  border: 1px solid rgba(96, 165, 250, 0.25);
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: #93c5fd;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  height: 100%;
+  padding: 0.25rem 0.7rem;
+  border-radius: 14px;
+  background: #4c1d6e;
+  border: 2px solid #fbbf24;
+  white-space: nowrap;
+  overflow: hidden;
   cursor: pointer;
 }
-.pc-promo-pill-close {
-  flex-shrink: 0;
+.pc-promo-small-line1 {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fbbf24;
+  line-height: 1.2;
+}
+.pc-promo-small-line2 {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+/* 大きい版（パネル3枚以下）: 左右FABと同じ横幅の範囲に、FAB行の上へ
+   重なる形で表示する大きなカード（FAB高さの約4倍）。パネル一覧の最下部
+   はこのカードの高さ分隠れるが、パネル3枚以下＝画面下部に余白がある
+   想定のユーザー層のため許容する設計（ユーザー承認済み）。 */
+.pc-promo-banner.pc-promo-banner-large {
+  bottom: calc(1.5rem + 50px + 0.6rem); /* FABオフセット+FAB高さ+ゆとり、FAB行のすぐ上 */
+  height: 200px; /* 検索FAB高さ(50px)の約4倍 */
+}
+.pc-promo-card {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  padding: 1.2rem 2rem;
+  border-radius: 20px;
+  background: #4c1d6e;
+  border: 3px solid #fbbf24;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+.pc-promo-card-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fbbf24;
+}
+.pc-promo-card-body {
+  align-self: stretch;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ffffff;
+  line-height: 1.5;
+  text-align: left;
+}
+.pc-promo-card-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.8rem;
   background: none;
   border: none;
-  color: inherit;
-  font-size: 0.85rem;
+  color: #ffffff;
+  font-size: 1.2rem;
   font-weight: 700;
   cursor: pointer;
-  padding: 0;
+  padding: 0.2rem;
   line-height: 1;
 }
 
