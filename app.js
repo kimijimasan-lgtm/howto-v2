@@ -5555,11 +5555,11 @@ function showQRCodeModal() {
   overlay.innerHTML = `
     <div class="modal-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 10000;">
       <div class="modal-box" style="border: 2px solid #ef4444; max-width: 360px; text-align: center; background: #1c2230; padding: 1.5rem; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
-        <div style="background: rgba(239, 68, 68, 0.1); border-radius: 12px; padding: 0.75rem; border: 1px solid rgba(239, 68, 68, 0.3); margin-bottom: 1.25rem;">
-          <span style="font-size: 1.25rem; display: block; margin-bottom: 0.35rem; font-weight: 800; color: #f87171;">⚠️【厳重注意】</span>
-          <span style="font-size: 0.8rem; font-weight: 700; color: #fca5a5; line-height: 1.55; display: block;">
-            このQRコードはあなた専用のFirebase同期URLです。<br>
-            他人に読み取られないよう十分に注意してください！
+        <div style="background: rgba(96, 165, 250, 0.1); border-radius: 12px; padding: 0.75rem; border: 1px solid rgba(96, 165, 250, 0.3); margin-bottom: 1.25rem;">
+          <span style="font-size: 1.25rem; display: block; margin-bottom: 0.35rem; font-weight: 800; color: #60a5fa;">💡【ご案内】</span>
+          <span style="font-size: 0.8rem; font-weight: 700; color: #93c5fd; line-height: 1.55; display: block;">
+            このQRコードをスマホのカメラで読み取ると、同じ画面をスマホでも開けます。<br>
+            パスワード等の情報は含まれていません。
           </span>
         </div>
         <div style="background: #fff; padding: 1rem; border-radius: 16px; display: inline-block; box-shadow: 0 4px 16px rgba(0,0,0,0.3); margin-bottom: 1.25rem;">
