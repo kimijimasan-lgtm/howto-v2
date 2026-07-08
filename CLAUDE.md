@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=873, style.css?v=720, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=874, style.css?v=720, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=720`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=873`
+- `app.js?v=874`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-09）
 
+- **ゲストサインアウト確認モーダルの本文を修正（完了・本番デプロイ済み、app.js?v=874、`showGuestSignoutModal()` 内 `app.js:5741`）**: 旧文言「100円でアップグレードすると無制限で使えます。」だけでは、なぜサインアウトが必要なのか（Googleログインには一度ログオフが要る）が伝わらないとの指摘。「Googleアカウントでログインするには、一度ログオフする必要があります。データを引き継ぎたい場合は、先に「100円でアップグレード」をご検討ください。」に変更。見出し「サインアウトするとゲストデータが失われます」は変更なし。文章量が増えたため、ローカルでモーダル高さ（449px、ウィンドウ内に収まりボタンとの間隔も崩れないことを実測）を確認済み
 - **PC活用促進バナーを再設計（完了・本番デプロイ済み、app.js?v=873・style.css?v=720）**: 「小さい版がパネルカードに埋もれて見えない」「大きい版に切り替わらない」という2件の実機報告を受け、まず実際にローカルでパネル数3枚/7枚を再現して`showLarge`判定・DOM・z-indexを検証した。
   - **判明した根本原因**: ①「大きい版に切り替わらない」問題は判定ロジックのバグではなく、2026-07-08の全面変更（コミット`20ab06c`）で"見出し+本文の大きいカード"自体が廃止され、大小どちらも`height:36px`の1行ピルに統一されていたため、大きい版に切り替わっても見た目上「大きく」ならなかったのが真因。②「小さい版が埋もれる」問題はz-indexの階層自体は正しかった（`elementFromPoint()`で検証済み）が、背景が`rgba(96,165,250,0.08)`という8%の半透明のみだったため、下の明るいパネルカードの色が透けて文字が読めなくなっていたのが真因
   - **大きい版（パネル3枚以下）**: 廃止されていたカードデザインを復活。濃い紫背景(`#4c1d6e`)+黄色太枠(`#fbbf24`、3px)、見出し「💻 PCでも同じ画面が見られます」+本文「PCのブラウザで crossmemo.web.app と入力してみてください」+✕ボタン。高さは検索FAB(50px)の約4倍＝200px、横幅は左右FABの外端に揃え、FAB行の上に重なる形で配置（`positionPcPromoBannerLarge()`新設）。本文は長文用に`text-align:left`＋`align-self:stretch`（stretchが無いと flexアイテムが文字幅に縮んでcenter同然になるため必須）
