@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=870, style.css?v=716, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=871, style.css?v=717, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -710,9 +710,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=716`
+- `style.css?v=717`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=870`
+- `app.js?v=871`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,7 +721,11 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
-- **PC活用促進バナーの小さい版を2行化・文言変更（完了・本番デプロイ済み、app.js?v=870・style.css?v=716）**: 実機確認で2件のフィードバックがあり対応。
+- **PC活用促進バナーをFABと同じ行の隙間に収める配置に全面変更（完了・本番デプロイ済み、app.js?v=871・style.css?v=717）**: 実機確認で「バナーが独立した別行として画面下部に追加され、画面が縦に伸び余白が無駄になっている」との指摘。左下FAB（ファイル/ブログ）・右下の検索FABは同じ`bottom:1.5rem`の行に`position:fixed`で並んでいるため、バナーもその「間」に収めるよう再設計した。
+  - **デザイン変更**: カード形式（見出し+本文+✕、`.pc-promo-large`）と2行の控えめ表示（`.pc-promo-small-line1/2`）を廃止し、単一行のピル型（`.pc-promo-pill`）に統一。大きい版「💻 crossmemo.web.appでも見られます」+✕ボタン、小さい版「💻 PCでも見られます」（タップで一時展開）。パネル数に応じた大小の出し分け・✕での永続クローズ・タップでのトグルは従来ロジックを維持
+  - **配置の仕組み**: 左下FABはログイン種別（ファイル/ブログ）で幅が異なる（44px/約83px）ため、固定値ではなく`positionPcPromoBanner()`（`app.js:944〜951`）が実際のFAB位置を`getBoundingClientRect()`で読み取り、両FABの隙間（8pxの余白付き）に収まるよう`left`/`right`を動的に設定。`.pc-promo-banner`自体は`position:fixed; bottom:1.5rem; height:36px`でFABと同じ行に固定（`style.css:466〜`付近）
+  - **検証**: ローカル環境はwindow resizeが実ビューポートに反映されないため、`#app`を`position:relative`・FABを`position:absolute`に一時的に切り替える手法で実機と同等（430px幅）の座標関係を再現。左下FABが幅広なゲスト条件（より厳しい条件）でも、バナーが両FABの間に約8px前後の隙間を保って収まり、垂直方向の余分な行が増えていないことを確認
+- **PC活用促進バナーの小さい版を2行化・文言変更（完了・本番デプロイ済み、app.js?v=870→871・style.css?v=716→717で上記に置き換え）**: 実機確認で2件のフィードバックがあり対応。
   - **小さい版の2行化**: 「💻 PCでも見られます（crossmemo.web.app）」の1行→「💻 PCでも同じ画面が見られます」／「crossmemo.web.app」の2行に変更（`app.js:956〜961`、新規`.pc-promo-small-line1`/`.pc-promo-small-line2`、`style.css:518〜532`付近）。左右FABの間の余白を活かすため、フォントサイズも拡大（0.82rem→1行目0.92rem/2行目0.88rem）。`.pc-promo-banner`の`margin-bottom`（FABとの重なり回避の余白）はバナー自身の高さと独立した固定値のため、2行化でバナーが縦に伸びてもFABとの隙間（検索FAB:12px、左下FAB:22px）は変化しないことを実測で確認
   - **「パネル3枚でも小さい版が表示される」報告の調査**: `panelCount`の判定ロジック（`<=3`）・カウント方法（`cats.length`、テンプレート由来も含めた素直な子要素数）とも問題なし。`pc_promo_dismissed`を書き込む箇所も✕ボタンの1箇所（`app.js:952`）のみで、コード上のバグは見つからなかった。実機側で過去に✕を押した操作がlocalStorageに残っていたことが原因と推定（ローカルでフラグをクリアした状態では、パネル3枚で正しく大きい版が表示されることを確認済み）。実機での解消は、Safariの「Webサイトデータ」削除または`localStorage.removeItem('pc_promo_dismissed')`で確認可能
 - **PC活用促進バナーとFABの重なりを解消・フォントサイズ拡大（完了・本番デプロイ済み、style.css?v=715→716で追加修正）**: 下記「PC活用促進バナーを追加」実装を実機iPhone Safariで確認したところ、バナーが右下の検索FAB・左下のファイル/ブログFAB（いずれも`position:fixed`）と重なり、本文後半が隠れる不具合が発覚。修正内容:
