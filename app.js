@@ -929,12 +929,26 @@ function renderHome(container) {
 
   const ref = db.ref(`users/${state.uid}/categories`);
 
-  // PC活用促進バナー（スマホ表示のみ）: パネル数3枚以下なら詳しいカード、
-  // 4枚以上または閉じた後なら1行の控えめな表示。トグルは_pcPromoExpandedで
-  // セッション限りの一時展開を扱い、localStorageのpc_promo_dismissedは
-  // 「✕で閉じた」永続フラグとして分離して管理する
+  // PC活用促進バナー（スマホ表示のみ）: パネル数3枚以下なら目立つピル、
+  // 4枚以上または閉じた後なら控えめなピル。左下FAB（ファイル/ブログ）と
+  // 右下の検索FABは同じ bottom:1.5rem の行に position:fixed で並んでいる
+  // ため、バナーもその「間」に収まるよう、両FABの実際の位置を
+  // getBoundingClientRect() で読み取って left/right を動的に設定する
+  // （左下FABはログイン種別でファイル/ブログの2種あり、幅が異なるため、
+  // 固定値ではなく実測値ベースで配置しないとどちらかで隙間がズレる）。
+  // トグルは_pcPromoExpandedでセッション限りの一時展開を扱い、
+  // localStorageのpc_promo_dismissedは「✕で閉じた」永続フラグとして
+  // 分離して管理する
   const PC_PROMO_PANEL_THRESHOLD = 3;
   let _pcPromoExpanded = false;
+  function positionPcPromoBanner(el) {
+    const leftFab = document.getElementById('btnFilesLink') || document.getElementById('btnBlogLink');
+    const rightFab = document.getElementById('btnSearchFab');
+    if (!leftFab || !rightFab) return;
+    const gap = 8; // FABとの間の余白(px)
+    el.style.left = (leftFab.getBoundingClientRect().right + gap) + 'px';
+    el.style.right = (window.innerWidth - rightFab.getBoundingClientRect().left + gap) + 'px';
+  }
   function renderPcPromoBanner(panelCount) {
     const el = document.getElementById('pcPromoBanner');
     if (!el) return;
@@ -943,27 +957,24 @@ function renderHome(container) {
 
     if (showLarge) {
       el.innerHTML = `
-        <div class="pc-promo-large">
-          <button class="pc-promo-close" id="pcPromoClose" aria-label="閉じる">✕</button>
-          <div class="pc-promo-title">💻 PCでも同じメモが見られます</div>
-          <div class="pc-promo-body">PCのブラウザで crossmemo.web.app と入力してみてください</div>
+        <div class="pc-promo-pill large" id="pcPromoPill">
+          <span>💻 crossmemo.web.appでも見られます</span>
+          <button class="pc-promo-pill-close" id="pcPromoClose" aria-label="閉じる">✕</button>
         </div>`;
-      document.getElementById('pcPromoClose').onclick = () => {
+      document.getElementById('pcPromoClose').onclick = (e) => {
+        e.stopPropagation();
         localStorage.setItem('pc_promo_dismissed', '1');
         _pcPromoExpanded = false;
         renderPcPromoBanner(panelCount);
       };
     } else {
-      el.innerHTML = `
-        <div class="pc-promo-small" id="pcPromoSmall">
-          <div class="pc-promo-small-line1">💻 PCでも同じ画面が見られます</div>
-          <div class="pc-promo-small-line2">crossmemo.web.app</div>
-        </div>`;
-      document.getElementById('pcPromoSmall').onclick = () => {
+      el.innerHTML = `<div class="pc-promo-pill small" id="pcPromoPill">💻 PCでも見られます</div>`;
+      document.getElementById('pcPromoPill').onclick = () => {
         _pcPromoExpanded = true;
         renderPcPromoBanner(panelCount);
       };
     }
+    positionPcPromoBanner(el);
   }
 
   // キャッシュ描画→直後のライブ取得で再描画が起きる際、画面全体が点滅して見える
