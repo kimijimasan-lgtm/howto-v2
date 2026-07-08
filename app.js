@@ -5602,6 +5602,7 @@ function renderLogin(container) {
           Googleでログイン
         </button>
         <button class="login-btn btn-guest" id="btnGuestLogin">ゲストとして試す</button>
+        <a href="https://apps100kin.web.app/contact.html" target="_blank" rel="noopener" style="display:block;margin-top:1.25rem;font-size:0.78rem;color:rgba(255,255,255,0.5);text-decoration:underline;text-underline-offset:3px;">ご購入済みなのに反映されない方はこちら</a>
       </div>
     </div>
   `;
@@ -5701,6 +5702,7 @@ function showLimitModal(message) {
         <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;white-space:pre-line;">${message}</p>
         <button id="btnUpgrade" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#f97316,#ec4899);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">アップグレードする（100円）</button>
         <button id="btnLimitClose" style="width:100%;padding:0.7rem;border:none;border-radius:14px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);font-size:0.85rem;cursor:pointer;font-family:var(--font);">閉じる</button>
+        <a href="https://apps100kin.web.app/contact.html" target="_blank" rel="noopener" style="display:block;margin-top:0.9rem;font-size:0.78rem;color:rgba(255,255,255,0.45);text-decoration:underline;text-underline-offset:3px;">ご購入済みなのに反映されない方はこちら</a>
       </div>
     </div>
   `;
