@@ -463,6 +463,62 @@ body {
   }
 }
 
+/* PC活用促進バナー（画面下部固定・スマホ表示のみ） */
+.pc-promo-banner {
+  display: none;
+  flex-shrink: 0;
+  padding: 0 0.75rem 0.5rem;
+}
+@media (max-width: 600px) {
+  .pc-promo-banner {
+    display: block;
+  }
+}
+.pc-promo-large {
+  position: relative;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 12px;
+  padding: 0.75rem 2rem 0.75rem 0.9rem;
+  text-align: center;
+}
+.pc-promo-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #60a5fa;
+  margin-bottom: 0.3rem;
+}
+.pc-promo-body {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #93c5fd;
+  line-height: 1.5;
+}
+.pc-promo-close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: #93c5fd;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+}
+.pc-promo-small {
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: 10px;
+  padding: 0.4rem 0.75rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #93c5fd;
+  cursor: pointer;
+}
+
 
 
 .cat-card-count {

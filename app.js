@@ -870,6 +870,7 @@ function renderHome(container) {
       <div class="category-grid" id="catGrid">
         <div class="loading-spinner">読み込み中…</div>
       </div>
+      <div id="pcPromoBanner" class="pc-promo-banner"></div>
       <button class="search-fab" id="btnSearchFab" title="全文検索">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <circle cx="11" cy="11" r="8"/>
@@ -928,6 +929,39 @@ function renderHome(container) {
 
   const ref = db.ref(`users/${state.uid}/categories`);
 
+  // PC活用促進バナー（スマホ表示のみ）: パネル数3枚以下なら詳しいカード、
+  // 4枚以上または閉じた後なら1行の控えめな表示。トグルは_pcPromoExpandedで
+  // セッション限りの一時展開を扱い、localStorageのpc_promo_dismissedは
+  // 「✕で閉じた」永続フラグとして分離して管理する
+  const PC_PROMO_PANEL_THRESHOLD = 3;
+  let _pcPromoExpanded = false;
+  function renderPcPromoBanner(panelCount) {
+    const el = document.getElementById('pcPromoBanner');
+    if (!el) return;
+    const dismissed = localStorage.getItem('pc_promo_dismissed') === '1';
+    const showLarge = _pcPromoExpanded || (!dismissed && panelCount <= PC_PROMO_PANEL_THRESHOLD);
+
+    if (showLarge) {
+      el.innerHTML = `
+        <div class="pc-promo-large">
+          <button class="pc-promo-close" id="pcPromoClose" aria-label="閉じる">✕</button>
+          <div class="pc-promo-title">💻 PCでも同じメモが見られます</div>
+          <div class="pc-promo-body">PCのブラウザで crossmemo.web.app と入力してみてください</div>
+        </div>`;
+      document.getElementById('pcPromoClose').onclick = () => {
+        localStorage.setItem('pc_promo_dismissed', '1');
+        _pcPromoExpanded = false;
+        renderPcPromoBanner(panelCount);
+      };
+    } else {
+      el.innerHTML = `<div class="pc-promo-small" id="pcPromoSmall">💻 PCでも見られます（crossmemo.web.app）</div>`;
+      document.getElementById('pcPromoSmall').onclick = () => {
+        _pcPromoExpanded = true;
+        renderPcPromoBanner(panelCount);
+      };
+    }
+  }
+
   // キャッシュ描画→直後のライブ取得で再描画が起きる際、画面全体が点滅して見える
   // エントランスアニメーションを2回目以降は止める（初回表示だけアニメーションさせる）
   let _lastCatsSig = null;
@@ -949,12 +983,14 @@ function renderHome(container) {
           <button class="btn-primary" id="btnFirstCat">最初のカテゴリを作成</button>
         </div>`;
       document.getElementById('btnFirstCat').onclick = () => showCategoryModal();
+      renderPcPromoBanner(0);
       return;
     }
 
     const cats = Object.entries(data)
       .map(([id, v]) => ({ id, ...v }))
       .sort((a, b) => (a.order || 0) - (b.order || 0));
+    renderPcPromoBanner(cats.length);
 
     grid.innerHTML = '';
     cats.forEach(cat => {
