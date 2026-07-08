@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=870, style.css?v=714, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=870, style.css?v=715, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -710,7 +710,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=714`
+- `style.css?v=715`
 - `tiptap.bundle.js?v=8`
 - `app.js?v=870`
 
@@ -721,7 +721,11 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
-- **PC活用促進バナーを追加（完了・本番デプロイ済み、app.js?v=870・style.css?v=714）**: `#btnShowQR`（QRコードボタン）が`.btn-pc-only`でPC限定表示のため、スマホユーザーはPC版が使えることに気づく機会がなかった問題への対応。スマホ表示のホーム画面下部（`#pcPromoBanner`、画面下部固定・スクロールに追従しない帯）に案内を追加。
+- **PC活用促進バナーとFABの重なりを解消・フォントサイズ拡大（完了・本番デプロイ済み、style.css?v=715）**: 下記「PC活用促進バナーを追加」実装を実機iPhone Safariで確認したところ、バナーが右下の検索FAB・左下のファイル/ブログFAB（いずれも`position:fixed`）と重なり、本文後半が隠れる不具合が発覚。修正内容:
+  - **根本原因**: `.screen-home`は`height:100dvh`の縦flexで`.category-grid`が`flex:1`のため、`.pc-promo-banner`（`style.css:466〜`）は常に画面最下端に接する位置に来る。一方FABは`bottom:1.5rem`・最大高さ50px（`.search-fab`）で画面下端から24px〜74pxの帯を常時占有しており、この帯とバナーが重なっていた
+  - **修正**: `.pc-promo-banner`に`margin-bottom: calc(1.5rem + 50px + 0.75rem)`（=86px、FABオフセット+最大高さ+ゆとり）を追加。px/rem固定値の計算のため画面幅に依存せずどの端末でも成立する。水平paddingも`0.75rem→1.25rem`に拡大（防御的対応）。併せて見出し・本文のフォントサイズを拡大（見出し`0.85rem→0.92rem`、大きい版本文`0.78rem→0.85rem`、小さい版`0.75rem→0.82rem`）
+  - **検証**: ローカルで`getBoundingClientRect()`による幾何学的検証を実施し、バナー下端とFAB上端の間に12px（検索FAB）・22px（ファイルFAB）の隙間を確認。本番デプロイ後、配信されたCSSに修正が反映されていることを`curl`で確認済み。**実機での最終見た目確認はユーザー対応待ち**
+- **PC活用促進バナーを追加（完了・本番デプロイ済み、app.js?v=870・style.css?v=714→715で上記修正）**: `#btnShowQR`（QRコードボタン）が`.btn-pc-only`でPC限定表示のため、スマホユーザーはPC版が使えることに気づく機会がなかった問題への対応。スマホ表示のホーム画面下部（`#pcPromoBanner`、画面下部固定・スクロールに追従しない帯）に案内を追加。
   - **表示場所**: `app.js:816〜886`付近の`renderHome`内、`#catGrid`と`#btnSearchFab`の間に器を配置。`renderCategoryGrid()`の両分岐（カテゴリ0件/あり）から新設の`renderPcPromoBanner(panelCount)`を呼び出す形（`app.js:929〜962`付近）
   - **大小の出し分け**: パネル数3枚以下（`PC_PROMO_PANEL_THRESHOLD`）は見出し＋説明文＋✕ボタンの大きいカード、4枚以上またはクローズ済みは1行の控えめな表示。3枚という閾値は、テンプレート初期状態（解説+メモの2枚）とゲストのパネル作成上限（`FREE_PANEL_CREATE_LIMIT=3`）を踏まえて設定
   - **状態管理**: ✕クローズは`localStorage.pc_promo_dismissed='1'`でブラウザ単位（uid非依存）に永続化。小さい版タップでの再展開は`_pcPromoExpanded`というクロージャ変数によるセッション限りの一時トグルで、localStorageは変更しない（次回読み込みではクローズ済み状態から開始）
