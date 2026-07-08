@@ -5808,34 +5808,40 @@ function showPaymentSuccessModal() {
 
     // 付与待ちフラグ: ポップアップがブロックされsignInWithRedirectにフォールバックした
     // 場合やログインが中断した場合でも、次のログイン確定時（onAuthStateChanged）に
-    // 付与を完了させるための保険。付与成功時に必ず除去する
+    // 付与を完了させるための保険。付与成功時（onAuthStateChanged側）に必ず除去される
     localStorage.setItem('pending_premium_grant', '1');
 
     const provider = new firebase.auth.GoogleAuthProvider();
+    const prevUid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null;
     try {
       const result = await firebase.auth().signInWithPopup(provider);
-      const user = result.user;
-      // isPremiumフラグを設定
-      await db.ref(`users/${user.uid}/isPremium`).set(true);
-      localStorage.removeItem('pending_premium_grant');
-      state.uid = user.uid;
-      state.isPremium = true;
-      state.isAnonymous = false;
-      // 新規ユーザーならテンプレートをコピー
-      const catSnap = await db.ref(`users/${user.uid}/categories`).once('value');
-      if (!catSnap.exists() && user.email !== 'kimijimasan@gmail.com') {
-        await copyTemplateToUser(user.uid);
+      // isPremium付与・stateへの反映・テンプレートコピー・ホーム遷移は、ログイン確定で
+      // 発火する onAuthStateChanged（pending_premium_grant の保険処理）に一本化。
+      // 起動分岐が onAuthStateChanged を登録するようになったため、ここでも行うと
+      // 二重実行（テンプレートの二重コピー等）になる
+      if (result.user && result.user.uid === prevUid) {
+        // ただし、ログイン済みユーザーが同じアカウントを選んだ場合は onAuthStateChanged が
+        // 再発火しないことがあるため、付与と画面遷移だけここで直接行う
+        // （このuidの初期化・テンプレートコピー確認は起動時に実施済み）
+        await db.ref(`users/${result.user.uid}/isPremium`).set(true);
+        localStorage.removeItem('pending_premium_grant');
+        state.isPremium = true;
+        goTo('home');
+        revealAppAfterAuth();
       }
-      goTo('home');
-      revealAppAfterAuth();
       showToast('ログイン完了！無制限でご利用いただけます');
     } catch (err) {
       hideAuthOverlayNow();
       if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
         await firebase.auth().signInWithRedirect(provider).catch(() => {});
       } else {
-        console.error('Google Sign-In Error:', err);
-        showToast('ログインに失敗しました');
+        if (err.code !== 'auth/popup-closed-by-user') {
+          console.error('Google Sign-In Error:', err);
+          showToast('ログインに失敗しました');
+        }
+        // ログインに失敗してもモーダルを開き直して再試行できるようにする
+        // （背後には通常のログイン/ホーム画面が描画済みなので、閉じても詰まない）
+        showPaymentSuccessModal();
       }
     }
   };
@@ -6098,8 +6104,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   const isPaymentSuccess = urlParams.get('payment') === 'success';
   const isGuestParam = urlParams.get('guest') === 'true';
 
-  // ?payment=success の場合：決済開始時に保存したuidへ即isPremiumを付与してから、
-  // Googleログインを促すモーダルを表示する
+  // ?payment=success の場合：決済開始時に保存したuidへ即isPremiumを付与する。
+  // モーダルの表示は通常の起動フロー（onAuthStateChanged → goTo）で背後の画面を
+  // 描画した後に行う。旧実装はここで return して onAuthStateChanged の登録ごと
+  // スキップしていたため、モーダルの背後が完全な空画面になり、背景タップで
+  // モーダルを閉じたりポップアップログインに失敗すると操作不能になっていた
+  let showPaymentModalAfterBoot = false;
   if (isPaymentSuccess) {
     window.history.replaceState({}, document.title, window.location.pathname);
     const pendingUid = localStorage.getItem('pending_payment_uid');
@@ -6114,9 +6124,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         localStorage.setItem('pending_premium_grant', '1');
       }
     }
-    revealAppAfterAuth();
-    showPaymentSuccessModal();
-    return; // onAuthStateChangedの登録をスキップ（モーダル内でログイン処理する）
+    showPaymentModalAfterBoot = true;
   }
 
   // ?guest=true パラメータがあり、未ログイン状態なら自動ゲストログイン
@@ -6170,6 +6178,12 @@ window.addEventListener('DOMContentLoaded', async () => {
       window._authInProgress = false;
       goTo('home');
       revealAppAfterAuth();
+      // ?payment=success で起動した場合はホーム画面の上にモーダルを重ねる
+      // （モーダル内ログイン成功後の onAuthStateChanged 再発火では出さない）
+      if (showPaymentModalAfterBoot) {
+        showPaymentModalAfterBoot = false;
+        showPaymentSuccessModal();
+      }
       // ホーム画面の初期表示が落ち着いたタイミングで、編集画面を開く前に
       // TipTapエディターの初期化コストを先払いしておく
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));
@@ -6187,6 +6201,12 @@ window.addEventListener('DOMContentLoaded', async () => {
         window._authInProgress = false;
         goTo('login');
         revealAppAfterAuth();
+        // ?payment=success で起動した未ログインユーザー（ブログ経由の購入者）には
+        // ログイン画面の上にモーダルを重ねる。閉じてもログイン画面が操作できる
+        if (showPaymentModalAfterBoot) {
+          showPaymentModalAfterBoot = false;
+          showPaymentSuccessModal();
+        }
       }
       // currentUser が非 null なら redirect 成功 → user あり で再発火するので何もしない
     }
