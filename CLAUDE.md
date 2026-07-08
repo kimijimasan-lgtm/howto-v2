@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=869, style.css?v=713, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=870, style.css?v=714, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -710,9 +710,9 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=713`
+- `style.css?v=714`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=869`
+- `app.js?v=870`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,13 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
+- **PC活用促進バナーを追加（完了・本番デプロイ済み、app.js?v=870・style.css?v=714）**: `#btnShowQR`（QRコードボタン）が`.btn-pc-only`でPC限定表示のため、スマホユーザーはPC版が使えることに気づく機会がなかった問題への対応。スマホ表示のホーム画面下部（`#pcPromoBanner`、画面下部固定・スクロールに追従しない帯）に案内を追加。
+  - **表示場所**: `app.js:816〜886`付近の`renderHome`内、`#catGrid`と`#btnSearchFab`の間に器を配置。`renderCategoryGrid()`の両分岐（カテゴリ0件/あり）から新設の`renderPcPromoBanner(panelCount)`を呼び出す形（`app.js:929〜962`付近）
+  - **大小の出し分け**: パネル数3枚以下（`PC_PROMO_PANEL_THRESHOLD`）は見出し＋説明文＋✕ボタンの大きいカード、4枚以上またはクローズ済みは1行の控えめな表示。3枚という閾値は、テンプレート初期状態（解説+メモの2枚）とゲストのパネル作成上限（`FREE_PANEL_CREATE_LIMIT=3`）を踏まえて設定
+  - **状態管理**: ✕クローズは`localStorage.pc_promo_dismissed='1'`でブラウザ単位（uid非依存）に永続化。小さい版タップでの再展開は`_pcPromoExpanded`というクロージャ変数によるセッション限りの一時トグルで、localStorageは変更しない（次回読み込みではクローズ済み状態から開始）
+  - **デザイン**: QRコードモーダル（`app.js:5558〜5564`）と同じ青系トーン（背景`rgba(96,165,250,0.1)`、見出し`#60a5fa`、本文`#93c5fd`）を再利用し、アプリ内の「情報提供トーン」の色を統一
+  - **CSS**: `.pc-promo-banner`は既存の`.btn-mobile-only`（`style.css:274〜281`）と同じ600pxブレークポイントで、スマホ幅（max-width:600px）でのみ`display:block`
+  - **検証状況**: ブラウザ自動化環境の制約でウィンドウリサイズが実ビューポート幅に反映されず、狭いビューポートでの見た目そのものは確認できなかった。PC幅（1177px）で`display:none`となること、CSSのメディアクエリ記法が正しいことはJS経由で確認済み。JSロジック（大小の閾値判定・✕クローズでの永続化・小さい版タップでの一時トグル）は`!important`でメディアクエリを一時上書きするテスト専用スタイルを注入し、パネル4枚（小さい版）・パネル3枚境界値（大きい版）の両方で動作確認済み。**実機スマホでの最終見た目確認は未実施（ユーザーが実機で確認予定）**
 - **QRコードモーダルの案内文言を修正（完了・本番デプロイ済み、app.js?v=869、`showQRCodeModal()` 内 `app.js:5558〜5564`）**: `#btnShowQR`（ホーム画面ヘッダー、`.btn-pc-only` によりPC表示時のみ出現）から開くQRコードモーダルの警告文を調査・修正。
   - **調査で判明した事実**: QRコードは `window.location.href`（現在表示中のURL）をそのままエンコードしているだけで、ログイントークン・セッションID・UID等の認証情報は一切含まれない。画面遷移はJSのstate管理でURL自体は変化せず、`history.replaceState` の2箇所（`app.js:6116`, `6137`）も`?payment=success`等のパラメータを除去するのみで付加はしない。したがって通常表示時のQRは常に単純な `https://crossmemo.web.app/` のみをエンコードする。用途は「PCでQRコードを表示し、スマホのカメラで読み取って同じ画面をスマホで開く」（`.btn-pc-only` がPC限定表示であること、モーダル内の「スマホで表示されない原因」警告文の内容と整合）
   - **旧文言の問題**: 「このQRコードはあなた専用のFirebase同期URLです。他人に読み取られないよう十分に注意してください！」という、実態（トークンを含まない単なる公開URL）より厳しい警告になっていた
