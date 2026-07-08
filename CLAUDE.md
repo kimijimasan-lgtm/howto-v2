@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=870, style.css?v=715, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=870, style.css?v=716, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -710,7 +710,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=715`
+- `style.css?v=716`
 - `tiptap.bundle.js?v=8`
 - `app.js?v=870`
 
@@ -721,7 +721,10 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
-- **PC活用促進バナーとFABの重なりを解消・フォントサイズ拡大（完了・本番デプロイ済み、style.css?v=715）**: 下記「PC活用促進バナーを追加」実装を実機iPhone Safariで確認したところ、バナーが右下の検索FAB・左下のファイル/ブログFAB（いずれも`position:fixed`）と重なり、本文後半が隠れる不具合が発覚。修正内容:
+- **PC活用促進バナーの小さい版を2行化・文言変更（完了・本番デプロイ済み、app.js?v=870・style.css?v=716）**: 実機確認で2件のフィードバックがあり対応。
+  - **小さい版の2行化**: 「💻 PCでも見られます（crossmemo.web.app）」の1行→「💻 PCでも同じ画面が見られます」／「crossmemo.web.app」の2行に変更（`app.js:956〜961`、新規`.pc-promo-small-line1`/`.pc-promo-small-line2`、`style.css:518〜532`付近）。左右FABの間の余白を活かすため、フォントサイズも拡大（0.82rem→1行目0.92rem/2行目0.88rem）。`.pc-promo-banner`の`margin-bottom`（FABとの重なり回避の余白）はバナー自身の高さと独立した固定値のため、2行化でバナーが縦に伸びてもFABとの隙間（検索FAB:12px、左下FAB:22px）は変化しないことを実測で確認
+  - **「パネル3枚でも小さい版が表示される」報告の調査**: `panelCount`の判定ロジック（`<=3`）・カウント方法（`cats.length`、テンプレート由来も含めた素直な子要素数）とも問題なし。`pc_promo_dismissed`を書き込む箇所も✕ボタンの1箇所（`app.js:952`）のみで、コード上のバグは見つからなかった。実機側で過去に✕を押した操作がlocalStorageに残っていたことが原因と推定（ローカルでフラグをクリアした状態では、パネル3枚で正しく大きい版が表示されることを確認済み）。実機での解消は、Safariの「Webサイトデータ」削除または`localStorage.removeItem('pc_promo_dismissed')`で確認可能
+- **PC活用促進バナーとFABの重なりを解消・フォントサイズ拡大（完了・本番デプロイ済み、style.css?v=715→716で追加修正）**: 下記「PC活用促進バナーを追加」実装を実機iPhone Safariで確認したところ、バナーが右下の検索FAB・左下のファイル/ブログFAB（いずれも`position:fixed`）と重なり、本文後半が隠れる不具合が発覚。修正内容:
   - **根本原因**: `.screen-home`は`height:100dvh`の縦flexで`.category-grid`が`flex:1`のため、`.pc-promo-banner`（`style.css:466〜`）は常に画面最下端に接する位置に来る。一方FABは`bottom:1.5rem`・最大高さ50px（`.search-fab`）で画面下端から24px〜74pxの帯を常時占有しており、この帯とバナーが重なっていた
   - **修正**: `.pc-promo-banner`に`margin-bottom: calc(1.5rem + 50px + 0.75rem)`（=86px、FABオフセット+最大高さ+ゆとり）を追加。px/rem固定値の計算のため画面幅に依存せずどの端末でも成立する。水平paddingも`0.75rem→1.25rem`に拡大（防御的対応）。併せて見出し・本文のフォントサイズを拡大（見出し`0.85rem→0.92rem`、大きい版本文`0.78rem→0.85rem`、小さい版`0.75rem→0.82rem`）
   - **検証**: ローカルで`getBoundingClientRect()`による幾何学的検証を実施し、バナー下端とFAB上端の間に12px（検索FAB）・22px（ファイルFAB）の隙間を確認。本番デプロイ後、配信されたCSSに修正が反映されていることを`curl`で確認済み。**実機での最終見た目確認はユーザー対応待ち**
