@@ -38,7 +38,7 @@ if (typeof firebase === 'undefined' || typeof firebase.database === 'undefined' 
 // ── Firebase 初期化 ──────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyCWRY0dXtRqybI048q0btT-kW-rMnHfiW8",
-  authDomain: "torisetu-234c3.firebaseapp.com",
+  authDomain: "crossmemo.web.app",
   databaseURL: "https://torisetu-234c3-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "torisetu-234c3",
   storageBucket: "torisetu-234c3.firebasestorage.app",
