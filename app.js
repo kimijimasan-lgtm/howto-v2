@@ -954,7 +954,11 @@ function renderHome(container) {
         renderPcPromoBanner(panelCount);
       };
     } else {
-      el.innerHTML = `<div class="pc-promo-small" id="pcPromoSmall">💻 PCでも見られます（crossmemo.web.app）</div>`;
+      el.innerHTML = `
+        <div class="pc-promo-small" id="pcPromoSmall">
+          <div class="pc-promo-small-line1">💻 PCでも同じ画面が見られます</div>
+          <div class="pc-promo-small-line2">crossmemo.web.app</div>
+        </div>`;
       document.getElementById('pcPromoSmall').onclick = () => {
         _pcPromoExpanded = true;
         renderPcPromoBanner(panelCount);
