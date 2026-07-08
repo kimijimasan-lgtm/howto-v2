@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=866, style.css?v=713, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=867, style.css?v=713, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=713`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=866`
+- `app.js?v=867`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-08）
 
+- **購入済みユーザー向け問い合わせ導線を追加（完了・本番デプロイ済み、app.js?v=867）**: ログイン画面（`renderLogin`、ゲストボタンの下）と同期回数制限モーダル（`showLimitModal`、閉じるボタンの下）に「ご購入済みなのに反映されない方はこちら」の控えめなテキストリンクを追加。リンク先は100kin-blogの問い合わせページ `https://apps100kin.web.app/contact.html`（Firestore `inquiries` に保存される本番稼働フォーム。管理画面 `admin/inquiries.html` で確認可能）。静的アンカー（`target="_blank" rel="noopener"`）のみでJS処理なし。ローカル・本番の両方で表示とcontact.htmlへの遷移を確認済み。決済がisPremium付与に反映されなかったユーザーの受け皿（恒久対応③-(a)。根本対応のWebhook自動付与③-(b)は未実施）
 - **決済成功モーダルの空画面詰みバグ修正（完了・本番デプロイ済み、app.js?v=866）**: 実ユーザーから「購入してログインを選んだが、課金はできたがログインができない」との問い合わせを受け調査。`?payment=success` 起動分岐が `return` で `onAuthStateChanged` の登録ごとスキップしていたため、**モーダルの背後が完全な空画面**になり、①背景タップでモーダルを閉じた ②ポップアップログインに失敗した（閉じた・ブロック等）場合に何も操作できない詰み状態になっていた。修正内容:
   - 早期returnを廃止し、通常の起動フローで背後にホーム/ログイン画面を描画した後（`goTo` → `revealAppAfterAuth` 直後、初回発火のみ）にモーダルを表示するフラグ方式へ変更
   - ログイン失敗時（`popup-closed-by-user` 等）は**モーダルを自動再表示**して再試行可能に
@@ -807,7 +808,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 6. ~~残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え~~（**2026-07-07完了**。100kin-blog側のCLAUDE.md・gitログで確認済み）
 7. ~~残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装~~（**2026-07-07完了**。実機iPhone Safariで確認済み。詳細は100kin-blog側CLAUDE.md「0-8」参照）
 8. **authDomainのクロスオリジン問題の恒久対応**（モバイルで `signInWithRedirect` が機能しない問題。詳細は「直近の対応（2026-07-08）」参照。GCPコンソールでのOAuthリダイレクトURI追加→app.js/firebase.json変更→実機検証の順）
-9. **「購入済みなのに反映されない」ユーザーの復元導線**（小: 問い合わせ誘導リンク / 根本: Stripe Webhook + Cloud Functions。Blazeプラン要確認）
+9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応（Stripe Webhook + Cloud Functionsで決済とアカウントを自動紐付け。Blazeプラン要確認）は未着手
 10. **serve.bat修正**（退避済みの旧OneDriveパスを指しており使用不可。`F:\Claude学習\howto-v2` に直す）
 
 ## 直近の対応（2026-06-24）
