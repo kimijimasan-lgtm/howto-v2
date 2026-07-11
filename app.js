@@ -53,7 +53,7 @@ firebase.initializeApp(firebaseConfig);
 // Firebase Console > App Check で reCAPTCHA v3 を登録したら、発行されたサイトキーを
 // 下の定数に貼り付けて再デプロイする。空文字列の間は初期化をスキップし、従来通り動作する。
 // 保護対象: Realtime Database / Authentication（enforcement はコンソール側で後日有効化）
-const APP_CHECK_SITE_KEY = "";
+const APP_CHECK_SITE_KEY = "6LdGYE0tAAAAAEtyoR3b1T1G47FFN3_TgKdVGPlN";
 
 if (APP_CHECK_SITE_KEY) {
   // ローカル開発・自動テスト時はデバッグトークンを使う（初回アクセス時にコンソールへ

@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=875, style.css?v=720, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=876, style.css?v=720, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=720`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=875`
+- `app.js?v=876`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -728,6 +728,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
   - `firebase.json` CSP: reCAPTCHA v3用に`script-src`と`frame-src`へ`https://www.google.com`を追加（`www.gstatic.com`は既存許可、App Checkトークン交換先`content-firebaseappcheck.googleapis.com`は既存の`https://*.googleapis.com`でカバー済み）
   - 検証: ローカル（Chrome）でサイトキー空文字状態の起動を確認（コンソールエラーゼロ・ホーム画面正常描画・`firebase.appCheck`関数のロード確認）。**サイトキー設定後の実動作（reCAPTCHA読み込み・トークン取得・CSP違反ゼロ）は未検証**——キー設定・再デプロイ後に実ブラウザで`securitypolicyviolation`とApp Checkメトリクス（Firebase Console）を確認すること
   - **残タスク**: ①ユーザーがFirebase ConsoleでreCAPTCHA v3アプリ登録＋サイトキー発行 ②`APP_CHECK_SITE_KEY`に貼り付けて再デプロイ ③モニタリング期間（1〜2週間目安）でメトリクス確認 ④問題なければConsole側でRTDB/Authのenforcement有効化
+- **App Checkサイトキー設定・本番有効化（同日・app.js?v=876）**: 上記残タスク①②を実施。ユーザーがFirebase Consoleで発行したreCAPTCHA v3サイトキー（`6LdGYE0t...`）を`APP_CHECK_SITE_KEY`に設定して本番デプロイ。**モニタリングモードのまま（enforcement未有効化）**。残タスクは③メトリクス確認（1〜2週間）→④enforcement有効化
 
 ## 直近の対応（2026-07-09）
 
