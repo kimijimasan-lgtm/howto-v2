@@ -48,6 +48,25 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+
+// ── Firebase App Check（現在はモニタリングモード、enforcement はまだ有効化しない）──
+// Firebase Console > App Check で reCAPTCHA v3 を登録したら、発行されたサイトキーを
+// 下の定数に貼り付けて再デプロイする。空文字列の間は初期化をスキップし、従来通り動作する。
+// 保護対象: Realtime Database / Authentication（enforcement はコンソール側で後日有効化）
+const APP_CHECK_SITE_KEY = "";
+
+if (APP_CHECK_SITE_KEY) {
+  // ローカル開発・自動テスト時はデバッグトークンを使う（初回アクセス時にコンソールへ
+  // 出力されるトークンを Firebase Console > App Check > アプリ > デバッグトークンに
+  // 登録すると、そのブラウザからのアクセスが有効なトークン扱いになる）。
+  // この指定は activate より前に行う必要がある。
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  }
+  // 第2引数 true: トークン期限切れ前に自動更新（RTDB接続の失敗防止）
+  firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
+}
+
 const db = firebase.database();
 
 // ── グローバルエラーハンドラー（ランタイムエラー時の安全復帰） ──

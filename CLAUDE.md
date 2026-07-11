@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=874, style.css?v=720, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=875, style.css?v=720, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,12 +712,22 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=720`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=874`
+- `app.js?v=875`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-07-11）
+
+- **Firebase App Check導入（モニタリングモードのみ・enforcementは未有効化、app.js?v=875）**: 100kin-blogで採用した方式と同じ「サイトキー空文字ガード付き」構成をcompat SDKで実装。保護対象はRealtime DatabaseとAuthentication。
+  - `index.html`: `firebase-app-check-compat.js`（10.12.0、他のcompat SDKと同バージョン）の`<script>`タグを`firebase-database-compat.js`の直後に追加
+  - `app.js`: `firebase.initializeApp()`直後・`firebase.database()`取得**前**に初期化コードを追加（App Checkは他のFirebaseサービス利用開始前に有効化する必要があるため。firebaseConfigがapp.js側にあるので、100kin-blogの`firebase-config.js`に相当する位置）。定数 `APP_CHECK_SITE_KEY = ""`（**現在は空文字＝初期化スキップ状態**）。reCAPTCHA v3サイトキーをFirebase Consoleで発行したらこの定数に貼り付けて`firebase.appCheck().activate(APP_CHECK_SITE_KEY, true)`（第2引数=トークン自動更新）が動く設計
+  - **localhostデバッグトークン**: `location.hostname`が`localhost`/`127.0.0.1`のとき`self.FIREBASE_APPCHECK_DEBUG_TOKEN = true`を`activate`より前に自動セット。初回アクセス時にコンソールへ出力されるトークンをFirebase Console > App Check > アプリ > デバッグトークンに登録して使う
+  - `firebase.json` CSP: reCAPTCHA v3用に`script-src`と`frame-src`へ`https://www.google.com`を追加（`www.gstatic.com`は既存許可、App Checkトークン交換先`content-firebaseappcheck.googleapis.com`は既存の`https://*.googleapis.com`でカバー済み）
+  - 検証: ローカル（Chrome）でサイトキー空文字状態の起動を確認（コンソールエラーゼロ・ホーム画面正常描画・`firebase.appCheck`関数のロード確認）。**サイトキー設定後の実動作（reCAPTCHA読み込み・トークン取得・CSP違反ゼロ）は未検証**——キー設定・再デプロイ後に実ブラウザで`securitypolicyviolation`とApp Checkメトリクス（Firebase Console）を確認すること
+  - **残タスク**: ①ユーザーがFirebase ConsoleでreCAPTCHA v3アプリ登録＋サイトキー発行 ②`APP_CHECK_SITE_KEY`に貼り付けて再デプロイ ③モニタリング期間（1〜2週間目安）でメトリクス確認 ④問題なければConsole側でRTDB/Authのenforcement有効化
 
 ## 直近の対応（2026-07-09）
 
