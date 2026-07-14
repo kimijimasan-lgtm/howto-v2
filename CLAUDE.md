@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=876, style.css?v=720, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=880, style.css?v=720, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,12 +712,19 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=720`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=876`
+- `app.js?v=880`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-07-15）
+
+- **外部アプリからの画像ドラッグ中に編集モードが解除されるバグを修正（app.js?v=880、実機での外部ドラッグは未検証）**: スクショトリマー等の外部アプリから画像をドラッグしてカードに落とそうとすると、事前に編集モードにしていてもドロップ前に閲覧モードへ戻ってしまい、画像が新規タブで開いてしまう問題。
+  - **根本原因**: 編集モードでエディターにフォーカスがある状態から外部アプリへ操作を移すと、**ブラウザウィンドウ全体の非アクティブ化に伴ってエディターの `blur` が発火**し、300ms後のタイマー（iOSキーボード「完了」用の閲覧モード自動復帰）が `setEditorMode('view')` を実行。`editable=false` になるとProseMirrorは drop イベントの処理自体をスキップするため（`editorProps.handleDrop` は `view.editable` が false だと呼ばれない）、ブラウザ既定動作で画像がページとして開かれていた
+  - **修正**: モジュールレベルに `_windowInactive` フラグを追加（`window` の `blur`/`focus` イベントで更新。要素のblurはバブリングしないため、ウィンドウ自身のアクティブ切替でのみ発火する）。blur→閲覧モード復帰タイマーの中で `_windowInactive` なら復帰をスキップ。これにより「ページ内でフォーカスが外れた」（iOS完了ボタン等→従来どおり閲覧モードへ）と「ウィンドウごと非アクティブ」（アプリ切替・外部ドラッグ中→編集モード維持）を区別する
+  - **検証**: ローカル（Chrome・ゲスト）で①window blur + 要素blur後600msでも `contenteditable=true` 維持（修正の効果）②window アクティブのまま要素blurのみ→600msで `contenteditable=false`（既存のiOS完了動作の回帰なし）③コンソールエラーゼロ、を実ブラウザで確認。**実機での外部アプリドラッグ→ドロップの最終確認は未実施（ユーザー確認推奨）**
 
 ## 直近の対応（2026-07-11）
 

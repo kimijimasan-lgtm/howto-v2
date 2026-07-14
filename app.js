@@ -748,6 +748,37 @@ function cleanMarkdownForPaste(text) {
   return collapsed.join('\n');
 }
 
+// ── YouTube文字起こしテキストの判定 ───
+function isYouTubeTranscript(text) {
+  const lines = text.split('\n');
+  if (lines.length < 4) return false;
+  const tsPattern = /^(\d{1,2}:)?\d{1,2}:\d{2}$/;
+  let tsCount = 0;
+  for (const line of lines) {
+    if (tsPattern.test(line.trim())) tsCount++;
+  }
+  return tsCount >= 3 && tsCount >= lines.filter(l => l.trim()).length * 0.2;
+}
+
+// ── YouTube文字起こしテキストの整形 ───
+function formatYouTubeTranscript(text) {
+  const lines = text.split('\n');
+  const tsPattern = /^(\d{1,2}:)?\d{1,2}:\d{2}$/;
+  const textLines = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (tsPattern.test(trimmed)) continue;
+    textLines.push(trimmed);
+  }
+  const joined = textLines.join('');
+  const paragraphs = joined.split('。')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    .map(s => s + '。');
+  return paragraphs.join('\n');
+}
+
 // ── HTMLコンテンツからYouTube Video IDを抽出 ───
 function extractYoutubeId(html) {
   if (!html) return null;
@@ -3574,6 +3605,19 @@ function renderEditor(container) {
         const ytUrlTest = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([^#\&\?\s]+)/i;
         if (ytUrlTest.test(text.trim())) return false;
 
+        // YouTube文字起こしパネルからのコピー検出・整形
+        if (isYouTubeTranscript(text)) {
+          event.preventDefault();
+          const formatted = formatYouTubeTranscript(text);
+          if (!formatted) return true;
+          const html = formatted.split('\n')
+            .filter(l => l.trim() !== '')
+            .map(l => `<p>${esc(l)}</p>`)
+            .join('');
+          if (html) tiptapEditor.commands.insertContent(html);
+          return true;
+        }
+
         event.preventDefault();
 
         // 罫線テーブル文字は専用整形
@@ -3612,6 +3656,53 @@ function renderEditor(container) {
             tiptapEditor.commands.setContent(cleanedHtml, false);
           }
         }, 50);
+        return true;
+      },
+      // 外部（別タブ・エクスプローラ等）からの画像ファイルドロップを受け付ける。
+      // 処理せず既定動作に落ちるとブラウザが画像自体をページとして開いてしまう。
+      handleDrop(view, event, slice, moved) {
+        if (moved) return false; // エディタ内コンテンツの移動はProseMirrorに任せる
+        const dt = event.dataTransfer;
+        if (!dt) return false;
+
+        const files = Array.from(dt.files);
+        let imageFiles = files.filter(f => f.type.indexOf('image') !== -1);
+
+        // ファイルが無くても、data URL画像を含むHTMLドラッグ（スクショトリマー等の
+        // 自作アプリからのクロスウィンドウドラッグ）はファイル相当として受け取り、
+        // 通常の画像挿入パイプライン（圧縮・レイアウト）に流す
+        if (imageFiles.length === 0) {
+          const html = dt.getData('text/html') || '';
+          const dataUrls = Array.from(
+            html.matchAll(/src="(data:image\/[a-z+]+;base64,[^"]+)"/gi), m => m[1]
+          );
+          imageFiles = dataUrls.map((u, i) => dataUrlToImageFile(u, 'dropped_' + (i + 1)));
+        }
+
+        if (imageFiles.length === 0) {
+          // 画像ファイルが取れないドロップ（リンク・非画像ファイル等）は
+          // ページ遷移だけ確実に防いで案内を出す
+          if (files.length > 0 || dt.types.includes('text/uri-list')) {
+            event.preventDefault();
+            showToast('この形式は挿入できません。画像をコピーして貼り付けてください');
+            return true;
+          }
+          return false; // テキスト等の通常ドロップはProseMirrorに任せる
+        }
+
+        event.preventDefault();
+        if (state.cardLocked) return true; // ロック中のカードへの画像挿入を禁止（貼り付けと同仕様）
+        if (state.editorMode !== 'edit') {
+          showToast('編集モードにすると画像をドロップで挿入できます');
+          return true;
+        }
+
+        // ドロップ位置にカーソルを移してから、貼り付けと同じ挿入ロジックへ渡す
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        if (coords) {
+          tiptapEditor.chain().focus().setTextSelection(coords.pos).run();
+        }
+        handleMultipleImagesForTipTap(imageFiles);
         return true;
       },
       handleKeyDown(view, event) {
@@ -3828,11 +3919,16 @@ function renderEditor(container) {
   // blurイベント: フォーカスが外れたとき（iOSキーボードの「完了/承認」ボタン押下など）に
   // 編集モードなら閲覧モードへ自動切替する。
   // ヘッダーボタン操作で一時的に blur が起きても focus が戻れば切替をキャンセルする。
+  // ウィンドウごと非アクティブになった blur（別アプリへの切替・外部アプリからの
+  // 画像ドラッグ中）では閲覧モードへ戻さない。戻してしまうと editable=false になり
+  // ProseMirror が drop イベント自体を処理しなくなる（editorProps.handleDrop が
+  // 呼ばれず、ブラウザ既定動作で画像が新規タブで開いてしまう）。
   let _blurToViewTimer = null;
   tiptapEditor.on('blur', () => {
     _blurToViewTimer = setTimeout(() => {
       _blurToViewTimer = null;
       if (state.editorMode !== 'edit') return;
+      if (_windowInactive) return; // 外部ドラッグ・アプリ切替中は編集モードを維持
       if (!tiptapEditor || tiptapEditor.isDestroyed || tiptapEditor.isFocused) return;
       setEditorMode('view');
     }, 300);
@@ -4285,6 +4381,45 @@ async function handleMultipleImagesForTipTap(files) {
 function handleImageForTipTap(file) {
   return compressImageForLayout(file).then(d => insertSingleImageIntoTipTap(d));
 }
+
+// data URL文字列をFileに変換する（ドロップされたHTML内のdata URL画像を
+// 通常のファイルドロップと同じパイプラインに流すためのアダプタ）
+function dataUrlToImageFile(dataUrl, baseName) {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = (meta.match(/:(.*?);/) || [null, 'image/png'])[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  const ext = mime === 'image/jpeg' ? '.jpg' : '.png';
+  return new File([arr], baseName + ext, { type: mime });
+}
+
+// ウィンドウ自体が非アクティブかどうか（別アプリへの切替、外部アプリから
+// 画像をドラッグしている最中など）。エディターの blur→閲覧モード自動復帰は
+// 「ページ内でフォーカスが外れた」場合のみ対象とし、ウィンドウごと非アクティブに
+// なった blur では発動させないための判定に使う（外部ドラッグ中に編集モードが
+// 解除されて handleDrop が無効化＝画像が新規タブで開いてしまう問題の対策）。
+// ※要素の blur はバブリングしないため、このリスナーはウィンドウ自身の
+//   アクティブ/非アクティブ切替でのみ発火する
+let _windowInactive = false;
+window.addEventListener('blur', () => { _windowInactive = true; });
+window.addEventListener('focus', () => { _windowInactive = false; });
+
+// 外部ファイルをエディタの外（ヘッダーや余白等）に落としたときに
+// ブラウザがファイルを開いてページごと遷移してしまう事故を防ぐ安全網。
+// エディタ内へのドロップは editorProps.handleDrop が先に処理する。
+// Filesを含まないドラッグ（エディタ内のテキスト移動等）には干渉しない。
+window.addEventListener('dragover', (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+});
+window.addEventListener('drop', (e) => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+    e.preventDefault();
+  }
+});
 
 
 async function deleteArticle() {
