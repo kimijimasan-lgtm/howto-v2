@@ -3555,6 +3555,54 @@ function renderEditor(container) {
     edEl.addEventListener(type, blockImageTouchInViewMode, { capture: true, passive: false });
   });
 
+  // ── 閲覧モード中の画像ドロップ受け入れ（自動で編集モードへ切替） ──────
+  // editable=false のとき ProseMirror は drop イベントの処理自体をスキップするため
+  // （editorProps.handleDrop は呼ばれない）、edContent 側の素のDOMリスナーで受ける。
+  // 画像を含むドロップなら setEditorMode('edit') で編集モードに切り替えてから挿入する。
+  // setEditorMode 内の既存ガード（カードロック・同期回数制限）はそのまま働き、
+  // ガードで編集モードに入れなかった場合は挿入しない（案内はガード側が表示済み）。
+  // 編集モード中はここでは何もせず、従来どおり editorProps.handleDrop に任せる。
+  // 段落並び替え（SortableJSはネイティブDnDを使う）等のエディタ内発ドラッグには
+  // 干渉しないよう、dragstart/dragend でフラグ管理して除外する。
+  let _internalDragFromEditor = false;
+  edEl.addEventListener('dragstart', () => { _internalDragFromEditor = true; });
+  edEl.addEventListener('dragend', () => { _internalDragFromEditor = false; });
+
+  // dragover時点では getData でデータを読めない（typesのみ参照可）ため、
+  // 画像を含み得る種別（Files / text/html）かどうかだけで受け入れ判定する
+  const dragMayContainImage = (dt) =>
+    !!dt && (Array.from(dt.types).includes('Files') || Array.from(dt.types).includes('text/html'));
+
+  edEl.addEventListener('dragover', (e) => {
+    if (state.editorMode === 'edit') return; // 編集モードはProseMirror側が処理
+    if (_internalDragFromEditor) return;
+    if (!dragMayContainImage(e.dataTransfer)) return;
+    e.preventDefault(); // これが無いと閲覧モードでは drop イベント自体が発火しない
+    e.dataTransfer.dropEffect = 'copy';
+  });
+
+  edEl.addEventListener('drop', (e) => {
+    if (state.editorMode === 'edit') return;
+    if (_internalDragFromEditor) return;
+    if (!dragMayContainImage(e.dataTransfer)) return;
+    e.preventDefault(); // 既定動作（画像を新規タブで開く等）は常に抑止
+    const imageFiles = extractDroppedImageFiles(e.dataTransfer);
+    if (imageFiles.length === 0) {
+      showToast('この形式は挿入できません。画像をコピーして貼り付けてください');
+      return;
+    }
+    setEditorMode('edit'); // ロック・同期回数制限のガードはこの中で判定される
+    if (state.editorMode !== 'edit') return; // ガードで拒否された（トースト/モーダル表示済み）
+    if (!tiptapEditor || tiptapEditor.isDestroyed) return;
+
+    // ドロップ位置にカーソルを移してから、貼り付けと同じ挿入ロジックへ渡す
+    const coords = tiptapEditor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+    if (coords) {
+      tiptapEditor.chain().focus().setTextSelection(coords.pos).run();
+    }
+    handleMultipleImagesForTipTap(imageFiles);
+  });
+
   const { Editor: TiptapEditor, StarterKit, ImageExtension, YoutubeExtension, TaskList, TaskItem, TextStyleExtension, UnderlineExtension } = window.TipTapBundle;
 
   // 1行目auto-H1: 空の1行目に初めてテキストを入力した瞬間にH1を適用するためのフラグ
@@ -3665,21 +3713,10 @@ function renderEditor(container) {
         const dt = event.dataTransfer;
         if (!dt) return false;
 
-        const files = Array.from(dt.files);
-        let imageFiles = files.filter(f => f.type.indexOf('image') !== -1);
-
-        // ファイルが無くても、data URL画像を含むHTMLドラッグ（スクショトリマー等の
-        // 自作アプリからのクロスウィンドウドラッグ）はファイル相当として受け取り、
-        // 通常の画像挿入パイプライン（圧縮・レイアウト）に流す
-        if (imageFiles.length === 0) {
-          const html = dt.getData('text/html') || '';
-          const dataUrls = Array.from(
-            html.matchAll(/src="(data:image\/[a-z+]+;base64,[^"]+)"/gi), m => m[1]
-          );
-          imageFiles = dataUrls.map((u, i) => dataUrlToImageFile(u, 'dropped_' + (i + 1)));
-        }
+        const imageFiles = extractDroppedImageFiles(dt);
 
         if (imageFiles.length === 0) {
+          const files = Array.from(dt.files);
           // 画像ファイルが取れないドロップ（リンク・非画像ファイル等）は
           // ページ遷移だけ確実に防いで案内を出す
           if (files.length > 0 || dt.types.includes('text/uri-list')) {
@@ -3692,10 +3729,9 @@ function renderEditor(container) {
 
         event.preventDefault();
         if (state.cardLocked) return true; // ロック中のカードへの画像挿入を禁止（貼り付けと同仕様）
-        if (state.editorMode !== 'edit') {
-          showToast('編集モードにすると画像をドロップで挿入できます');
-          return true;
-        }
+        // ※ このhandleDropは editable=true（=編集モード）のときしかProseMirrorから
+        //    呼ばれない。閲覧モード中のドロップは edContent 直付けのリスナー
+        //    （閲覧モードの画像ドロップ受け入れ）が自動で編集モードに切り替えて処理する。
 
         // ドロップ位置にカーソルを移してから、貼り付けと同じ挿入ロジックへ渡す
         const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
@@ -4392,6 +4428,25 @@ function dataUrlToImageFile(dataUrl, baseName) {
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   const ext = mime === 'image/jpeg' ? '.jpg' : '.png';
   return new File([arr], baseName + ext, { type: mime });
+}
+
+// ドロップされた DataTransfer から画像File配列を取り出す共通ヘルパー。
+// editorProps.handleDrop（編集モード）と閲覧モードの edContent 直付けリスナーの両方で使う。
+function extractDroppedImageFiles(dt) {
+  const files = Array.from(dt.files);
+  let imageFiles = files.filter(f => f.type.indexOf('image') !== -1);
+
+  // ファイルが無くても、data URL画像を含むHTMLドラッグ（スクショトリマー等の
+  // 自作アプリからのクロスウィンドウドラッグ）はファイル相当として受け取り、
+  // 通常の画像挿入パイプライン（圧縮・レイアウト）に流す
+  if (imageFiles.length === 0) {
+    const html = dt.getData('text/html') || '';
+    const dataUrls = Array.from(
+      html.matchAll(/src="(data:image\/[a-z+]+;base64,[^"]+)"/gi), m => m[1]
+    );
+    imageFiles = dataUrls.map((u, i) => dataUrlToImageFile(u, 'dropped_' + (i + 1)));
+  }
+  return imageFiles;
 }
 
 // ウィンドウ自体が非アクティブかどうか（別アプリへの切替、外部アプリから

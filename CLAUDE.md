@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=880, style.css?v=720, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=881, style.css?v=720, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,7 +712,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=720`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=880`
+- `app.js?v=881`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,6 +721,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-15）
 
+- **閲覧モードへの画像ドロップで自動的に編集モードへ切り替えて挿入する機能を追加（app.js?v=881、実機での外部ドラッグは未検証）**: 従来は閲覧モード（`editable=false`）だと画像ドロップが受け付けられなかった（ProseMirrorは `editable=false` のとき drop イベントの処理自体をスキップし `editorProps.handleDrop` が呼ばれないため、ブラウザ既定動作で画像が新規タブで開いていた）。
+  - **実装**: `renderEditor` 内で `edContent` に素のDOM `dragover`/`drop` リスナーを追加（`blockImageTouchInViewMode` 登録の直後）。編集モード中は早期returnして従来の `editorProps.handleDrop` に完全に委ねる（二重処理なし）。閲覧モードで画像を含み得るドラッグ（types に `Files` または `text/html`）なら `dragover` を `preventDefault`（これが無いと閲覧モードでは drop 自体が発火しない）し、drop 時に `setEditorMode('edit')` → 成功していればドロップ位置にカーソルを移して `handleMultipleImagesForTipTap()` で挿入
+  - **既存ガードとの整合**: モード切替は既存の `setEditorMode('edit')` をそのまま呼ぶため、カードロック（トースト表示・挿入なし）と同期回数制限（`consumeSyncQuota`、上限時はモーダル表示・挿入なし）が自動的に働く。切替後に `state.editorMode === 'edit'` を確認してから挿入
+  - **エディタ内発ドラッグへの不干渉**: 閲覧モードでも段落並び替え（SortableJSはネイティブDnD使用）が動くため、`edContent` 上の `dragstart`/`dragend` でフラグ（`_internalDragFromEditor`）を立てて除外。なお閲覧モードの画像自体のドラッグは既存の `blockImageTouchInViewMode` が mousedown を止めるため発生しない
+  - **リファクタ**: `handleDrop` 内の画像抽出ロジック（`dt.files` の画像フィルタ＋ text/html 内 data:image URL 抽出）をモジュールレベルの共通ヘルパー `extractDroppedImageFiles(dt)` に切り出し（`dataUrlToImageFile` の直後に定義）、新リスナーと共用。`handleDrop` 内の到達不能だった閲覧モード分岐（「編集モードにすると〜」トースト）は削除
+  - **検証（ローカルChrome・ゲスト、合成DragEventによる）**: ①閲覧モードに data:image 入り text/html をドロップ→編集モード自動切替＋画像挿入＋既定動作抑止 ②編集モードでのドロップ→従来の `handleDrop` 経路で+1枚のみ（二重挿入なし）③テキストのみのドロップ→閲覧モード維持・挿入なし・案内トースト ④ロックカード（解説）へのドロップ→閲覧モード維持・挿入なし・「このカードは編集できません」トースト、をすべて確認。コンソールエラーなし（拡張機能由来のメッセージチャネルエラーのみ）。**実機（スクショトリマー→閲覧モードのカード）での最終確認は未実施（ユーザー確認推奨）**
 - **外部アプリからの画像ドラッグ中に編集モードが解除されるバグを修正（app.js?v=880、実機での外部ドラッグは未検証）**: スクショトリマー等の外部アプリから画像をドラッグしてカードに落とそうとすると、事前に編集モードにしていてもドロップ前に閲覧モードへ戻ってしまい、画像が新規タブで開いてしまう問題。
   - **根本原因**: 編集モードでエディターにフォーカスがある状態から外部アプリへ操作を移すと、**ブラウザウィンドウ全体の非アクティブ化に伴ってエディターの `blur` が発火**し、300ms後のタイマー（iOSキーボード「完了」用の閲覧モード自動復帰）が `setEditorMode('view')` を実行。`editable=false` になるとProseMirrorは drop イベントの処理自体をスキップするため（`editorProps.handleDrop` は `view.editable` が false だと呼ばれない）、ブラウザ既定動作で画像がページとして開かれていた
   - **修正**: モジュールレベルに `_windowInactive` フラグを追加（`window` の `blur`/`focus` イベントで更新。要素のblurはバブリングしないため、ウィンドウ自身のアクティブ切替でのみ発火する）。blur→閲覧モード復帰タイマーの中で `_windowInactive` なら復帰をスキップ。これにより「ページ内でフォーカスが外れた」（iOS完了ボタン等→従来どおり閲覧モードへ）と「ウィンドウごと非アクティブ」（アプリ切替・外部ドラッグ中→編集モード維持）を区別する
