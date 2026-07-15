@@ -2944,6 +2944,10 @@ function renderEditor(container) {
   if (editorEl) {
     editorEl.addEventListener('click', (e) => {
       if (state.editorMode !== 'view') return;
+      // Ctrl/Cmd+クリックは段落選択ジェスチャー（ctrlClickHandler）なので編集モードへ移行しない
+      // （選択トグルは mousedown 側で処理済み。ここで拾うと setEditorMode('edit') →
+      //   cleanupAllSwipedParagraphs で選択が即解除されてしまう）
+      if (e.ctrlKey || e.metaKey) return;
       // アイコンやボタンのタップは除外
       if (e.target.closest('button') || e.target.closest('.btn-icon')) return;
       if (state.cardLocked) {
@@ -5008,6 +5012,11 @@ function isEmptyParagraph(p) {
 function toggleParagraphSelect(p, editor) {
   if (!p) return;
 
+  // SortableJSのドラッグ状態クラスが（中断されたドラッグ等で）残留していたら除去する。
+  // .sortable-ghost は配下を visibility:hidden にするため、残留すると
+  // 「選択はできるのに段落の中身が空白の点線枠になる」表示崩れになる
+  p.classList.remove('sortable-ghost', 'sortable-chosen');
+
   const hasSelected = p.classList.contains('para-selected');
 
   if (hasSelected) {
@@ -5468,6 +5477,19 @@ function bindParagraphSwipeEvents(editor) {
   // キャプチャフェーズでmousedownを捕捉（ProseMirrorより先に処理）
   editor.addEventListener('mousedown', ctrlClickHandler, true);
   paraSwipeListeners.push({ element: editor, ctrlClick: ctrlClickHandler, useCapture: true });
+
+  // SortableJS(1.15はpointerdownベース)がCtrl+クリックをドラッグ開始として拾うのを防ぐ。
+  // pointerdownはmousedownより先に発火するため、mousedown側のstopPropagationでは遮断できない。
+  // Sortableがドラッグ準備状態に入ると sortable-chosen/sortable-ghost クラスが段落に付き、
+  // ジェスチャーが中断されるとクラスが残留して「段落が空白の点線枠になる」表示崩れを起こす。
+  // preventDefaultはしない（するとブラウザが後続のmousedown/clickを生成せず選択トグルが死ぬ）。
+  const ctrlPointerDownBlocker = e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    if (state.cardLocked) return;
+    e.stopPropagation();
+  };
+  editor.addEventListener('pointerdown', ctrlPointerDownBlocker, true);
+  paraSwipeListeners.push({ element: editor, ctrlPointer: ctrlPointerDownBlocker, useCapture: true });
 }
 
 // 登録されたイベントやグローバルリスナーの解放
@@ -5480,6 +5502,9 @@ function cleanupNativeParagraphListeners(editor) {
         // キャプチャフェーズで登録した場合はキャプチャフェーズで解除
         item.element.removeEventListener('mousedown', item.ctrlClick, item.useCapture || false);
         item.element.removeEventListener('click', item.ctrlClick);
+      }
+      if (item.ctrlPointer) {
+        item.element.removeEventListener('pointerdown', item.ctrlPointer, item.useCapture || false);
       }
     }
   });
