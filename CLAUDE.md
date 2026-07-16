@@ -699,7 +699,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=881, style.css?v=720, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=884, style.css?v=720, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,800行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -712,12 +712,21 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=720`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=881`
+- `app.js?v=884`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
+
+## 直近の対応（2026-07-17）
+
+- **カード一覧のCtrl+クリック（スワイプメニュー）が発火しない問題を修正＋編集モードからのCtrl+クリック段落選択に対応（app.js?v=884、ローカルChromeで検証済み・本番未デプロイ）**: 「編集画面のCtrl+クリック段落選択が動かなくなった」との報告を受けて調査。
+  - **実測で確定した根本原因**: artSortable/catSortableは `forceFallback: true` かつ `delayOnTouchOnly: true`（＝マウスは遅延ゼロ）のため、マウス押下で即Sortableのドラッグ追跡が始まり、押下中にわずかでも `mousemove` があると（`fallbackTolerance`未設定＝閾値0px）ドラッグ扱いになる。この場合Sortable 1.15は **mouseupをpreventDefaultし、直後のclickをdocumentキャプチャハンドラで握り潰す**（preventDefaultトレーサで `Sortable.min.js の _onDrop` と documentハンドラのスタックを実測確認）。カード一覧のCtrl+クリック処理は2箇所とも `click` イベント依存（2026-06-23実装）だったため一切発火しなくなっていた。通常クリックでのカード/パネルオープンも同条件（クリック中に1px以上の手ブレ）で握り潰されるため「クリックしてもカードが開かないことがある」潜在バグでもあった
+  - **エディター側の段落選択（閲覧モード）はv883時点でも正常動作**（実クリックで確認。v883の `ctrlPointerDownBlocker` がSortableへの伝播を遮断しているため）。**編集モードでは元々機能しない**ことも実測確認（ProseMirrorが編集可能時にDOM同期で `para-selected`/チェックspanを即巻き戻す。イベントログ上もmousedown直後に段落内DOMが再描画）。両画面のハンドラの直接競合（同一要素への二重登録）は無し — 画面が別DOMなので「奪い合い」ではなく、共通原因がSortableJSだった
+  - **修正内容（4点）**: ①カード一覧のCtrl+クリックを `click` 依存から**エディターと同じ「`pointerdown`キャプチャでstopPropagation（Sortable遮断）＋`mousedown`キャプチャでトグル」の2段構え**に変更（li単位で登録、`.swipe-action-btn` は除外、`.article-inner` のonclickはCtrl時ガードのみ残し二重トグル防止）②artSortable/catSortableに **`fallbackTolerance: 3`** を追加（3px未満の手ブレをドラッグ扱いにしない→通常クリックの握り潰し解消）③エディターの `ctrlClickHandler` で `state.editorMode === 'edit'` なら **`window._setEditorMode('view')` で先に閲覧モードへ切り替えてから選択**（選択系機能はすべて閲覧モードの選択が前提のため整合）④`editor.onkeydown` の `cleanupAllSwipedParagraphs` を修飾キー単独（Control/Meta/Shift/Alt）ではスキップ（Ctrl押下のオートリピートで選択が消えるのを防止）
+  - **検証（ローカルChrome・ゲスト）**: カード一覧Ctrl+クリックON/OFF/排他切替・メニュー内ボタン操作・通常クリックでカードオープン（旧v883で握り潰された「同座標mousemove付き」イベント列でも開く）／エディター閲覧モードCtrl+クリック選択・解除・2段落複数選択・Ctrlキーオートリピートで選択維持／編集モードCtrl+クリック→自動で閲覧モード＋選択（1.2秒後も巻き戻りなし）／閲覧モード通常クリック→編集モード移行（回帰なし）、コンソールエラーゼロ。**注**: 検証セッション途中でブラウザ拡張の実クリック入力が環境的に死んだため、根本原因の特定までは実クリック、v884の動作検証は実クリックと同一イベント列（pointerdown→mousedown→同座標mousemove→pointerup→mouseup→click）の合成ディスパッチで実施。**実機（実マウス）での最終確認は未実施（ユーザー確認推奨）**
+  - **未デプロイ**: `firebase deploy --only hosting:crossmemo` は未実行。実機確認後にデプロイすること
 
 ## 直近の対応（2026-07-15）
 
@@ -879,7 +888,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 7. ~~残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装~~（**2026-07-07完了**。実機iPhone Safariで確認済み。詳細は100kin-blog側CLAUDE.md「0-8」参照）
 8. ~~authDomainのクロスオリジン問題の恒久対応~~（**2026-07-08完了・本番デプロイ済み（v868）**。詳細は「直近の対応（2026-07-08）」参照。残検証: 実機iPhone Safariでポップアップブロック時のredirectフォールバック成功確認）
 9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応（Stripe Webhook + Cloud Functionsで決済とアカウントを自動紐付け。Blazeプラン要確認）は未着手
-10. **serve.bat修正**（退避済みの旧OneDriveパスを指しており使用不可。`F:\Claude学習\howto-v2` に直す）
+10. ~~serve.bat修正~~（**2026-07-15完了・コミット`d470fc2`**。旧OneDriveパス固定を `cd /d "%~dp0"`（bat自身のディレクトリ基準）に修正済み。python 3.14.3 の存在も確認済み）
 
 ## 直近の対応（2026-06-24）
 

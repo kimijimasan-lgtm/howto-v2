@@ -1143,6 +1143,7 @@ function renderHome(container) {
         delay: 300,
         delayOnTouchOnly: true,
         forceFallback: true,            // タッチ操作の並び替え安定化
+        fallbackTolerance: 3,           // クリック時の微小な手ブレをドラッグ扱いにしない（clickの握り潰し防止）
         fallbackOnBody: false,          // bodyに移設せず位置ズレを完全防止
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
@@ -1919,17 +1920,14 @@ function renderCategory(container) {
             </button>
           </div>`;
 
-        // カード本体タップ→エディター（Ctrl/Cmdキーが押されている場合はスワイプメニューを表示）
+        // カード本体タップ→エディター
+        // Ctrl/Cmd+クリックはスワイプメニュー表示ジェスチャー（mousedownキャプチャ側で処理済み）
+        // なのでここでは何もしない（clickはSortableに握り潰されて届かないことがあるため、
+        // click側でのトグル処理は行わない — mousedown側と二重トグルになるのも防ぐ）
         li.querySelector('.article-inner').onclick = (e) => {
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             e.stopPropagation();
-            // 他のカードのメニューを閉じる
-            document.querySelectorAll('.article-item.swiped').forEach(el => {
-              if (el !== li) el.classList.remove('swiped');
-            });
-            // トグル動作
-            li.classList.toggle('swiped');
             return;
           }
           goTo('editor', state.categoryId, art.id);
@@ -1997,8 +1995,20 @@ function renderCategory(container) {
         }, { passive: true });
 
         // PC用: Ctrl+クリック（Mac: Cmd+クリック）でスワイプメニューを表示
-        li.addEventListener('click', e => {
+        // SortableJS(forceFallback)はマウス押下中にわずかなmousemoveがあるとドラッグ扱いにし、
+        // mouseupをpreventDefault＋直後のclickをdocumentキャプチャで握り潰すため、
+        // clickイベントには依存せず、エディターの段落選択（ctrlClickHandler）と同じ
+        // 「pointerdownキャプチャ遮断＋mousedownキャプチャ処理」の2段構えで実装する（v883と同方式）
+        li.addEventListener('pointerdown', e => {
           if (!e.ctrlKey && !e.metaKey) return;
+          // SortableにCtrl+クリックをドラッグ開始として拾わせない
+          // （preventDefaultはしない — すると後続のmousedownが生成されず選択トグルが死ぬ）
+          e.stopPropagation();
+        }, true);
+        li.addEventListener('mousedown', e => {
+          if (!e.ctrlKey && !e.metaKey) return;
+          // スワイプメニュー内のボタンは通常のonclick処理に任せる
+          if (e.target.closest('.swipe-action-btn')) return;
           e.preventDefault();
           e.stopPropagation();
           // 他のカードのメニューを閉じる
@@ -2007,7 +2017,7 @@ function renderCategory(container) {
           });
           // トグル動作
           li.classList.toggle('swiped');
-        });
+        }, true);
 
         // チェックボックスの状態変更
         const checkbox = li.querySelector('.card-checkbox');
@@ -2037,6 +2047,10 @@ function renderCategory(container) {
           delay: 300,
           delayOnTouchOnly: true,
           forceFallback: true,
+          // マウスクリック時の微小な手ブレ（数px）をドラッグ開始と誤認すると
+          // Sortableがmouseup/clickを握り潰し「クリックしてもカードが開かない」ことがあるため、
+          // 3px以上動くまではドラッグ扱いにしない
+          fallbackTolerance: 3,
           fallbackOnBody: false,
           ghostClass: 'sortable-ghost',
           chosenClass: 'sortable-chosen',
@@ -4963,6 +4977,10 @@ function initializeNativeParagraphActions(editor) {
 
   // キー入力でスワイプ選択・ペーストバッファをクリア
   editor.onkeydown = (e) => {
+    // 修飾キー単独（Ctrl/Cmd/Shift/Alt）では選択を解除しない
+    // （Ctrl+クリック段落選択の押下中、Ctrlキーのkeydown（オートリピート含む）で
+    //   直前の選択が消えてしまうのを防ぐ）
+    if (e.key === 'Control' || e.key === 'Meta' || e.key === 'Shift' || e.key === 'Alt') return;
     cleanupAllSwipedParagraphs(editor);
     const isCharacterKey = e.key.length === 1 && !e.ctrlKey && !e.metaKey;
     if (isCharacterKey || e.key === 'Backspace' || e.key === 'Delete') {
@@ -5471,6 +5489,12 @@ function bindParagraphSwipeEvents(editor) {
     }
     if (!target || target === editor) return;
     if (target.tagName === 'P' || target.tagName === 'H1' || target.tagName === 'H2') {
+      // 編集モード中は選択マーカー（チェックspan・para-selectedクラス）をProseMirrorが
+      // DOM同期で即座に巻き戻してしまい選択が効かないため、先に閲覧モードへ切り替える
+      // （選択系機能: 🚀書式・一括コピー/カットはすべて閲覧モードの選択を前提としている）
+      if (state.editorMode === 'edit' && typeof window._setEditorMode === 'function') {
+        window._setEditorMode('view');
+      }
       toggleParagraphSelect(target, editor);
     }
   };
