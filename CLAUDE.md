@@ -721,12 +721,12 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-17）
 
-- **カード一覧のCtrl+クリック（スワイプメニュー）が発火しない問題を修正＋編集モードからのCtrl+クリック段落選択に対応（app.js?v=884、ローカルChromeで検証済み・本番未デプロイ）**: 「編集画面のCtrl+クリック段落選択が動かなくなった」との報告を受けて調査。
+- **カード一覧のCtrl+クリック（スワイプメニュー）が発火しない問題を修正＋編集モードからのCtrl+クリック段落選択に対応（app.js?v=884、ローカルChrome検証済み・実機確認済み・本番デプロイ済み 2026-07-17）**: 「編集画面のCtrl+クリック段落選択が動かなくなった」との報告を受けて調査。
   - **実測で確定した根本原因**: artSortable/catSortableは `forceFallback: true` かつ `delayOnTouchOnly: true`（＝マウスは遅延ゼロ）のため、マウス押下で即Sortableのドラッグ追跡が始まり、押下中にわずかでも `mousemove` があると（`fallbackTolerance`未設定＝閾値0px）ドラッグ扱いになる。この場合Sortable 1.15は **mouseupをpreventDefaultし、直後のclickをdocumentキャプチャハンドラで握り潰す**（preventDefaultトレーサで `Sortable.min.js の _onDrop` と documentハンドラのスタックを実測確認）。カード一覧のCtrl+クリック処理は2箇所とも `click` イベント依存（2026-06-23実装）だったため一切発火しなくなっていた。通常クリックでのカード/パネルオープンも同条件（クリック中に1px以上の手ブレ）で握り潰されるため「クリックしてもカードが開かないことがある」潜在バグでもあった
   - **エディター側の段落選択（閲覧モード）はv883時点でも正常動作**（実クリックで確認。v883の `ctrlPointerDownBlocker` がSortableへの伝播を遮断しているため）。**編集モードでは元々機能しない**ことも実測確認（ProseMirrorが編集可能時にDOM同期で `para-selected`/チェックspanを即巻き戻す。イベントログ上もmousedown直後に段落内DOMが再描画）。両画面のハンドラの直接競合（同一要素への二重登録）は無し — 画面が別DOMなので「奪い合い」ではなく、共通原因がSortableJSだった
   - **修正内容（4点）**: ①カード一覧のCtrl+クリックを `click` 依存から**エディターと同じ「`pointerdown`キャプチャでstopPropagation（Sortable遮断）＋`mousedown`キャプチャでトグル」の2段構え**に変更（li単位で登録、`.swipe-action-btn` は除外、`.article-inner` のonclickはCtrl時ガードのみ残し二重トグル防止）②artSortable/catSortableに **`fallbackTolerance: 3`** を追加（3px未満の手ブレをドラッグ扱いにしない→通常クリックの握り潰し解消）③エディターの `ctrlClickHandler` で `state.editorMode === 'edit'` なら **`window._setEditorMode('view')` で先に閲覧モードへ切り替えてから選択**（選択系機能はすべて閲覧モードの選択が前提のため整合）④`editor.onkeydown` の `cleanupAllSwipedParagraphs` を修飾キー単独（Control/Meta/Shift/Alt）ではスキップ（Ctrl押下のオートリピートで選択が消えるのを防止）
-  - **検証（ローカルChrome・ゲスト）**: カード一覧Ctrl+クリックON/OFF/排他切替・メニュー内ボタン操作・通常クリックでカードオープン（旧v883で握り潰された「同座標mousemove付き」イベント列でも開く）／エディター閲覧モードCtrl+クリック選択・解除・2段落複数選択・Ctrlキーオートリピートで選択維持／編集モードCtrl+クリック→自動で閲覧モード＋選択（1.2秒後も巻き戻りなし）／閲覧モード通常クリック→編集モード移行（回帰なし）、コンソールエラーゼロ。**注**: 検証セッション途中でブラウザ拡張の実クリック入力が環境的に死んだため、根本原因の特定までは実クリック、v884の動作検証は実クリックと同一イベント列（pointerdown→mousedown→同座標mousemove→pointerup→mouseup→click）の合成ディスパッチで実施。**実機（実マウス）での最終確認は未実施（ユーザー確認推奨）**
-  - **未デプロイ**: `firebase deploy --only hosting:crossmemo` は未実行。実機確認後にデプロイすること
+  - **検証（ローカルChrome・ゲスト）**: カード一覧Ctrl+クリックON/OFF/排他切替・メニュー内ボタン操作・通常クリックでカードオープン（旧v883で握り潰された「同座標mousemove付き」イベント列でも開く）／エディター閲覧モードCtrl+クリック選択・解除・2段落複数選択・Ctrlキーオートリピートで選択維持／編集モードCtrl+クリック→自動で閲覧モード＋選択（1.2秒後も巻き戻りなし）／閲覧モード通常クリック→編集モード移行（回帰なし）、コンソールエラーゼロ。**注**: 検証セッション途中でブラウザ拡張の実クリック入力が環境的に死んだため、根本原因の特定までは実クリック、v884の動作検証は実クリックと同一イベント列（pointerdown→mousedown→同座標mousemove→pointerup→mouseup→click）の合成ディスパッチで実施。実機（実マウス）での最終確認はユーザーが実施済み（2026-07-17）
+  - **デプロイ済み**: 実機確認後、`firebase deploy --only hosting:crossmemo` 実行・本番（crossmemo.web.app）にv884配信を確認済み（2026-07-17）
 
 ## 直近の対応（2026-07-15）
 
