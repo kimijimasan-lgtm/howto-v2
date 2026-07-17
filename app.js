@@ -3593,44 +3593,34 @@ function renderEditor(container) {
   edEl.addEventListener('dragend', () => { _internalDragFromEditor = false; });
 
   // ── カード内画像の外部アプリへのドラッグ書き出し（PC・両モード共通） ──────
-  // data:URL画像をBlob URLに変換して DownloadURL 形式（mime:ファイル名:URL）を付与すると、
-  // Chromiumではエクスプローラーやワープロ等の外部Windowsアプリにファイルとしてドロップできる。
+  // DownloadURL 形式（mime:ファイル名:URL）を付与すると、Chromiumでは
+  // エクスプローラーやワープロ等の外部Windowsアプリにファイルとしてドロップできる。
+  // 【URLはdata:URLをそのまま渡す】ドロップ時のファイル化はブラウザプロセスがURLを
+  // 解決して行うため、レンダラープロセス紐付きの blob: URL は外部ドロップ時に解決できず
+  // 「ドラッグはできるが実データが渡らない」失敗になる（v885で実挙動を確認済み）。
+  // data: URLは自己完結なのでプロセスをまたいでも解決できる。
   // 【重要】キャプチャではなくバブル段で登録する: 編集モードではProseMirrorのdragstartハンドラ
   // （.ProseMirror上＝この要素より内側）が dataTransfer.clearData() を呼ぶため、
   // それより後（外側へのバブル時）に setData しないと付与したデータが消される
-  const _imgDragBlobUrlCache = new Map(); // img要素 → {src, blobUrl}（src不変なら再利用）
   edEl.addEventListener('dragstart', (e) => {
     const img = e.target;
     if (!img || img.tagName !== 'IMG' || !img.classList.contains('inserted-img')) return;
     if (!e.dataTransfer || e.defaultPrevented) return;
     try {
       const src = img.getAttribute('src') || '';
-      let fileUrl = '';
-      let mime = 'image/png';
+      let mime = 'image/jpeg';
       if (src.startsWith('data:')) {
         const m = src.match(/^data:(image\/[a-z0-9+.-]+);base64,/i);
         if (!m) return;
         mime = m[1].toLowerCase();
-        const cached = _imgDragBlobUrlCache.get(img);
-        if (cached && cached.src === src) {
-          fileUrl = cached.blobUrl;
-        } else {
-          const bin = atob(src.slice(src.indexOf(',') + 1));
-          const bytes = new Uint8Array(bin.length);
-          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-          fileUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
-          _imgDragBlobUrlCache.set(img, { src, blobUrl: fileUrl });
-        }
-      } else if (src.startsWith('blob:') || src.startsWith('http')) {
-        // blob:（Safariの自動変換等）や通常URLはそのまま渡す（mimeはjpegとして扱う）
-        mime = 'image/jpeg';
-        fileUrl = src;
-      } else {
+      } else if (!src.startsWith('http')) {
+        // blob:等はプロセスをまたいで解決できないため付与しない
+        // （ブラウザ既定のドラッグデータでのドラッグは続行される）
         return;
       }
       const ext = (mime === 'image/jpeg') ? 'jpg' : mime.split('/')[1].replace('+xml', '');
       const name = 'crossmemo-image-' + Date.now() + '.' + ext;
-      e.dataTransfer.setData('DownloadURL', mime + ':' + name + ':' + fileUrl);
+      e.dataTransfer.setData('DownloadURL', mime + ':' + name + ':' + src);
     } catch (err) {
       // 付与に失敗してもブラウザ既定のドラッグデータ（text/html等）でのドラッグは続行させる
       console.warn('image dragstart: DownloadURL付与に失敗', err);
