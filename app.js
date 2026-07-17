@@ -3595,10 +3595,11 @@ function renderEditor(container) {
   // ── カード内画像の外部アプリへのドラッグ書き出し（PC・両モード共通） ──────
   // DownloadURL 形式（mime:ファイル名:URL）を付与すると、Chromiumでは
   // エクスプローラーやワープロ等の外部Windowsアプリにファイルとしてドロップできる。
-  // 【URLはdata:URLをそのまま渡す】ドロップ時のファイル化はブラウザプロセスがURLを
-  // 解決して行うため、レンダラープロセス紐付きの blob: URL は外部ドロップ時に解決できず
-  // 「ドラッグはできるが実データが渡らない」失敗になる（v885で実挙動を確認済み）。
-  // data: URLは自己完結なのでプロセスをまたいでも解決できる。
+  // 【URLは http/https の実URLのみ機能する】ドロップ時のファイル化はブラウザプロセス／
+  // OS側がURLを解決して行うため、blob:（レンダラープロセス紐付き）は解決不能、
+  // data: も実機で機能しないことが判明（v885/v886で実挙動を確認）。
+  // このため新規挿入画像は Firebase Storage に保存して https URL を src にしている
+  // （uploadImageToStorage 参照）。旧形式（base64）の画像は書き出し非対応。
   // 【重要】キャプチャではなくバブル段で登録する: 編集モードではProseMirrorのdragstartハンドラ
   // （.ProseMirror上＝この要素より内側）が dataTransfer.clearData() を呼ぶため、
   // それより後（外側へのバブル時）に setData しないと付与したデータが消される
@@ -3608,17 +3609,17 @@ function renderEditor(container) {
     if (!e.dataTransfer || e.defaultPrevented) return;
     try {
       const src = img.getAttribute('src') || '';
-      let mime = 'image/jpeg';
-      if (src.startsWith('data:')) {
-        const m = src.match(/^data:(image\/[a-z0-9+.-]+);base64,/i);
-        if (!m) return;
-        mime = m[1].toLowerCase();
-      } else if (!src.startsWith('http')) {
-        // blob:等はプロセスをまたいで解決できないため付与しない
-        // （ブラウザ既定のドラッグデータでのドラッグは続行される）
-        return;
+      if (!/^https?:\/\//i.test(src)) {
+        if (src.startsWith('data:')) {
+          console.log('この画像は旧形式（base64保存）のため、外部アプリへのファイルドロップには対応していません');
+        }
+        return; // ブラウザ既定のドラッグデータ（text/html等）でのドラッグは続行される
       }
-      const ext = (mime === 'image/jpeg') ? 'jpg' : mime.split('/')[1].replace('+xml', '');
+      // 拡張子はURLのパス部から推定（Storage URLは users%2F...%2Fxxx.jpg?alt=media&token=... 形式）
+      const pathPart = decodeURIComponent(src.split('?')[0]);
+      const extMatch = pathPart.match(/\.(jpe?g|png|gif|webp)$/i);
+      const ext = extMatch ? extMatch[1].toLowerCase().replace('jpeg', 'jpg') : 'jpg';
+      const mime = (ext === 'jpg') ? 'image/jpeg' : 'image/' + ext;
       const name = 'crossmemo-image-' + Date.now() + '.' + ext;
       e.dataTransfer.setData('DownloadURL', mime + ':' + name + ':' + src);
     } catch (err) {
@@ -4383,6 +4384,66 @@ function compressImageForLayout(file) {
   });
 }
 
+// ── Firebase Storage への画像アップロード（2026-07-17導入） ──────
+// 新規挿入画像は Storage に保存し、https のダウンロードURLを <img> の src に使う。
+// （外部アプリへのドラッグ書き出し（DownloadURL方式）は http/https の実URLでないと
+//   機能しないため。data:/blob: はOS側プロセスから解決できず実データが渡らない）
+// 成功: https ダウンロードURL を返す ／ 失敗: null（呼び出し側は従来どおり
+// data:URL のまま挿入を続行＝Storage未有効化・オフラインでも機能停止しない）
+const IMAGE_UPLOAD_TIMEOUT_MS = 10000;
+let _storageRetryTuned = false;
+let _storageCooldownUntil = 0; // 直近の失敗から一定時間はアップロード試行をスキップ
+async function uploadImageToStorage(dataUrl) {
+  try {
+    if (!state.uid || typeof firebase.storage !== 'function') return null;
+    // Storage未有効化・オフライン等で失敗した直後は、画像挿入のたびに
+    // リトライ待ちで数秒待たされるのを避けるため、しばらく試行せず即フォールバック
+    if (Date.now() < _storageCooldownUntil) return null;
+    if (!_storageRetryTuned) {
+      // 既定のリトライ時間（2分）は長すぎるため短縮（失敗時は素早くbase64にフォールバック）
+      firebase.storage().setMaxUploadRetryTime(7000);
+      firebase.storage().setMaxOperationRetryTime(7000);
+      _storageRetryTuned = true;
+    }
+    const m = dataUrl.match(/^data:(image\/[a-z0-9+.-]+);base64,(.*)$/i);
+    if (!m) return null;
+    const mime = m[1].toLowerCase();
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = (mime === 'image/jpeg') ? 'jpg' : mime.split('/')[1];
+    const path = `users/${state.uid}/images/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const storageRef = firebase.storage().ref(path);
+    const work = (async () => {
+      await storageRef.put(new Blob([bytes], { type: mime }), { contentType: mime });
+      return await storageRef.getDownloadURL();
+    })();
+    // ハング防止（時間切れなら従来方式にフォールバック）
+    const timeout = new Promise(resolve => setTimeout(() => resolve(null), IMAGE_UPLOAD_TIMEOUT_MS));
+    const result = await Promise.race([
+      work.catch(err => {
+        console.warn('画像のStorageアップロードに失敗（従来のbase64方式で保存します）:', (err && err.code) || err);
+        return null;
+      }),
+      timeout,
+    ]);
+    if (!result) _storageCooldownUntil = Date.now() + 60000; // 1分間は試行しない
+    return result;
+  } catch (err) {
+    console.warn('画像のStorageアップロードに失敗（従来のbase64方式で保存します）:', (err && err.code) || err);
+    _storageCooldownUntil = Date.now() + 60000;
+    return null;
+  }
+}
+
+// 圧縮 → Storageアップロード（成功時はsrcをhttps URLに差し替え）までの挿入前処理
+async function prepareImageForInsert(file) {
+  const d = await compressImageForLayout(file);
+  const url = await uploadImageToStorage(d.src);
+  if (url) d.src = url;
+  return d;
+}
+
 // 画像HTMLをエディターに独立した段落として挿入するコアヘルパー
 // ・カーソルが空段落 → その段落を置換（split で余分な空段落を作らない）
 // ・カーソルが文字段落 → 段落末尾の直後に挿入（テキストと混在しない）
@@ -4444,7 +4505,7 @@ function insertPortraitGroupIntoTipTap(imageData) {
 // 複数画像を向き・枚数に応じてレイアウト分けして挿入
 async function handleMultipleImagesForTipTap(files) {
   if (state.cardLocked) return; // ロック中のカードへの画像挿入を禁止
-  const imageData = await Promise.all(files.map(compressImageForLayout));
+  const imageData = await Promise.all(files.map(prepareImageForInsert));
   const count = imageData.length;
   if (count === 0) return;
 
@@ -4474,7 +4535,7 @@ async function handleMultipleImagesForTipTap(files) {
 
 // ファイル入力・クリップアイコンからの単体挿入用（後方互換）
 function handleImageForTipTap(file) {
-  return compressImageForLayout(file).then(d => insertSingleImageIntoTipTap(d));
+  return prepareImageForInsert(file).then(d => insertSingleImageIntoTipTap(d));
 }
 
 // data URL文字列をFileに変換する（ドロップされたHTML内のdata URL画像を

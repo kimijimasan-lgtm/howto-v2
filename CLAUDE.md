@@ -721,6 +721,27 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-17）
 
+- **画像保存をFirebase Storage方式へ移行（新規挿入分のみ・app.js?v=887・index.htmlにstorage-compat SDK追加、ローカル検証済み・⚠️Storageバケット未作成のため現在は全てフォールバック動作・本番未デプロイ）**: 外部アプリへのドラッグ書き出し（DownloadURL方式）は http/https の実URLでないと機能しない（blob:はレンダラープロセス紐付きで解決不能、data:も実機で機能しないことがv885/886で判明）ため、新規画像はStorageに保存してhttpsダウンロードURLをsrcに使う方式へ変更。
+  - **実装**: `uploadImageToStorage(dataUrl)`（`users/{uid}/images/{timestamp}-{rand}.jpg` にput→getDownloadURL）と `prepareImageForInsert(file)`（圧縮→アップロード成功時のみsrcをhttpsに差し替え）を新設。挿入の全入口（`handleMultipleImagesForTipTap`/`handleImageForTipTap`）を `prepareImageForInsert` 経由に変更。RTDBの`content`にはhttps URL入りHTMLが保存される（base64はcontentに残らない）
+  - **フォールバック設計（重要）**: アップロード失敗（Storage未有効化・オフライン・タイムアウト10秒）時は従来どおりdata:URLのまま挿入するため機能停止しない。SDK既定のリトライ2分は長すぎるため `setMaxUploadRetryTime/setMaxOperationRetryTime(7000)` に短縮し、失敗後60秒間はアップロード試行自体をスキップ（`_storageCooldownUntil`）。実測: 初回失敗9.3秒→クールダウン中の挿入は約1秒
+  - **後方互換**: 既存のbase64画像は`<img src>`としてそのまま表示される（表示側の分岐は不要）。既存画像の自動移行はしない。ドラッグ書き出しはsrcがhttp(s)の場合のみDownloadURLを付与（拡張子はURLパス部から推定、jpeg→jpg）。data:の場合はコンソールに「旧形式のため非対応」とログを出すのみ（エラー表示なし）
+  - **検証（ローカルChrome・ゲスト）**: 画像挿入→アップロード失敗→data:フォールバック挿入OK／クールダウン動作OK／dragstart分岐（data:→DownloadURLなし+ログ、https(Storage URL形式)→`image/jpeg:crossmemo-image-*.jpg:https://...`が完全なURL（token含む）で付与、.png拡張子推定もOK）／アプリ起因エラーなし。テストで挿入した画像はカードから除去済み
+  - **⚠️ブロッカー（ユーザー対応必要）**: プロジェクト`torisetu-234c3`に**Storageのデフォルトバケットが存在しない**（`torisetu-234c3.firebasestorage.app`/`torisetu-234c3.appspot.com`とも404を実測確認）。Firebase Console > Storage で有効化が必要。**2024年10月以降、デフォルトバケットの新規作成にはBlazeプラン（従量課金）が必要**（無料枠5GB/月DL1GBはBlaze内にもある）。有効化後にセキュリティルールを設定すること:
+    ```
+    rules_version = '2';
+    service firebase.storage {
+      match /b/{bucket}/o {
+        match /users/{uid}/{allPaths=**} {
+          allow read: if request.auth != null && request.auth.uid == uid;
+          allow write: if request.auth != null && request.auth.uid == uid
+                       && request.resource.size < 2 * 1024 * 1024
+                       && request.resource.contentType.matches('image/.*');
+        }
+      }
+    }
+    ```
+    （表示・外部ドロップは`getDownloadURL`のトークン付きURLを使うためreadルールに依存しない。SDKの`getDownloadURL`呼び出し自体に本人のread権限が必要）。CSPは変更不要（connect-srcの`https://*.googleapis.com`がfirebasestorage.googleapis.comをカバー、img-srcは`https:`許可済み）
+  - **未解決の検討事項**: 画像削除・カード削除時にStorage上のファイルが孤児として残る（削除連動は未実装）。ゲストuidのままStorageに保存した画像はGoogleアカウント昇格（linkWithPopup=uid維持）後もそのまま有効
 - **画像ドラッグ書き出しのDownloadURLをblob:からdata:URL直渡しに修正（app.js?v=886）**: v885の実機テストで「ドラッグアニメーションは出るがドロップ先に実データが渡らない」ことが判明。原因は **blob: URLがレンダラープロセス紐付きのため、ドロップ時にファイル化を行うブラウザプロセス／OS側から解決できない**こと。画像srcは元々data:URL（自己完結・プロセスをまたいで解決可能）なので、Blob変換を廃止してsrcのdata:URLをそのまま `DownloadURL` に渡す方式に変更（コードも簡素化、blob URLキャッシュ削除）。合成dragstartで閲覧・編集両モードともURL部=画像srcそのもの・PMのclearData後も残存を確認済み。**データサイズ懸念**: 本アプリの画像は800px/JPEG0.75圧縮（base64で概ね100〜300KB想定）。この規模のdata:URLのDownloadURLは一般に動作するが、実機で大きい画像のドロップが失敗する場合は代替案（`dataTransfer.items.add(File)`方式等）を検討すること
 - **カード内画像を外部アプリ（ワープロ等）へドラッグ&ドロップで書き出せるようにした（app.js?v=885→886・style.css?v=721、ローカルChrome合成イベント検証済み・実マウスでの外部ドロップ確認は未実施・本番未デプロイ）**:
   - **根本原因（なぜ今までドラッグできなかったか）**: ①CSS `.inserted-img { -webkit-user-drag: none }`（iOS誤作動防止コメント付きだがChromium全般に効く）が全モードでネイティブ画像ドラッグを禁止 ②閲覧モードでは `blockImageTouchInViewMode` が画像上の mousedown/pointerdown を preventDefault し、ドラッグ開始自体が不可能だった。画像srcは `data:image/jpeg` URL のためそのままドラッグできても外部アプリはファイルとして受け取れない
