@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // カード内画像: 本人のみ読み書き可（表示・外部ドロップはトークン付きURL経由のためreadルール非依存）
+    match /users/{uid}/images/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && request.resource.size < 2 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

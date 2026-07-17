@@ -1,9 +1,13 @@
 {
+  "storage": {
+    "rules": "storage.rules"
+  },
   "hosting": {
     "target": "crossmemo",
     "public": ".",
     "ignore": [
       "firebase.json",
+      "storage.rules",
       "**/.*",
       "**/node_modules/**",
       "*.md",
