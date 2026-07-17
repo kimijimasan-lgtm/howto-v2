@@ -1843,7 +1843,19 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   user-select: none;
   -webkit-user-select: none;
-  cursor: zoom-in; /* タップで拡大できることを視覚的に示す */
+  cursor: grab; /* ドラッグで外部アプリへ書き出せることを視覚的に示す（パーの手） */
+}
+
+/* クリックしてつかんだ瞬間（ドラッグ前の押下中）はグーの手 */
+.inserted-img:active {
+  cursor: grabbing;
+}
+
+/* ドラッグ中: :activeだけではブラウザ外へのD&D中に反映されないことがあるため、
+   dragstart/dragendイベントで #edContent に .img-dragging を付け外しして明示的に切り替える。
+   （クラスをimg自体に付けるとTipTapがclass属性を保存してしまうため、PM管理外の親に付ける） */
+.editor-content.img-dragging img.inserted-img {
+  cursor: grabbing !important;
 }
 
 /* タッチデバイスのみ画像ドラッグを禁止して誤作動を防ぐ

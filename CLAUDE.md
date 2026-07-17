@@ -721,6 +721,7 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-17）
 
+- **カード内画像のカーソルをgrab/grabbing対応に変更（app.js?v=888・style.css?v=722、ローカル検証済み）**: 画像ホバー時=パーの手（`cursor: grab`、旧`zoom-in`を置換。拡大モーダルは保留中の機能のため）、押下中=`:active`でグー（`grabbing`）、ドラッグ中=`:active`だけではブラウザ外D&D中に反映されないことがあるため、dragstartで`#edContent`に`.img-dragging`を付与し `.editor-content.img-dragging img.inserted-img { cursor: grabbing !important }` で明示切替、dragendで除去してパーに復帰。**クラスは`<img>`自体ではなくPM管理外の`#edContent`に付ける**（imgのclass属性はCustomImageExtensionがper-imageで保存するため、自動保存のタイミング次第で一時クラスがFirebaseに永続化される危険がある）。検証: 通常grab／dragstart後grabbing＋クラス付与／dragend後grab＋クラス除去／段落は通常カーソル・段落ドラッグではクラス非付与／保存HTMLへの`img-dragging`混入なし
 - **画像保存をFirebase Storage方式へ移行（新規挿入分のみ・app.js?v=887・index.htmlにstorage-compat SDK追加、ローカル検証済み・⚠️Storageバケット未作成のため現在は全てフォールバック動作・本番未デプロイ）**: 外部アプリへのドラッグ書き出し（DownloadURL方式）は http/https の実URLでないと機能しない（blob:はレンダラープロセス紐付きで解決不能、data:も実機で機能しないことがv885/886で判明）ため、新規画像はStorageに保存してhttpsダウンロードURLをsrcに使う方式へ変更。
   - **実装**: `uploadImageToStorage(dataUrl)`（`users/{uid}/images/{timestamp}-{rand}.jpg` にput→getDownloadURL）と `prepareImageForInsert(file)`（圧縮→アップロード成功時のみsrcをhttpsに差し替え）を新設。挿入の全入口（`handleMultipleImagesForTipTap`/`handleImageForTipTap`）を `prepareImageForInsert` 経由に変更。RTDBの`content`にはhttps URL入りHTMLが保存される（base64はcontentに残らない）
   - **フォールバック設計（重要）**: アップロード失敗（Storage未有効化・オフライン・タイムアウト10秒）時は従来どおりdata:URLのまま挿入するため機能停止しない。SDK既定のリトライ2分は長すぎるため `setMaxUploadRetryTime/setMaxOperationRetryTime(7000)` に短縮し、失敗後60秒間はアップロード試行自体をスキップ（`_storageCooldownUntil`）。実測: 初回失敗9.3秒→クールダウン中の挿入は約1秒

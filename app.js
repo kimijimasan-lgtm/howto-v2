@@ -3589,8 +3589,17 @@ function renderEditor(container) {
   // 段落並び替え（SortableJSはネイティブDnDを使う）等のエディタ内発ドラッグには
   // 干渉しないよう、dragstart/dragend でフラグ管理して除外する。
   let _internalDragFromEditor = false;
-  edEl.addEventListener('dragstart', () => { _internalDragFromEditor = true; });
-  edEl.addEventListener('dragend', () => { _internalDragFromEditor = false; });
+  edEl.addEventListener('dragstart', (e) => {
+    _internalDragFromEditor = true;
+    // 画像ドラッグ中はグーの手カーソル（:activeだけではD&D中に反映されないことがあるため明示切替）
+    if (e.target && e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
+      edEl.classList.add('img-dragging');
+    }
+  });
+  edEl.addEventListener('dragend', () => {
+    _internalDragFromEditor = false;
+    edEl.classList.remove('img-dragging'); // ドロップ後はパーの手（cursor: grab）に戻る
+  });
 
   // ── カード内画像の外部アプリへのドラッグ書き出し（PC・両モード共通） ──────
   // DownloadURL 形式（mime:ファイル名:URL）を付与すると、Chromiumでは
