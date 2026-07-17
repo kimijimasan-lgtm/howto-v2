@@ -3562,7 +3562,13 @@ function renderEditor(container) {
   const blockImageTouchInViewMode = (e) => {
     if (state.editorMode !== 'view') return;
     if (e.target && e.target.tagName === 'IMG' && e.target.classList.contains('inserted-img')) {
-      if (e.cancelable) e.preventDefault();
+      // PCマウスの押下だけは既定動作を残す（preventDefaultするとネイティブ画像ドラッグ＝
+      // 外部アプリへの書き出しが開始できない）。stopPropagationは従来どおり行うので
+      // タップ→編集モード切替等の誤作動は起きない。タッチ由来のイベントは従来どおり全ブロック
+      // （iPhoneでの誤作動防止を維持。touchendのpreventDefaultで合成mousedownも抑止される）
+      const isMousePress = (e.type === 'mousedown') ||
+                           (e.type === 'pointerdown' && e.pointerType === 'mouse');
+      if (!isMousePress && e.cancelable) e.preventDefault();
       e.stopPropagation();
     }
   };
@@ -3585,6 +3591,51 @@ function renderEditor(container) {
   let _internalDragFromEditor = false;
   edEl.addEventListener('dragstart', () => { _internalDragFromEditor = true; });
   edEl.addEventListener('dragend', () => { _internalDragFromEditor = false; });
+
+  // ── カード内画像の外部アプリへのドラッグ書き出し（PC・両モード共通） ──────
+  // data:URL画像をBlob URLに変換して DownloadURL 形式（mime:ファイル名:URL）を付与すると、
+  // Chromiumではエクスプローラーやワープロ等の外部Windowsアプリにファイルとしてドロップできる。
+  // 【重要】キャプチャではなくバブル段で登録する: 編集モードではProseMirrorのdragstartハンドラ
+  // （.ProseMirror上＝この要素より内側）が dataTransfer.clearData() を呼ぶため、
+  // それより後（外側へのバブル時）に setData しないと付与したデータが消される
+  const _imgDragBlobUrlCache = new Map(); // img要素 → {src, blobUrl}（src不変なら再利用）
+  edEl.addEventListener('dragstart', (e) => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.classList.contains('inserted-img')) return;
+    if (!e.dataTransfer || e.defaultPrevented) return;
+    try {
+      const src = img.getAttribute('src') || '';
+      let fileUrl = '';
+      let mime = 'image/png';
+      if (src.startsWith('data:')) {
+        const m = src.match(/^data:(image\/[a-z0-9+.-]+);base64,/i);
+        if (!m) return;
+        mime = m[1].toLowerCase();
+        const cached = _imgDragBlobUrlCache.get(img);
+        if (cached && cached.src === src) {
+          fileUrl = cached.blobUrl;
+        } else {
+          const bin = atob(src.slice(src.indexOf(',') + 1));
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          fileUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+          _imgDragBlobUrlCache.set(img, { src, blobUrl: fileUrl });
+        }
+      } else if (src.startsWith('blob:') || src.startsWith('http')) {
+        // blob:（Safariの自動変換等）や通常URLはそのまま渡す（mimeはjpegとして扱う）
+        mime = 'image/jpeg';
+        fileUrl = src;
+      } else {
+        return;
+      }
+      const ext = (mime === 'image/jpeg') ? 'jpg' : mime.split('/')[1].replace('+xml', '');
+      const name = 'crossmemo-image-' + Date.now() + '.' + ext;
+      e.dataTransfer.setData('DownloadURL', mime + ':' + name + ':' + fileUrl);
+    } catch (err) {
+      // 付与に失敗してもブラウザ既定のドラッグデータ（text/html等）でのドラッグは続行させる
+      console.warn('image dragstart: DownloadURL付与に失敗', err);
+    }
+  });
 
   // dragover時点では getData でデータを読めない（typesのみ参照可）ため、
   // 画像を含み得る種別（Files / text/html）かどうかだけで受け入れ判定する
@@ -5761,6 +5812,10 @@ function refreshParaSortable(mode) {
   } else {
     paraSortable = Sortable.create(editor, {
       draggable: 'p.para-selected, h1.para-selected, h2.para-selected',
+      // 選択段落内の画像から始まったドラッグはSortableで拾わず、
+      // ブラウザのネイティブ画像ドラッグ（外部アプリへの書き出し）を優先する
+      filter: 'img.inserted-img',
+      preventOnFilter: false, // preventDefaultするとネイティブドラッグ自体が死ぬため必須
       delay: 150,
       delayOnTouchOnly: true,
       animation: 150,

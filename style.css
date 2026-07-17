@@ -1843,8 +1843,15 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   user-select: none;
   -webkit-user-select: none;
-  -webkit-user-drag: none; /* iOS Safari等での画像ドラッグを禁止して誤作動を防ぐ */
   cursor: zoom-in; /* タップで拡大できることを視覚的に示す */
+}
+
+/* タッチデバイスのみ画像ドラッグを禁止して誤作動を防ぐ
+   （PCマウスではネイティブドラッグを許可し、外部アプリへの画像書き出しに使う） */
+@media (pointer: coarse) {
+  .inserted-img {
+    -webkit-user-drag: none;
+  }
 }
 
 /* 縦画像: 2枚横並び時と同じ基準サイズ（50%幅）で統一 */
