@@ -699,20 +699,22 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=884, style.css?v=720, tiptap.bundle.js?v=8）
-app.js              — アプリ全体（約5,800行）
+index.html          — エントリポイント（app.js?v=888, style.css?v=722, tiptap.bundle.js?v=8）
+app.js              — アプリ全体（約5,900行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
 manifest.json       — PWA設定（start_url/scope: /howto-v2/）
+storage.rules       — Firebase Storageセキュリティルール（deploy --only storage で反映）
+firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 .nojekyll           — GitHub Pages Jekyll無効化
 .gitignore          — .tiptap-build/node_modules/ を除外
 ```
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=720`
+- `style.css?v=722`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=884`
+- `app.js?v=888`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -721,8 +723,10 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 
 ## 直近の対応（2026-07-17）
 
-- **カード内画像のカーソルをgrab/grabbing対応に変更（app.js?v=888・style.css?v=722、ローカル検証済み）**: 画像ホバー時=パーの手（`cursor: grab`、旧`zoom-in`を置換。拡大モーダルは保留中の機能のため）、押下中=`:active`でグー（`grabbing`）、ドラッグ中=`:active`だけではブラウザ外D&D中に反映されないことがあるため、dragstartで`#edContent`に`.img-dragging`を付与し `.editor-content.img-dragging img.inserted-img { cursor: grabbing !important }` で明示切替、dragendで除去してパーに復帰。**クラスは`<img>`自体ではなくPM管理外の`#edContent`に付ける**（imgのclass属性はCustomImageExtensionがper-imageで保存するため、自動保存のタイミング次第で一時クラスがFirebaseに永続化される危険がある）。検証: 通常grab／dragstart後grabbing＋クラス付与／dragend後grab＋クラス除去／段落は通常カーソル・段落ドラッグではクラス非付与／保存HTMLへの`img-dragging`混入なし
-- **画像保存をFirebase Storage方式へ移行（新規挿入分のみ・app.js?v=887・index.htmlにstorage-compat SDK追加、ローカル検証済み・⚠️Storageバケット未作成のため現在は全てフォールバック動作・本番未デプロイ）**: 外部アプリへのドラッグ書き出し（DownloadURL方式）は http/https の実URLでないと機能しない（blob:はレンダラープロセス紐付きで解決不能、data:も実機で機能しないことがv885/886で判明）ため、新規画像はStorageに保存してhttpsダウンロードURLをsrcに使う方式へ変更。
+**セッション概要**: ①Ctrl+クリック段落選択の不具合修正（v884）②カード内画像の外部アプリへのドラッグ&ドロップ書き出し（v885→886で試行錯誤→v887のStorage方式で解決）③画像保存のFirebase Storage移行（新規挿入分・バケット有効化・storage.rulesデプロイ）④画像カーソルのgrab/grabbing対応（v888）。**最終状態: 本番はapp.js?v=888・style.css?v=722を配信済み、GitHubのmainと一致**。積み残し: 実装項目「4.」の内容が未受領（ユーザーのメッセージが途中で切れていた）／画像・カード削除時のStorage孤児ファイル削除連動は未実装／実マウスでの外部アプリへのドロップ最終確認・カーソル見た目確認は未報告
+
+- **カード内画像のカーソルをgrab/grabbing対応に変更（app.js?v=888・style.css?v=722、ローカル検証済み・本番デプロイ済み）**: 画像ホバー時=パーの手（`cursor: grab`、旧`zoom-in`を置換。拡大モーダルは保留中の機能のため）、押下中=`:active`でグー（`grabbing`）、ドラッグ中=`:active`だけではブラウザ外D&D中に反映されないことがあるため、dragstartで`#edContent`に`.img-dragging`を付与し `.editor-content.img-dragging img.inserted-img { cursor: grabbing !important }` で明示切替、dragendで除去してパーに復帰。**クラスは`<img>`自体ではなくPM管理外の`#edContent`に付ける**（imgのclass属性はCustomImageExtensionがper-imageで保存するため、自動保存のタイミング次第で一時クラスがFirebaseに永続化される危険がある）。検証: 通常grab／dragstart後grabbing＋クラス付与／dragend後grab＋クラス除去／段落は通常カーソル・段落ドラッグではクラス非付与／保存HTMLへの`img-dragging`混入なし
+- **画像保存をFirebase Storage方式へ移行（新規挿入分のみ・app.js?v=887・index.htmlにstorage-compat SDK追加、Storage有効化・ルールデプロイ・E2E検証・本番デプロイまで完了）**: 外部アプリへのドラッグ書き出し（DownloadURL方式）は http/https の実URLでないと機能しない（blob:はレンダラープロセス紐付きで解決不能、data:も実機で機能しないことがv885/886で判明）ため、新規画像はStorageに保存してhttpsダウンロードURLをsrcに使う方式へ変更。
   - **実装**: `uploadImageToStorage(dataUrl)`（`users/{uid}/images/{timestamp}-{rand}.jpg` にput→getDownloadURL）と `prepareImageForInsert(file)`（圧縮→アップロード成功時のみsrcをhttpsに差し替え）を新設。挿入の全入口（`handleMultipleImagesForTipTap`/`handleImageForTipTap`）を `prepareImageForInsert` 経由に変更。RTDBの`content`にはhttps URL入りHTMLが保存される（base64はcontentに残らない）
   - **フォールバック設計（重要）**: アップロード失敗（Storage未有効化・オフライン・タイムアウト10秒）時は従来どおりdata:URLのまま挿入するため機能停止しない。SDK既定のリトライ2分は長すぎるため `setMaxUploadRetryTime/setMaxOperationRetryTime(7000)` に短縮し、失敗後60秒間はアップロード試行自体をスキップ（`_storageCooldownUntil`）。実測: 初回失敗9.3秒→クールダウン中の挿入は約1秒
   - **後方互換**: 既存のbase64画像は`<img src>`としてそのまま表示される（表示側の分岐は不要）。既存画像の自動移行はしない。ドラッグ書き出しはsrcがhttp(s)の場合のみDownloadURLを付与（拡張子はURLパス部から推定、jpeg→jpg）。data:の場合はコンソールに「旧形式のため非対応」とログを出すのみ（エラー表示なし）
@@ -731,11 +735,11 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
   - **有効化後のエンドツーエンド検証（ローカルChrome・ゲスト・全パス）**: 画像挿入→Storageアップロード→トークン付きhttps URLがsrcに使用（挿入1.9秒）→表示OK／dragstartでDownloadURLに完全なStorage URL付与／保存→カード開き直しでURL維持・再表示OK／**ブラウザ外プロセス（PowerShellのcurl＝OSのドロップ処理相当）からトークンURLで200・image/jpeg・正しいJPEGバイト列のダウンロード成功**／`refFromURL().delete()`によるStorage削除もルール上動作。テストデータはカード・Storageとも削除済み。CSPは変更不要（connect-srcの`https://*.googleapis.com`がカバー、img-src `https:`許可済み）
   - **未解決の検討事項**: 画像削除・カード削除時にStorage上のファイルが孤児として残る（削除連動は未実装）。ゲストuidのままStorageに保存した画像はGoogleアカウント昇格（linkWithPopup=uid維持）後もそのまま有効
 - **画像ドラッグ書き出しのDownloadURLをblob:からdata:URL直渡しに修正（app.js?v=886）**: v885の実機テストで「ドラッグアニメーションは出るがドロップ先に実データが渡らない」ことが判明。原因は **blob: URLがレンダラープロセス紐付きのため、ドロップ時にファイル化を行うブラウザプロセス／OS側から解決できない**こと。画像srcは元々data:URL（自己完結・プロセスをまたいで解決可能）なので、Blob変換を廃止してsrcのdata:URLをそのまま `DownloadURL` に渡す方式に変更（コードも簡素化、blob URLキャッシュ削除）。合成dragstartで閲覧・編集両モードともURL部=画像srcそのもの・PMのclearData後も残存を確認済み。**データサイズ懸念**: 本アプリの画像は800px/JPEG0.75圧縮（base64で概ね100〜300KB想定）。この規模のdata:URLのDownloadURLは一般に動作するが、実機で大きい画像のドロップが失敗する場合は代替案（`dataTransfer.items.add(File)`方式等）を検討すること
-- **カード内画像を外部アプリ（ワープロ等）へドラッグ&ドロップで書き出せるようにした（app.js?v=885→886・style.css?v=721、ローカルChrome合成イベント検証済み・実マウスでの外部ドロップ確認は未実施・本番未デプロイ）**:
+- **カード内画像を外部アプリ（ワープロ等）へドラッグ&ドロップで書き出せるようにした（app.js?v=885→886・style.css?v=721。⚠️v885のblob:方式・v886のdata:方式とも実機の外部ドロップでは実データが渡らず、最終的にv887のStorage https URL方式で解決。本エントリはドラッグ開始側の実装記録として有効）**:
   - **根本原因（なぜ今までドラッグできなかったか）**: ①CSS `.inserted-img { -webkit-user-drag: none }`（iOS誤作動防止コメント付きだがChromium全般に効く）が全モードでネイティブ画像ドラッグを禁止 ②閲覧モードでは `blockImageTouchInViewMode` が画像上の mousedown/pointerdown を preventDefault し、ドラッグ開始自体が不可能だった。画像srcは `data:image/jpeg` URL のためそのままドラッグできても外部アプリはファイルとして受け取れない
   - **修正内容（4点）**: ①CSSのドラッグ禁止を `@media (pointer: coarse)`（タッチデバイス）限定に変更（PCマウスはドラッグ許可、iPhoneは従来どおり禁止）②`blockImageTouchInViewMode` でマウス押下（`mousedown` / `pointerType==='mouse'` の `pointerdown`）のみ preventDefault をスキップ（stopPropagation は継続＝タップ→編集切替等の誤作動防止は維持。タッチ系は全ブロックのまま）③`#edContent` に**バブル段**の dragstart リスナーを追加し、data:URL を Blob URL に変換（img要素単位でキャッシュ・再利用）して `dataTransfer.setData('DownloadURL', 'image/jpeg:crossmemo-image-<timestamp>.jpg:<blobURL>')` を付与 — **キャプチャ段では不可**（編集モードではProseMirrorのdragstartハンドラが `dataTransfer.clearData()` を呼ぶため、PM処理後のバブル段で付与する必要がある。実測で `text/html,text/plain,downloadurl` の共存を確認）④編集モードの paraSortable に `filter: 'img.inserted-img'` + `preventOnFilter: false` を追加（選択段落内の画像から始まるドラッグはSortableに拾わせずネイティブドラッグ優先。`preventOnFilter:false` が無いとSortableのpreventDefaultでネイティブドラッグが死ぬ）。閲覧モードの段落並び替えは元々 `handle: '.para-drag-handle'`（⠿）限定のため画像と競合しない
   - **検証（ローカルChrome・合成イベント）**: 閲覧モード=マウス押下の既定動作維持・タッチpointerdownブロック維持・画像クリックで編集モードに切り替わらない（回帰なし）・`-webkit-user-drag: auto`（PC）／dragstartでDownloadURL正常付与（blob URLをfetchして761バイト・image/jpegを確認、2回目ドラッグでblob URLキャッシュ再利用）／編集モードでもPMのclearData後にDownloadURL残存／Ctrl+クリック段落選択の回帰なし・アプリ起因のコンソールエラーゼロ
-  - **未検証**: 実マウスでの実際の外部アプリ（ワープロ・エクスプローラー）へのドロップは合成イベントでは検証不可能（OSレベルのDnD）。**ユーザーの実機確認後にデプロイすること**。なお `DownloadURL` はChromium独自形式（エクスプローラー等へのファイルドロップ用）で、ワープロ系はブラウザ既定の text/html／FileContents 経由で受け取る想定
+  - **実機テストの結果**: 実マウスでの外部ドロップは「ドラッグアニメーションは出るが実データが渡らない」ことが判明（blob:はプロセス間で解決不能、data:も不可）→ v887のStorage https URL方式で解決。なお `DownloadURL` はChromium独自形式（エクスプローラー等へのファイルドロップ用）で、ワープロ系はブラウザ既定の text/html／FileContents 経由で受け取る想定
 
 - **カード一覧のCtrl+クリック（スワイプメニュー）が発火しない問題を修正＋編集モードからのCtrl+クリック段落選択に対応（app.js?v=884、ローカルChrome検証済み・実機確認済み・本番デプロイ済み 2026-07-17）**: 「編集画面のCtrl+クリック段落選択が動かなくなった」との報告を受けて調査。
   - **実測で確定した根本原因**: artSortable/catSortableは `forceFallback: true` かつ `delayOnTouchOnly: true`（＝マウスは遅延ゼロ）のため、マウス押下で即Sortableのドラッグ追跡が始まり、押下中にわずかでも `mousemove` があると（`fallbackTolerance`未設定＝閾値0px）ドラッグ扱いになる。この場合Sortable 1.15は **mouseupをpreventDefaultし、直後のclickをdocumentキャプチャハンドラで握り潰す**（preventDefaultトレーサで `Sortable.min.js の _onDrop` と documentハンドラのスタックを実測確認）。カード一覧のCtrl+クリック処理は2箇所とも `click` イベント依存（2026-06-23実装）だったため一切発火しなくなっていた。通常クリックでのカード/パネルオープンも同条件（クリック中に1px以上の手ブレ）で握り潰されるため「クリックしてもカードが開かないことがある」潜在バグでもあった
@@ -905,6 +909,10 @@ manifest.json       — PWA設定（start_url/scope: /howto-v2/）
 8. ~~authDomainのクロスオリジン問題の恒久対応~~（**2026-07-08完了・本番デプロイ済み（v868）**。詳細は「直近の対応（2026-07-08）」参照。残検証: 実機iPhone Safariでポップアップブロック時のredirectフォールバック成功確認）
 9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応（Stripe Webhook + Cloud Functionsで決済とアカウントを自動紐付け。Blazeプラン要確認）は未着手
 10. ~~serve.bat修正~~（**2026-07-15完了・コミット`d470fc2`**。旧OneDriveパス固定を `cd /d "%~dp0"`（bat自身のディレクトリ基準）に修正済み。python 3.14.3 の存在も確認済み）
+11. **画像ドラッグ書き出し関連の実装項目「4.」の内容確認**（2026-07-17のユーザー指示メッセージが「4.」で途切れており内容未受領。次回ユーザーに確認すること）
+12. **画像・カード削除時のStorage孤児ファイル削除連動**（未実装。現状は画像やカードを削除してもStorage上の `users/{uid}/images/*` が残り続ける。ルール上 `refFromURL().delete()` は本人なら可能なことを確認済み。項目11の「4.」がこれを指していた可能性あり）
+13. **画像ドラッグ書き出し（v887 Storage方式）とカーソル表示（v888）の実機最終確認**（新規挿入画像をワープロ・エクスプローラーへ実マウスでドロップ→実データが渡ること／カーソルがパー→グー→パー→矢印と遷移すること。既存のbase64画像は書き出し非対応が仕様）
+14. **App Checkモニタリング確認→enforcement有効化**（導入2026-07-11、目安1〜2週間。Firebase ConsoleでRTDB/Authのメトリクスを確認し、問題なければenforcement有効化。Storageも保護対象に追加するか検討）
 
 ## 直近の対応（2026-06-24）
 
