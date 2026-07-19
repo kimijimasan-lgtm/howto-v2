@@ -6297,8 +6297,10 @@ function startStripePayment() {
 }
 
 // 決済成功後のモーダル（Googleアカウントでログインを促す）
+// 表示は payment_modal_pending フラグで管理され、Googleログイン確定まで起動のたびに出る
 // isPremium付与のトリガーは以下の3系統（Webhookは不使用・全てクライアントサイド）:
-// 1. 起動時の ?payment=success 分岐 — pending_payment_uid（決済開始時に保存）へ即付与
+// 1. 起動時の ?payment=success 分岐 — pending_payment_uid（決済開始時に保存）へ
+//    バックグラウンドで付与（モーダル表示はこの完了を待たない）
 // 2. このモーダルの「Googleアカウントでログイン」— ポップアップ成功時にそのuidへ付与
 // 3. onAuthStateChanged の pending_premium_grant フラグ — 1・2で付与しきれなかった場合の保険
 function showPaymentSuccessModal() {
@@ -6338,6 +6340,7 @@ function showPaymentSuccessModal() {
         // （このuidの初期化・テンプレートコピー確認は起動時に実施済み）
         await db.ref(`users/${result.user.uid}/isPremium`).set(true);
         localStorage.removeItem('pending_premium_grant');
+        localStorage.removeItem('payment_modal_pending');
         state.isPremium = true;
         goTo('home');
         revealAppAfterAuth();
@@ -6617,27 +6620,29 @@ window.addEventListener('DOMContentLoaded', async () => {
   const isPaymentSuccess = urlParams.get('payment') === 'success';
   const isGuestParam = urlParams.get('guest') === 'true';
 
-  // ?payment=success の場合：決済開始時に保存したuidへ即isPremiumを付与する。
-  // モーダルの表示は通常の起動フロー（onAuthStateChanged → goTo）で背後の画面を
-  // 描画した後に行う。旧実装はここで return して onAuthStateChanged の登録ごと
-  // スキップしていたため、モーダルの背後が完全な空画面になり、背景タップで
-  // モーダルを閉じたりポップアップログインに失敗すると操作不能になっていた
-  let showPaymentModalAfterBoot = false;
+  // ?payment=success の場合：決済開始時に保存したuidへisPremiumを付与する。
+  // 旧実装はこの書き込みを await していたが、App Checkトークン交換＋RTDB接続が完了する
+  // までモーダル表示が直列にブロックされ、低速回線では表示まで10秒超かかることが実測で
+  // 判明した（2026-07-19）。書き込み失敗時は pending_premium_grant に退避して次の
+  // ログイン確定時に付与する保険が既にあるため、完了を待たないバックグラウンド実行に
+  // 変更し、表示のクリティカルパスから外した。
+  // モーダルを出すかどうかは payment_modal_pending フラグ（localStorage）で管理する。
+  // 背景タップ等で誤って閉じても、Googleログインが確定するまで次回起動時に繰り返し
+  // 案内が出る（?payment=success はここでURLから消えるため、フラグがないと一度閉じた
+  // モーダルを二度と表示できず、購入者が迷子になっていた）
   if (isPaymentSuccess) {
     window.history.replaceState({}, document.title, window.location.pathname);
+    localStorage.setItem('payment_modal_pending', '1');
     const pendingUid = localStorage.getItem('pending_payment_uid');
     localStorage.removeItem('pending_payment_uid');
     if (pendingUid) {
-      try {
-        // RTDBルール上、書き込めるのはログイン中の本人uidのみ。セッション消失等で
-        // 書けなかった場合は付与待ちフラグに退避し、次のログイン確定時に付与する
-        await db.ref(`users/${pendingUid}/isPremium`).set(true);
-      } catch (err) {
+      // RTDBルール上、書き込めるのはログイン中の本人uidのみ。セッション消失等で
+      // 書けなかった場合は付与待ちフラグに退避し、次のログイン確定時に付与する
+      db.ref(`users/${pendingUid}/isPremium`).set(true).catch((err) => {
         console.error('Failed to set isPremium for pending uid:', err);
         localStorage.setItem('pending_premium_grant', '1');
-      }
+      });
     }
-    showPaymentModalAfterBoot = true;
   }
 
   // ?guest=true パラメータがあり、未ログイン状態なら自動ゲストログイン
@@ -6656,6 +6661,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       // ログイン済み — 購入状態を読み取り
       state.uid = user.uid;
       state.isAnonymous = user.isAnonymous;
+      // 決済モーダル内の「Googleアカウントでログイン」経由かどうかを、保険フラグが
+      // 除去される前に控えておく（後段のお礼トーストの二重表示防止に使う）
+      const cameViaModalLogin = localStorage.getItem('pending_premium_grant') === '1';
       // 決済完了後の付与待ち保険: モーダル内での付与がリダイレクトフォールバック等で
       // 完了しなかった場合、次にログインが確定したユーザーへここで付与する
       // （直後のisPremium読み取りで即座にstateへ反映される）
@@ -6691,11 +6699,20 @@ window.addEventListener('DOMContentLoaded', async () => {
       window._authInProgress = false;
       goTo('home');
       revealAppAfterAuth();
-      // ?payment=success で起動した場合はホーム画面の上にモーダルを重ねる
-      // （モーダル内ログイン成功後の onAuthStateChanged 再発火では出さない）
-      if (showPaymentModalAfterBoot) {
-        showPaymentModalAfterBoot = false;
-        showPaymentSuccessModal();
+      // 決済後の案内モーダル: Googleログイン（非匿名）が確定するまで、起動のたびに
+      // ホーム画面の上へ重ねて表示する（誤って閉じても次回の起動でまた案内される）
+      if (localStorage.getItem('payment_modal_pending') === '1') {
+        if (user.isAnonymous) {
+          showPaymentSuccessModal();
+        } else {
+          // Googleログイン確定 = 案内の目的達成。以後は表示しない。
+          // モーダルのボタン経由なら「ログイン完了！」トーストが別途出るため、
+          // ここでのお礼トーストはGoogleログイン済みのまま決済から戻った場合のみ
+          localStorage.removeItem('payment_modal_pending');
+          if (!cameViaModalLogin) {
+            showToast('お支払いありがとうございます！無制限でご利用いただけます');
+          }
+        }
       }
       // ホーム画面の初期表示が落ち着いたタイミングで、編集画面を開く前に
       // TipTapエディターの初期化コストを先払いしておく
@@ -6714,10 +6731,10 @@ window.addEventListener('DOMContentLoaded', async () => {
         window._authInProgress = false;
         goTo('login');
         revealAppAfterAuth();
-        // ?payment=success で起動した未ログインユーザー（ブログ経由の購入者）には
-        // ログイン画面の上にモーダルを重ねる。閉じてもログイン画面が操作できる
-        if (showPaymentModalAfterBoot) {
-          showPaymentModalAfterBoot = false;
+        // 決済後に未ログインで起動したユーザー（ブログ経由の購入者）には
+        // ログイン画面の上にモーダルを重ねる。閉じてもログイン画面が操作でき、
+        // ログインが確定するまでは次回起動時にも繰り返し案内が出る
+        if (localStorage.getItem('payment_modal_pending') === '1') {
           showPaymentSuccessModal();
         }
       }

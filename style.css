@@ -1598,6 +1598,19 @@ body {
 .splash-dots span:nth-child(2) { animation-delay: 0.15s; }
 .splash-dots span:nth-child(3) { animation-delay: 0.3s; }
 
+/* 決済から戻った直後の処理中案内（index.htmlのインラインスクリプトが動的に挿入する） */
+.splash-status {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  line-height: 1.6;
+  padding: 0 1.5rem;
+  text-align: center;
+  opacity: 0;
+  animation: splashLogoIn 0.8s ease-out 0.3s forwards;
+}
+
 @keyframes splashIconIn {
   from { opacity: 0; transform: scale(0.82) translateY(8px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
