@@ -227,12 +227,13 @@ let state = {
 ### テンプレートの構成
 Firebase `templates/default` に保存されており、新規ユーザーに自動コピーされる。
 
-| パネル | カード数 | 色 |
-|--------|---------|-----|
-| 解説（インディゴ）| 10枚 | `linear-gradient(135deg,#4f46e5,#6366f1)` |
-| メモ（エメラルド）| 1枚（「最初のメモ」） | `linear-gradient(135deg,#059669,#10b981)` |
+| パネル | カード数 |
+|--------|---------|
+| 活用例 | 6枚 |
+| 解説 | 6枚 |
+| 初めに確認して | 2枚 |
 
-解説カード10枚の内容はコード定数 `TEMPLATE_EXPLANATION_CARDS`（`app.js` 内）で管理。
+解説カードの内容はコード定数 `TEMPLATE_EXPLANATION_CARDS`（`app.js` 内）で管理。テンプレートの更新は開発者専用の `saveCurrentDataAsTemplate()` で行う。
 
 ### 関連関数
 | 関数 | 役割 |
@@ -261,17 +262,18 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 
 | 種別 | パネル/カード作成 | データ変更（同期） |
 |------|-----------------|------------------|
-| ゲスト（匿名）| パネル累計3・カード累計7 | 無制限（作成上限側で制御） |
+| ゲスト（匿名）| パネル3つまで・カード各パネル6枚まで | 無制限（作成上限側で制御） |
 | 無料Googleログイン | **無制限** | **累計10回まで**（閲覧は無制限） |
 | 課金済み（`isPremium: true`）| 無制限 | 無制限 |
 | 開発者（`kimijimasan@gmail.com`）| 無制限 | 無制限 |
 
-**パネル/カード作成上限（ゲストのみ）**
-- 判定: `isCreateLimitedUser()` = `state.isAnonymous && !state.isPremium && !isDeveloperAccount()`（**匿名ユーザーのみ対象**に変更。無料Googleログインは同期回数制限側へ移行）
-- 累計カウント方式（削除しても減らない）。保存先: RTDB `users/{uid}/stats/panelsCreated` / `cardsCreated`
-- テンプレート由来の初期データ・自動補充カードはカウント対象外
-- 定数: `FREE_PANEL_CREATE_LIMIT = 3` / `FREE_CARD_CREATE_LIMIT = 7`
+**パネル/カード作成上限（ゲストのみ・2026-07-18に実在数カウント方式へ変更）**
+- 判定: `isCreateLimitedUser()` = `state.isAnonymous && !state.isPremium && !isDeveloperAccount()`（匿名ユーザーのみ対象。無料Googleログインは同期回数制限側で管理）
+- **実在数カウント方式**: テンプレートかユーザー作成かを区別せず、その時点で実際に存在するパネル数・カード数をカウントして判定する。削除すればその分だけ枠が空く
+- 定数: `FREE_PANEL_LIMIT = 3`（パネル総数の上限）/ `FREE_CARDS_PER_PANEL_LIMIT = 6`（1パネルあたりのカード数上限）
+- ヘルパー: `getActualPanelCount()`（`users/{uid}/categories` の実数）/ `getActualCardCount(catId)`（`users/{uid}/articles/{catId}` の実数）
 - チェック箇所: `showCategoryModal` 保存（新規分岐）/ `createArticle()` / `duplicateArticle()`
+- テンプレート初期状態（3パネル・14カード）ではパネル作成が即座に制限にかかり、6枚パネルへのカード追加も不可（ゲストが「制限がない」と感じることを防止）
 
 **同期回数制限（ログイン済み無料ユーザーのみ・2026-07-02実装）**
 - 判定: `isSyncLimitedUser()` = `!!state.uid && !state.isAnonymous && !state.isPremium && !isDeveloperAccount()`
@@ -283,7 +285,7 @@ Firebase `templates/default` に保存されており、新規ユーザーに自
 - **残り回数表示**: ホーム画面ヘッダー下のバッジ `#syncQuotaBadge` を**制限対象ユーザーには常時表示**（v=861〜。残り4回以上=青系、残り3回以下=オレンジ警告色。タップで案内モーダル）。ログイン直後はホームに着地するため初回案内を兼ねる。加えて残り3回以下では消費時にトースト「無料の同期 残りn回」。`updateSyncQuotaBadge()` で文言・色を更新
 - `deleteArticleSilently()`（最後の段落削除時のシステム自動削除）は意図的にゲート対象外
 - ⚠️ **`state` 再代入の罠（v=860で修正済みのバグ）**: `goTo()`/`goBack()`/`createArticle()` は `state` を新オブジェクトで丸ごと再代入するため、引き継ぎリストに無いフィールドは画面遷移で消える。`syncCount` の引き継ぎ漏れで制限が一切効かないバグがあった（isPremium/isAnonymousでも過去に同種バグ）。**stateに永続フィールドを追加したら、この3箇所の再代入にも必ず追加すること**
-- 100kin-blog `login.html` の制限説明文も新仕様（ゲスト3/7・ログイン後は同期累計10回）に更新済み
+- 100kin-blog `login.html` の制限説明文も更新が必要（ゲストの制限が「パネル3つ・カード各6枚（実在数）」に変更されたため）
 
 ### `showLimitModal(message)`
 上限到達時の案内。「100円で無制限に使えます」→「アップグレードする（100円）」ボタン → `startStripePayment()`（Stripe Payment Link、現在テストリンク）。
@@ -699,7 +701,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=888, style.css?v=722, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=891, style.css?v=722, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,900行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -714,18 +716,35 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=722`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=888`
+- `app.js?v=891`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
+## 直近の対応（2026-07-19）
+
+- **解説パネルのロックを「パネル単位」から「カード単位」に再設計（app.js?v=891、本番デプロイ済み。v890の作成禁止方式をユーザー指示で置き換え）**: 正規ログインユーザーから「解説パネルで新規作成したカードが削除できない」との報告（信用問題）。根本原因は、ロック判定（`isLockedCategory`）が**パネル単位**（名前「解説」or `locked:true`、開発者以外に一律適用）で、**テンプレート由来カードとユーザー新規作成カードを区別していなかった**こと。ロック中パネルにカードが入った瞬間からそのカードも編集・削除不可になり詰んでいた。
+  - **方式: `userCreated: true` フラグ**。ユーザー操作で作られるカード全経路（`createArticle`／`duplicateArticle`の複製データ／`mergeSelectedCards`の連結カード／新パネル初期カード／空パネル自動補充3箇所（renderCategory・deleteArticleById・showMoveModal）／**カード移動時**（`{...artData, userCreated: true}`で移動先に付与））に付与。テンプレート由来カードにはフラグが無い（`copyTemplateToUser`はスプレッドコピーだが元データに無し、`saveCurrentDataAsTemplate`は明示フィールドのみコピーでフラグ混入なし）ため、**ロック中パネルでは「フラグ無しカード＝テンプレート由来」だけを保護**する
+  - **判定箇所（2箇所）**: ①カード一覧のスワイプ操作（ピン留め・複写・移動・削除）: `const artLocked = categoryLocked && art.userCreated !== true` を各ハンドラで使用 ②エディター: ロックIIFE内で、`state._isNewCard` なら即ロック解除、それ以外はカードデータの `userCreated` を1回読んで判定（`state.cardLocked`）。`duplicateArticle` は関数内でも対象カードのフラグを確認（テンプレートカードの複写のみ禁止）
+  - **v890からの変更**: `createArticle`のパネル単位作成ブロック・＋FAB非表示・移動先リストからの解説除外は**撤回**（ユーザー方針: 解説パネルでも自分のカードは作成・編集・削除とも完全に自由）。残置: `isLockedCategoryId(catId)`ヘルパー／空カード救済削除（`isEmptyCardContent`、フラグ導入前に作られた詰みカード用。`artLocked && !isEmptyCardContent` のときのみ削除ブロック）／パネル名「解説」の予約ガード（開発者以外は新規・改名で使用不可。フラグ無しの既存カードが自己ロックされる罠防止）
+  - **注意**: v891より前に解説パネルへ作られてしまった既存の詰みカードはフラグが無いため保護対象のままだが、編集不可だった以上必ず空なので空カード救済削除で消せる。カード並び替え（artSortable）と連結モードはロック中パネルでは従来どおりパネル単位で無効のまま（テンプレートカードと混在操作になるため意図的に維持）
+  - **検証（ローカルChrome・ゲスト+isPremium模擬・v891）**: 解説で新規作成→`userCreated:true`保存・自動編集モード進入・内容入力保存・**中身ありでもスワイプ削除成功**／テンプレートカードはスワイプ削除・ピン留め・複写（DB変更なし・トースト、showToastラップで確認）・エディター編集（`cardLocked:true`・editable false）すべてブロック維持／別パネル→解説へ移動でフラグ付与・移動後も削除可／非ロックパネル回帰なし／アプリ起因コンソールエラーゼロ。テストデータ全削除済み。**トースト検証の注意**: showToastはキュー式で順次表示のため、連続操作直後のbody.textContent検査は偽陰性になる（ラップして呼び出しログで判定すること）
+
+## 直近の対応（2026-07-18）
+
+- **ゲスト作成制限を実在数カウント方式に変更（完了・本番デプロイ済み、app.js?v=889）**: ゲストログインで「制限の有無が感じられない」との報告を受け調査。根本原因は2つ: ①テンプレートが3パネル・14カードに拡大されていたが、旧方式（累計カウント）ではテンプレート由来のパネル/カードがカウント対象外だったため、追加でさらにパネル3つ・カード7枚まで作成でき、実質6パネル・21カードまで使えていた ②開発者アカウント（`kimijimasan@gmail.com`）でテストすると `isDeveloperAccount()=true` で制限が一切かからない
+  - **変更内容**: 「累計カウント方式（`stats/panelsCreated`・`stats/cardsCreated` に加算、削除しても減らない）」を廃止し、「実在数カウント方式（その時点で実際に存在するパネル数・カード数で判定、削除すれば枠が空く）」に変更。テンプレート由来かユーザー作成かを区別しない
+  - **新しい上限**: パネル総数3つ（`FREE_PANEL_LIMIT=3`）・1パネルあたりカード6枚（`FREE_CARDS_PER_PANEL_LIMIT=6`）。ヘルパー関数 `getActualPanelCount()` / `getActualCardCount(catId)` を新設
+  - **旧関数の整理**: `getCreatedCount()` は削除。`bumpCreatedCount()` は同期回数制限（`syncCount`）でのみ使用していたため `bumpSyncCount()` にリネーム
+  - **検証（ローカルChrome・ゲスト）**: 見本のまま（3パネル）→パネル作成で制限にかかる（`actualPanelCount=3 >= FREE_PANEL_LIMIT=3`）／パネル1つ削除後→1つだけ作成可能（2<3で許可、作成後3>=3で再ブロック）／6枚パネルへのカード追加→制限にかかる（`actualCardCount=6 >= FREE_CARDS_PER_PANEL_LIMIT=6`）／4枚パネル→あと2枚だけ追加可能／開発者アカウントでは `isCreateLimitedUser()=false` で無制限（変更なし）
+
 ## 直近の対応（2026-07-17）
 
-**セッション概要**: ①Ctrl+クリック段落選択の不具合修正（v884）②カード内画像の外部アプリへのドラッグ&ドロップ書き出し（v885→886で試行錯誤→v887のStorage方式で解決）③画像保存のFirebase Storage移行（新規挿入分・バケット有効化・storage.rulesデプロイ）④画像カーソルのgrab/grabbing対応（v888）。**最終状態: 本番はapp.js?v=888・style.css?v=722を配信済み、GitHubのmainと一致**。積み残し: 実装項目「4.」の内容が未受領（ユーザーのメッセージが途中で切れていた）／画像・カード削除時のStorage孤児ファイル削除連動は未実装／実マウスでの外部アプリへのドロップ最終確認・カーソル見た目確認は未報告
+**セッション概要**: ①Ctrl+クリック段落選択の不具合修正（v884）②カード内画像の外部アプリへのドラッグ&ドロップ書き出し（v885→886で試行錯誤→v887のStorage方式で解決）③画像保存のFirebase Storage移行（新規挿入分・バケット有効化・storage.rulesデプロイ）④画像カーソルのgrab/grabbing対応（v888）。**最終状態: 本番はapp.js?v=889・style.css?v=722を配信済み、GitHubのmainと一致**。積み残し: 実装項目「4.」の内容が未受領（ユーザーのメッセージが途中で切れていた）／画像・カード削除時のStorage孤児ファイル削除連動は未実装／実マウスでの外部アプリへのドロップ最終確認・カーソル見た目確認は未報告
 
-- **カード内画像のカーソルをgrab/grabbing対応に変更（app.js?v=888・style.css?v=722、ローカル検証済み・本番デプロイ済み）**: 画像ホバー時=パーの手（`cursor: grab`、旧`zoom-in`を置換。拡大モーダルは保留中の機能のため）、押下中=`:active`でグー（`grabbing`）、ドラッグ中=`:active`だけではブラウザ外D&D中に反映されないことがあるため、dragstartで`#edContent`に`.img-dragging`を付与し `.editor-content.img-dragging img.inserted-img { cursor: grabbing !important }` で明示切替、dragendで除去してパーに復帰。**クラスは`<img>`自体ではなくPM管理外の`#edContent`に付ける**（imgのclass属性はCustomImageExtensionがper-imageで保存するため、自動保存のタイミング次第で一時クラスがFirebaseに永続化される危険がある）。検証: 通常grab／dragstart後grabbing＋クラス付与／dragend後grab＋クラス除去／段落は通常カーソル・段落ドラッグではクラス非付与／保存HTMLへの`img-dragging`混入なし
+- **カード内画像のカーソルをgrab/grabbing対応に変更（app.js?v=889・style.css?v=722、ローカル検証済み・本番デプロイ済み）**: 画像ホバー時=パーの手（`cursor: grab`、旧`zoom-in`を置換。拡大モーダルは保留中の機能のため）、押下中=`:active`でグー（`grabbing`）、ドラッグ中=`:active`だけではブラウザ外D&D中に反映されないことがあるため、dragstartで`#edContent`に`.img-dragging`を付与し `.editor-content.img-dragging img.inserted-img { cursor: grabbing !important }` で明示切替、dragendで除去してパーに復帰。**クラスは`<img>`自体ではなくPM管理外の`#edContent`に付ける**（imgのclass属性はCustomImageExtensionがper-imageで保存するため、自動保存のタイミング次第で一時クラスがFirebaseに永続化される危険がある）。検証: 通常grab／dragstart後grabbing＋クラス付与／dragend後grab＋クラス除去／段落は通常カーソル・段落ドラッグではクラス非付与／保存HTMLへの`img-dragging`混入なし
 - **画像保存をFirebase Storage方式へ移行（新規挿入分のみ・app.js?v=887・index.htmlにstorage-compat SDK追加、Storage有効化・ルールデプロイ・E2E検証・本番デプロイまで完了）**: 外部アプリへのドラッグ書き出し（DownloadURL方式）は http/https の実URLでないと機能しない（blob:はレンダラープロセス紐付きで解決不能、data:も実機で機能しないことがv885/886で判明）ため、新規画像はStorageに保存してhttpsダウンロードURLをsrcに使う方式へ変更。
   - **実装**: `uploadImageToStorage(dataUrl)`（`users/{uid}/images/{timestamp}-{rand}.jpg` にput→getDownloadURL）と `prepareImageForInsert(file)`（圧縮→アップロード成功時のみsrcをhttpsに差し替え）を新設。挿入の全入口（`handleMultipleImagesForTipTap`/`handleImageForTipTap`）を `prepareImageForInsert` 経由に変更。RTDBの`content`にはhttps URL入りHTMLが保存される（base64はcontentに残らない）
   - **フォールバック設計（重要）**: アップロード失敗（Storage未有効化・オフライン・タイムアウト10秒）時は従来どおりdata:URLのまま挿入するため機能停止しない。SDK既定のリトライ2分は長すぎるため `setMaxUploadRetryTime/setMaxOperationRetryTime(7000)` に短縮し、失敗後60秒間はアップロード試行自体をスキップ（`_storageCooldownUntil`）。実測: 初回失敗9.3秒→クールダウン中の挿入は約1秒
@@ -803,7 +822,7 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
   - **検証**: ローカルで`getBoundingClientRect()`による幾何学的検証を実施し、バナー下端とFAB上端の間に12px（検索FAB）・22px（ファイルFAB）の隙間を確認。本番デプロイ後、配信されたCSSに修正が反映されていることを`curl`で確認済み。**実機での最終見た目確認はユーザー対応待ち**
 - **PC活用促進バナーを追加（完了・本番デプロイ済み、app.js?v=870・style.css?v=714→715で上記修正）**: `#btnShowQR`（QRコードボタン）が`.btn-pc-only`でPC限定表示のため、スマホユーザーはPC版が使えることに気づく機会がなかった問題への対応。スマホ表示のホーム画面下部（`#pcPromoBanner`、画面下部固定・スクロールに追従しない帯）に案内を追加。
   - **表示場所**: `app.js:816〜886`付近の`renderHome`内、`#catGrid`と`#btnSearchFab`の間に器を配置。`renderCategoryGrid()`の両分岐（カテゴリ0件/あり）から新設の`renderPcPromoBanner(panelCount)`を呼び出す形（`app.js:929〜962`付近）
-  - **大小の出し分け**: パネル数3枚以下（`PC_PROMO_PANEL_THRESHOLD`）は見出し＋説明文＋✕ボタンの大きいカード、4枚以上またはクローズ済みは1行の控えめな表示。3枚という閾値は、テンプレート初期状態（解説+メモの2枚）とゲストのパネル作成上限（`FREE_PANEL_CREATE_LIMIT=3`）を踏まえて設定
+  - **大小の出し分け**: パネル数3枚以下（`PC_PROMO_PANEL_THRESHOLD`）は見出し＋説明文＋✕ボタンの大きいカード、4枚以上またはクローズ済みは1行の控えめな表示。3枚という閾値は、テンプレート初期状態（3パネル）とゲストのパネル上限（`FREE_PANEL_LIMIT=3`）を踏まえて設定
   - **状態管理**: ✕クローズは`localStorage.pc_promo_dismissed='1'`でブラウザ単位（uid非依存）に永続化。小さい版タップでの再展開は`_pcPromoExpanded`というクロージャ変数によるセッション限りの一時トグルで、localStorageは変更しない（次回読み込みではクローズ済み状態から開始）
   - **デザイン**: QRコードモーダル（`app.js:5558〜5564`）と同じ青系トーン（背景`rgba(96,165,250,0.1)`、見出し`#60a5fa`、本文`#93c5fd`）を再利用し、アプリ内の「情報提供トーン」の色を統一
   - **CSS**: `.pc-promo-banner`は既存の`.btn-mobile-only`（`style.css:274〜281`）と同じ600pxブレークポイントで、スマホ幅（max-width:600px）でのみ`display:block`

@@ -219,14 +219,36 @@ function isLockedCategory(catData) {
   return catData.locked === true || catData.name === '解説';
 }
 
+// catId からのロック判定（キャッシュ優先・未取得時のみRTDBを1回読む）。
+// createArticle 等、カテゴリメタを手元に持たない関数から使う
+async function isLockedCategoryId(catId) {
+  if (!catId) return false;
+  let cat = _categoryMetaCache[catId];
+  if (cat === undefined) {
+    try {
+      const snap = await db.ref(`users/${state.uid}/categories/${catId}`).once('value');
+      cat = snap.val();
+      _categoryMetaCache[catId] = cat;
+    } catch (_) { cat = null; }
+  }
+  return isLockedCategory(cat);
+}
+
+// カード本文が実質的に空か（テキスト・画像・埋め込みが何も無いか）。
+// ロック中パネルに誤って作成されてしまった空カードの救済削除の判定に使う
+function isEmptyCardContent(html) {
+  if (!html) return true;
+  if (/<(img|iframe|video|audio)\b/i.test(html) || /data-youtube-video/i.test(html)) return false;
+  const text = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+  return text === '';
+}
+
 // ── 無課金ユーザーの作成上限（累計カウント方式） ─────────────
 // 上限は「現在の個数」ではなく「これまでに作成した累計数」で判定する。
 // 削除して枠を空けて作り直す抜け道を防ぐため、カウントは削除しても減らない。
 // 保存先: Realtime Database `users/{uid}/stats/`（同一アカウントなら端末をまたいで維持）。
-// テンプレート由来の初期パネル・カードや、パネル新規作成時・最後の1枚削除時に
-// システムが自動補充する空カードはカウント対象外（ユーザーが明示的に作成した分のみ加算）。
-const FREE_PANEL_CREATE_LIMIT = 3;
-const FREE_CARD_CREATE_LIMIT = 7;
+const FREE_PANEL_LIMIT = 3;
+const FREE_CARDS_PER_PANEL_LIMIT = 6;
 const FREE_SYNC_LIMIT = 10;
 
 function isCreateLimitedUser() {
@@ -262,7 +284,7 @@ function consumeSyncQuota() {
   }
   _syncConsumedThisSession = true;
   state.syncCount = (state.syncCount || 0) + 1;
-  bumpCreatedCount('syncCount');
+  bumpSyncCount('syncCount');
   const remaining = syncRemaining();
   if (remaining <= 3) showToast(`無料の同期 残り${remaining}回`);
   updateSyncQuotaBadge();
@@ -283,13 +305,17 @@ function updateSyncQuotaBadge() {
   }
 }
 
-async function getCreatedCount(key) {
-  const snap = await db.ref(`users/${state.uid}/stats/${key}`).once('value');
-  const v = snap.val();
-  return typeof v === 'number' ? v : 0;
+async function getActualPanelCount() {
+  const snap = await db.ref(`users/${state.uid}/categories`).once('value');
+  return snap.exists() ? Object.keys(snap.val()).length : 0;
 }
 
-function bumpCreatedCount(key) {
+async function getActualCardCount(catId) {
+  const snap = await db.ref(`users/${state.uid}/articles/${catId}`).once('value');
+  return snap.exists() ? Object.keys(snap.val()).length : 0;
+}
+
+function bumpSyncCount(key) {
   db.ref(`users/${state.uid}/stats/${key}`).transaction(v => (v || 0) + 1)
     .catch(err => console.error('stats update failed:', err));
 }
@@ -1446,20 +1472,25 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
   document.getElementById('mSave').onclick = async () => {
     const name = input.value.trim();
     if (!name) { input.focus(); return; }
+    // 「解説」はロック判定（isLockedCategory）に使われる予約パネル名。
+    // ユーザーが自分のパネルに付けると中のカードが編集・削除できなくなるため、
+    // 新規作成および他の名前からの改名では使用禁止（元々「解説」のパネルの色変更等は許可）
+    if (!isDeveloperAccount() && name === '解説' && currentName !== '解説') {
+      showToast('「解説」はシステム予約のパネル名のため使用できません');
+      return;
+    }
     // ログイン済み無料ユーザーの同期回数チェック（パネルの作成・編集どちらも書き込みが発生する）
     if (!consumeSyncQuota()) { close(); return; }
     if (catId) {
       await db.ref(`users/${state.uid}/categories/${catId}`).update({ name, color: selectedGrad });
     } else {
-      // 無課金ユーザーのパネル作成上限チェック（累計3つまで・削除しても減らない）
       if (isCreateLimitedUser()) {
-        const created = await getCreatedCount('panelsCreated');
-        if (created >= FREE_PANEL_CREATE_LIMIT) {
+        const count = await getActualPanelCount();
+        if (count >= FREE_PANEL_LIMIT) {
           close();
-          showLimitModal(`パネルの作成は累計${FREE_PANEL_CREATE_LIMIT}つまでです。\n100円で無制限に使えます。`);
+          showLimitModal(`パネルは${FREE_PANEL_LIMIT}つまでです。\n100円で無制限に使えます。`);
           return;
         }
-        bumpCreatedCount('panelsCreated');
       }
       const newCatRef = db.ref(`users/${state.uid}/categories`).push();
       const newCatId = newCatRef.key;
@@ -1473,7 +1504,8 @@ function showCategoryModal(catId = null, currentName = '', currentColor = null) 
         content: '<p><br></p>', // 空の段落
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        order: Date.now()
+        order: Date.now(),
+        userCreated: true
       });
     }
     close();
@@ -1700,6 +1732,7 @@ function renderCategory(container) {
     const newRef = db.ref(`users/${state.uid}/articles/${state.categoryId}`).push();
     const now = Date.now();
     await newRef.set({
+      userCreated: true,
       content: mergedContent,
       createdAt: now,
       updatedAt: now,
@@ -1791,7 +1824,8 @@ function renderCategory(container) {
           content: '<p><br></p>', // 空の段落を初期設定
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          order: Date.now()
+          order: Date.now(),
+          userCreated: true
         });
       } catch (err) {
         console.error("初期メモの補充に失敗しました:", err);
@@ -1933,11 +1967,16 @@ function renderCategory(container) {
           goTo('editor', state.categoryId, art.id);
         };
 
+        // カード単位のロック判定: ロック中パネルでも、ユーザーが自分で作成した
+        // カード（userCreated: true）は保護対象外（編集・削除とも自由）。
+        // フラグの無いカード＝テンプレート由来の解説カードのみ保護する
+        const artLocked = categoryLocked && art.userCreated !== true;
+
         // ピン留めボタン
         li.querySelector('.swipe-action-pin').onclick = e => {
           e.stopPropagation();
           li.classList.remove('swiped');
-          if (categoryLocked) { showToast("このカードは編集できません"); return; }
+          if (artLocked) { showToast("このカードは編集できません"); return; }
           if (!consumeSyncQuota()) return;
           db.ref(`users/${state.uid}/articles/${state.categoryId}/${art.id}`)
             .update({ pinned: !art.pinned });
@@ -1947,7 +1986,7 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-duplicate').onclick = async e => {
           e.stopPropagation();
           li.classList.remove('swiped');
-          if (categoryLocked) { showToast("このカードは複写できません"); return; }
+          if (artLocked) { showToast("このカードは複写できません"); return; }
           await duplicateArticle(art.id, state.categoryId);
         };
 
@@ -1955,7 +1994,7 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-move').onclick = e => {
           e.stopPropagation();
           li.classList.remove('swiped');
-          if (categoryLocked) { showToast("このカードは移動できません"); return; }
+          if (artLocked) { showToast("このカードは移動できません"); return; }
           showMoveModal(art.id, state.categoryId);
         };
 
@@ -1963,7 +2002,9 @@ function renderCategory(container) {
         li.querySelector('.swipe-action-delete').onclick = e => {
           e.stopPropagation();
           li.classList.remove('swiped');
-          if (categoryLocked) { showToast("このカードは削除できません"); return; }
+          // 保護対象（テンプレート由来）でも「空のカード」だけは削除を許可する。
+          // userCreatedフラグ導入前に作られてしまった空カードの救済
+          if (artLocked && !isEmptyCardContent(art.content)) { showToast("このカードは削除できません"); return; }
           deleteArticleById(art.id, state.categoryId);
         };
 
@@ -2167,7 +2208,9 @@ async function showMoveModal(artId, currentCatId) {
       const srcArticles = srcArticlesSnap.val();
       const isLastOne = srcArticles && Object.keys(srcArticles).length <= 1;
 
-      await db.ref(`users/${state.uid}/articles/${destCatId}/${artId}`).set(artData);
+      // 移動はユーザー操作なので userCreated を付与する。これにより解説パネル等の
+      // ロック中パネルへ移動しても、そのカードは編集・削除・再移動が自由なまま
+      await db.ref(`users/${state.uid}/articles/${destCatId}/${artId}`).set({ ...artData, userCreated: true });
       await db.ref(`users/${state.uid}/articles/${currentCatId}/${artId}`).remove();
 
       // 最後の1件だった場合は、確実に新しいメモ（空文書）を補充する
@@ -2177,7 +2220,8 @@ async function showMoveModal(artId, currentCatId) {
           content: '<p><br></p>',
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          order: Date.now()
+          order: Date.now(),
+          userCreated: true
         });
       }
 
@@ -2204,7 +2248,8 @@ async function deleteArticleById(artId, catId) {
       content: '<p><br></p>',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      order: Date.now()
+      order: Date.now(),
+      userCreated: true
     });
   }
 }
@@ -2621,14 +2666,12 @@ function showExportCompleteDialog(panelCount, cardCount) {
 async function createArticle(noTransition = false) {
   // ログイン済み無料ユーザーの同期回数チェック
   if (!consumeSyncQuota()) return;
-  // ゲスト（匿名）のカード作成上限チェック（累計7枚まで・削除しても減らない）
   if (isCreateLimitedUser()) {
-    const created = await getCreatedCount('cardsCreated');
-    if (created >= FREE_CARD_CREATE_LIMIT) {
-      showLimitModal(`カードの作成は累計${FREE_CARD_CREATE_LIMIT}枚までです。\n100円で無制限に使えます。`);
+    const count = await getActualCardCount(state.categoryId);
+    if (count >= FREE_CARDS_PER_PANEL_LIMIT) {
+      showLimitModal(`カードは1パネルにつき${FREE_CARDS_PER_PANEL_LIMIT}枚までです。\n100円で無制限に使えます。`);
       return;
     }
-    bumpCreatedCount('cardsCreated');
   }
 
   // 通信を待たずにクライアント側で即座に一意なID（キー）を生成（遅延ゼロ）
@@ -2636,11 +2679,14 @@ async function createArticle(noTransition = false) {
   const newKey = newRef.key;
 
   // バックグラウンドで初期データを保存（画面遷移を待たせない）
+  // userCreated: ユーザーが自分で作成したカードの印。ロック中パネル（解説等）では
+  // このフラグが無いカード（＝テンプレート由来）だけが編集・削除禁止の保護対象になる
   newRef.set({
     content: '',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    order: Date.now()
+    order: Date.now(),
+    userCreated: true
   }).catch(err => console.error(err));
 
   // 新規文書生成時は自動的に編集モードへ切り替えるフラグをセット
@@ -2818,7 +2864,22 @@ function renderEditor(container) {
         _categoryMetaCache[state.categoryId] = cat;
       } catch (_) { cat = null; }
     }
-    state.cardLocked = isLockedCategory(cat);
+    let locked = isLockedCategory(cat);
+    // カード単位の除外: ロック中パネルでも、ユーザーが自分で作成したカード
+    // （userCreated: true、またはこのセッションで作成したばかりの新規カード）は
+    // 保護対象外。フラグの無いカード＝テンプレート由来の解説カードのみロックする
+    if (locked) {
+      if (state._isNewCard) {
+        locked = false;
+      } else {
+        try {
+          const artSnap = await db.ref(`users/${state.uid}/articles/${state.categoryId}/${state.articleId}`).once('value');
+          const art = artSnap.val();
+          if (art && art.userCreated === true) locked = false;
+        } catch (_) {}
+      }
+    }
+    state.cardLocked = locked;
     applyCardLockUI();
   })();
 
@@ -4622,16 +4683,24 @@ async function deleteArticleSilently() {
 
 // 既存のメモを複製してコピー元のすぐ上に挿入する
 async function duplicateArticle(artId, categoryId) {
-  // ログイン済み無料ユーザーの同期回数チェック
-  if (!consumeSyncQuota()) return;
-  // 複写もカード作成として累計にカウントする（ゲストの作成上限の抜け道防止）
-  if (isCreateLimitedUser()) {
-    const created = await getCreatedCount('cardsCreated');
-    if (created >= FREE_CARD_CREATE_LIMIT) {
-      showLimitModal(`カードの作成は累計${FREE_CARD_CREATE_LIMIT}枚までです。\n100円で無制限に使えます。`);
+  // ロック中パネルでは、テンプレート由来カード（userCreatedフラグ無し）のみ複写禁止。
+  // ユーザーが自分で作成したカードは複写可
+  if (await isLockedCategoryId(categoryId)) {
+    const lockSnap = await db.ref(`users/${state.uid}/articles/${categoryId}/${artId}`).once('value');
+    const lockArt = lockSnap.val();
+    if (!lockArt || lockArt.userCreated !== true) {
+      showToast('このカードは複写できません');
       return;
     }
-    bumpCreatedCount('cardsCreated');
+  }
+  // ログイン済み無料ユーザーの同期回数チェック
+  if (!consumeSyncQuota()) return;
+  if (isCreateLimitedUser()) {
+    const count = await getActualCardCount(categoryId);
+    if (count >= FREE_CARDS_PER_PANEL_LIMIT) {
+      showLimitModal(`カードは1パネルにつき${FREE_CARDS_PER_PANEL_LIMIT}枚までです。\n100円で無制限に使えます。`);
+      return;
+    }
   }
   try {
     // 1. 対象カードのデータを取得
@@ -4657,11 +4726,12 @@ async function duplicateArticle(artId, categoryId) {
     const newRef = db.ref(`users/${state.uid}/articles/${categoryId}`).push();
     const newKey = newRef.key;
 
-    // 5. 複製するデータを作成
+    // 5. 複製するデータを作成（複製はユーザー操作による作成なので userCreated を付与）
     const duplicateData = {
       content: original.content || '',
       createdAt: Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      userCreated: true
     };
 
     // 6. 新しい配列を作成し、コピー元の上に挿入
