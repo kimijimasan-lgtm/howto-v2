@@ -494,24 +494,28 @@ body {
   justify-content: center;
   gap: 0.15rem;
   height: 100%;
-  padding: 0.25rem 0.7rem;
+  padding: 0.2rem 0.5rem;
   border-radius: 14px;
-  background: #4c1d6e;
+  background: #115e59;
   border: 2px solid #fbbf24;
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
 }
+/* フォントサイズは実測ベース（Noto Sans JP・該当ウェイトでcanvas計測）で決定。
+   左下FABが最も幅広になるゲストの100均ピル（約83px）＋iPhone SE幅(375px)を
+   想定した最悪ケースでもnowrapのまま折返し・欠けが起きない上限に収めている
+   （line1は170px前後が上限、0.78remで約8px、line2は余裕大）。 */
 .pc-promo-small-line1 {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 800;
-  color: #fbbf24;
+  color: #ffffff;
   line-height: 1.2;
 }
 .pc-promo-small-line2 {
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-weight: 700;
-  color: #ffffff;
+  color: #fde68a;
   line-height: 1.2;
 }
 
@@ -530,24 +534,31 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.7rem;
-  padding: 1.2rem 2rem;
+  gap: 0.9rem;
+  padding: 1.2rem 1.4rem;
   border-radius: 20px;
-  background: #4c1d6e;
+  background: #115e59;
   border: 3px solid #fbbf24;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   text-align: center;
 }
+/* タイトルは実測ベース（Noto Sans JP 800・canvas計測）で一行固定。
+   幅は左右FABの内端どうし（innerWidth-32px、FAB幅に依存しない）に
+   一致するため、最も狭いiPhone SE幅(375px)でも content幅は
+   343-2*22.4(padding1.4rem)=298.2px。「💻 PCでも同じ画面が見られます」は
+   1.2remで286.5px（マージン約12px）に収まるためnowrap固定で折返しを禁止。 */
 .pc-promo-card-title {
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   font-weight: 800;
-  color: #fbbf24;
+  color: #ffffff;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 .pc-promo-card-body {
   align-self: stretch;
-  font-size: 0.85rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  color: #ffffff;
+  color: #fde68a;
   line-height: 1.5;
   text-align: left;
 }
