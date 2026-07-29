@@ -723,6 +723,36 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 - テスト用アカウント: `kimijimasan+test@gmail.com`
 - 開発者アカウントの制限解除: Firebase Console で `users/{uid}/isPremium: true` を設定
 
+## Stripe Webhook自動付与（2026-07-29実装・本番稼働・実決済で検証済み）
+
+Stripe決済とユーザーアカウントをサーバーサイドで自動紐付けする仕組み（次のステップ9の根本対応に相当するインフラ）。第1弾は新アプリ「じゆうけんきゅうナビ」の買い切り購入フラグ付与に使用。**Torisetu本体のisPremiumはこのWebhookの対象外**（従来どおりクライアント3系統。`PRICE_TO_APP_ID`にTorisetuのprice IDは未登録）。
+
+### 構成
+- **関数**: `functions/index.js` の `stripeWebhook`（Cloud Functions v2 / Node.js 20 / us-central1）
+- **URL**: `https://us-central1-torisetu-234c3.cloudfunctions.net/stripeWebhook`
+- **Stripe側**: Webhookエンドポイント `memorable-dream`（イベント: `checkout.session.completed` のみ）
+- **シークレット**（Secret Manager経由、`defineSecret`）: `STRIPE_SECRET_KEY`（本番sk_live、現行version 4）/ `STRIPE_WEBHOOK_SECRET`（エンドポイントの署名シークレットwhsec、現行version 2）。**値を更新したら `firebase deploy --only functions` の再デプロイ必須**（関数はデプロイ時点のバージョン番号に固定バインドされる）
+- **フロー**: 署名検証（`constructEvent`）→ `client_reference_id` からuid取得 → `listLineItems` のprice IDを `PRICE_TO_APP_ID` でappIdに変換 → `users/{uid}/purchasedApps/{appId} = true` を書き込み → `webhookEvents/{event.id}` に処理記録（at-least-once配信の二重処理防止。**成功時のみ記録**するため失敗イベントの再送は正常に再処理される）
+- **PRICE_TO_APP_ID**: `price_1TyL6pJGshE4KWJ24f3wZODn` → `jiyu-kenkyu-app`（¥100買い切り）。**新アプリ追加時はここに1行足して再デプロイ**
+- **Payment Link側の必須設定**: 決済URLに `?client_reference_id={uid}` を付与すること。無いと `missing_client_reference_id` としてログに残るのみ（200応答・付与されない）
+
+### RTDBルール（database.rules.json、2026-07-29デプロイ済み）
+- ルールをファイル管理化（`firebase.json` に `"database": {"rules": "database.rules.json"}` 追加）。**以後ルール変更はConsole直編集ではなくこのファイル＋`firebase deploy --only database` で行うこと**
+- `users/{uid}/purchasedApps`: 本人read可・**クライアントwrite全面禁止**（Webhook＝Admin SDKのみが書ける。Admin SDKはルールをバイパスする）
+- `users/{uid}/$other`（categories/articles/isPremium/stats等）: 従来どおり本人write可。**app.jsは `users/{uid}` ルート直下への一括setを行っていない**（全書き込みが子パス単位）ことをgrepで確認済みのため既存機能への影響なし
+- `webhookEvents`: read/writeとも完全非公開
+
+### 検証（2026-07-29・実¥100決済）
+実決済（uid=`Lcuj1eehWaSOMAjnAMKgzMvWSWb2`）→ 初回はSTRIPE_SECRET_KEY誤設定で500失敗 → キー修正・再デプロイ後、Stripeダッシュボードから失敗イベント（`evt_1TyM9KJGshE4KWJ2o9Ip8pAk`）を再送 → `purchasedApps/jiyu-kenkyu-app: true` 書き込み・`webhookEvents` 記録を確認。全工程（署名検証→uid→price判定→付与→冪等記録）の本番動作を実証済み。
+
+### トラブル記録・注意点
+- **STRIPE_SECRET_KEYの誤設定が2回続いた**: いずれも `mk_` で始まる27文字の値（Stripeの正規キーは `sk_live_`/`sk_test_` で始まり100文字前後）が入っており `listLineItems` が失敗。ダッシュボードからのコピー方法の問題と推定。**シークレット設定後は値を表示せずプレフィックスのみ判定するワンライナー**（`case "$secret" in sk_live_*) ...`）で検証するのが安全。なお調査中に誤ってこの `mk_` 値が会話ログに露出したため、該当キーが実在すればStripe側で失効推奨（正規キーではない可能性が高いが念のため）
+- **`logger.error` の第2引数に `message` キーを使うと本来のエラー内容が潰れる**（firebase-functions loggerの内部フィールドと衝突）。`errorMessage` 等の別名を使うこと（2026-07-29修正済み）
+- 初回デプロイ時にSecret Manager API等の有効化が必要だった（Console URLから手動有効化）
+- Git Bashで `firebase database:get /users/...` を実行するとMSYSのパス変換で「Path must begin with /」エラーになる。**`MSYS_NO_PATHCONV=1` を付けて実行**すること
+- 既存のTorisetu ¥100 Payment Link経由の決済もこのWebhookに届くが、`client_reference_id` 無し・price ID未登録のため警告ログと処理記録のみで実害なし
+- **残タスク**: ①Functionsのartifactsクリーンアップポリシー未設定（`firebase functions:artifacts:setpolicy`、放置で少額課金の可能性）②Node.js 20は2026-10-30にデプロイ不可化（それまでにruntime更新＋firebase-functionsパッケージ更新）③じゆうけんきゅうナビ側での `purchasedApps/jiyu-kenkyu-app` 読み取り実装
+
 ## 直近の対応（2026-07-29）
 
 - **PC活用促進バナーの文字サイズ・コントラスト改善（完了・本番デプロイ済み、style.css?v=724）**: ホーム画面下部のバナー（`renderPcPromoBanner()`、折りたたみ時の小さいバッジ／タップ後展開する大きいカードの2状態）について、「枠のサイズに対して文字が小さすぎてバランスが悪い」との指摘を受け修正。
@@ -946,7 +976,7 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 6. ~~残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え~~（**2026-07-07完了**。100kin-blog側のCLAUDE.md・gitログで確認済み）
 7. ~~残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装~~（**2026-07-07完了**。実機iPhone Safariで確認済み。詳細は100kin-blog側CLAUDE.md「0-8」参照）
 8. ~~authDomainのクロスオリジン問題の恒久対応~~（**2026-07-08完了・本番デプロイ済み（v868）**。詳細は「直近の対応（2026-07-08）」参照。残検証: 実機iPhone Safariでポップアップブロック時のredirectフォールバック成功確認）
-9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応（Stripe Webhook + Cloud Functionsで決済とアカウントを自動紐付け。Blazeプラン要確認）は未着手
+9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応のインフラ（Stripe Webhook + Cloud Functions）は**2026-07-29に稼働開始**（「Stripe Webhook自動付与」セクション参照）。ただし現在の対象はじゆうけんきゅうナビの `purchasedApps` のみで、**Torisetu本体のisPremium自動付与への適用は未実施**（適用するにはTorisetuのprice IDをPRICE_TO_APP_IDに登録し、isPremium書き込みロジックを追加、かつ決済リンクに `?client_reference_id={uid}` を付与する改修が必要）
 10. ~~serve.bat修正~~（**2026-07-15完了・コミット`d470fc2`**。旧OneDriveパス固定を `cd /d "%~dp0"`（bat自身のディレクトリ基準）に修正済み。python 3.14.3 の存在も確認済み）
 11. **画像ドラッグ書き出し関連の実装項目「4.」の内容確認**（2026-07-17のユーザー指示メッセージが「4.」で途切れており内容未受領。次回ユーザーに確認すること）
 12. **画像・カード削除時のStorage孤児ファイル削除連動**（未実装。現状は画像やカードを削除してもStorage上の `users/{uid}/images/*` が残り続ける。ルール上 `refFromURL().delete()` は本人なら可能なことを確認済み。項目11の「4.」がこれを指していた可能性あり）

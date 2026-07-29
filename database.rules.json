@@ -1,0 +1,26 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        "purchasedApps": {
+          ".read": "$uid === auth.uid",
+          ".write": false
+        },
+        "$other": {
+          ".write": "$uid === auth.uid"
+        }
+      }
+    },
+    "templates": {
+      ".read": "auth !== null",
+      "default": {
+        ".write": "auth.token.email === 'kimijimasan@gmail.com'"
+      }
+    },
+    "webhookEvents": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

@@ -2,12 +2,23 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default"
+    }
+  ],
   "hosting": {
     "target": "crossmemo",
     "public": ".",
     "ignore": [
       "firebase.json",
       "storage.rules",
+      "database.rules.json",
+      "functions/**",
       "**/.*",
       "**/node_modules/**",
       "*.md",

@@ -1,2 +1,5 @@
 .tiptap-build/node_modules/
 .firebase/
+functions/node_modules/
+functions/.env
+functions/.env.*
