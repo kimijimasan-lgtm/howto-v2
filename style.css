@@ -228,10 +228,11 @@ body {
 
 .app-title {
   flex: 1;
-  font-size: 1rem;
-  line-height: 1.15;
+  font-size: 1.15rem;
+  line-height: 1.2;
   font-weight: 700;
-  letter-spacing: -0.3px;
+  letter-spacing: 0.5px;
+  text-align: center;
 }
 
 .screen-title {
