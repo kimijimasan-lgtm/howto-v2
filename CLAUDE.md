@@ -751,7 +751,16 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 - 初回デプロイ時にSecret Manager API等の有効化が必要だった（Console URLから手動有効化）
 - Git Bashで `firebase database:get /users/...` を実行するとMSYSのパス変換で「Path must begin with /」エラーになる。**`MSYS_NO_PATHCONV=1` を付けて実行**すること
 - 既存のTorisetu ¥100 Payment Link経由の決済もこのWebhookに届くが、`client_reference_id` 無し・price ID未登録のため警告ログと処理記録のみで実害なし
-- **残タスク**: ①Functionsのartifactsクリーンアップポリシー未設定（`firebase functions:artifacts:setpolicy`、放置で少額課金の可能性）②Node.js 20は2026-10-30にデプロイ不可化（それまでにruntime更新＋firebase-functionsパッケージ更新）③じゆうけんきゅうナビ側での `purchasedApps/jiyu-kenkyu-app` 読み取り実装
+- **残タスク**: ①Functionsのartifactsクリーンアップポリシー未設定（`firebase functions:artifacts:setpolicy`、放置で少額課金の可能性）②Node.js 20は2026-10-30にデプロイ不可化（それまでにruntime更新＋firebase-functionsパッケージ更新）③~~じゆうけんきゅうナビ側での `purchasedApps/jiyu-kenkyu-app` 読み取り実装~~（**実装済みと判明**。`jiyu-kenkyu-app/index.html`にGoogleログイン＋`purchasedApps/jiyu-kenkyu-app`読み取りによる認証ゲートが既に組み込み済み〔未購入時はStripeリンク`?client_reference_id={uid}`付きの購入案内画面を表示〕。100kin-blog側セッションでの調査・動作確認により判明。なお`jiyu-kenkyu-app`はgit管理下にないため変更履歴は追えない点に注意）
+
+## 直近の対応（2026-08-02）
+
+- **PDF一括エクスポートの「無反応に見える」不具合を修正（完了・本番デプロイ済み、app.js?v=894・style.css?v=728）**: カテゴリ画面の「一括エクスポート」→「📕 PDF」（`handleExportAllAction('pdf', ...)`）で、選択モーダルが閉じた直後からhtml2pdf.js（内部でhtml2canvas使用）によるPDF生成が始まるが、完了までローディング表示が一切なく「ボタンを押したら固まった」ように見えていた問題を修正
+  - **原因**: html2canvasはメインスレッドをブロックするCPU処理。オーバーレイのDOM要素を追加しただけでは、ブラウザがそれを1回も描画しないうちに重い処理へ突入してしまい、スピナー自体が画面に出ないまま固まって見える
+  - **修正**: `overlay.remove()`直後にローディング表示（スピナー+「PDFを作成しています…」、`showPdfExportLoading()`/`hidePdfExportLoading()`、`style.css`の`.pdf-export-loading-overlay`）を追加。二重`requestAnimationFrame`（`runAfterPaint()`）で実際に1フレーム描画されるのを待ってから重い処理を開始する。実測で、カード枚数の多いカテゴリでは`buildFullHTML()`によるHTML文字列生成・`innerHTML`流し込み自体にも無視できない時間がかかることが判明したため、コンテナ構築処理ごと`runAfterPaint`の中に移動（オーバーレイ表示→ブラウザ描画→コンテナ構築→html2canvasの順序を保証）。成功時・失敗時（`.catch`）どちらでも確実に`hidePdfExportLoading()`を呼ぶ
+  - **検証（Puppeteer+ローカルChromeでの自動テスト。claude-in-chrome拡張が未接続だったための代替手段）**: 6枚/14枚（テンプレート相当）/30枚のカテゴリでオーバーレイが6〜13msで表示・完了時に確実に除去を確認。150枚×各30段落という最悪ケースでは総処理時間約14.8秒、オーバーレイ表示までの遅延はコンテナ構築の後回し前で約1.2秒だったものを、修正後は約190msまで短縮。html2pdf内部エラーを強制発生させた失敗パスでもオーバーレイ・オフスクリーンcontainerとも確実に除去されることを確認。HTML出力（非PDF）への影響なし（オーバーレイ非表示のまま従来通り）。`Page.captureScreenshot({fromSurface:false})`（レンダラーのライフサイクル完了を待たない、実ウィンドウのビットマップ直接取得）でスピナー+メッセージが正しいスタイルで表示されていることを視覚的に確認
+  - **未検証**: 実機（iPhone等）での最終見た目・体感速度の確認は未実施
+  - **教訓**: html2canvas等メインスレッドをブロックする重い処理の前にローディング表示を挟む場合、DOM追加だけでなく直前のHTML構築処理も含めて`requestAnimationFrame`（二重＝`runAfterPaint`）でブラウザの描画を挟んでから実行しないと、スピナー自体が表示されないまま固まって見える
 
 ## 直近の対応（2026-07-29）
 
