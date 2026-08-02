@@ -23,6 +23,7 @@
       "**/node_modules/**",
       "*.md",
       "*.bat",
+      "*.txt",
       ".tiptap-build/**"
     ],
     "headers": [
