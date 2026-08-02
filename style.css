@@ -1403,6 +1403,37 @@ body {
   font-size: 0.9rem;
 }
 
+/* PDF出力中のローディングオーバーレイ（html2canvasのメインスレッドブロック処理向け） */
+.pdf-export-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.pdf-export-spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid rgba(255,255,255,0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: pdfExportSpin 0.8s linear infinite;
+}
+.pdf-export-loading-text {
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+@keyframes pdfExportSpin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Animations ── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }

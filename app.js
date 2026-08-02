@@ -2314,6 +2314,28 @@ async function showExportAllModal(catId) {
   });
 }
 
+// ── PDF出力中のローディング表示（html2canvasはメインスレッドをブロックするため、
+//    要素を追加しただけではブラウザが描画する前に重い処理へ突入してしまう。
+//    二重requestAnimationFrameで確実に1フレーム描画させてから重い処理を開始する）──
+function showPdfExportLoading() {
+  const overlay = document.createElement('div');
+  overlay.className = 'pdf-export-loading-overlay';
+  overlay.id = 'pdfExportLoadingOverlay';
+  overlay.innerHTML = `
+    <div class="pdf-export-spinner"></div>
+    <div class="pdf-export-loading-text">PDFを作成しています…</div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+function hidePdfExportLoading() {
+  const overlay = document.getElementById('pdfExportLoadingOverlay');
+  if (overlay) overlay.remove();
+}
+function runAfterPaint(fn) {
+  requestAnimationFrame(() => requestAnimationFrame(fn));
+}
+
 // ── 実際の一括エクスポート処理の実行 ──────────────────
 function handleExportAllAction(type, articles) {
   const catTitleEl = document.getElementById('catTitle');
@@ -2455,54 +2477,65 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
         alert('PDFライブラリの読み込みに失敗しました。HTMLでのエクスポートをお試しください。');
         return;
       }
-      const container = document.createElement('div');
-      container.innerHTML = buildFullHTML(false);
-      container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
-      document.body.appendChild(container);
       const filename = `${catName}_一括エクスポート.pdf`;
+      let container = null;
       const cleanupContainer = () => {
-        try { document.body.removeChild(container); } catch (_) {}
+        if (container) { try { document.body.removeChild(container); } catch (_) {} }
       };
 
-      window.html2pdf()
-        .from(container)
-        .set({
-          margin: 10,
-          filename,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        })
-        .toPdf()
-        .get('pdf')
-        .then(pdf => {
-          cleanupContainer();
-          const arrayBuf = pdf.output('arraybuffer');
-          const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-          if (isIOS) {
-            // iOS Safari は <a download> を PDF に適用できないため新規タブで表示
-            // ユーザーは「共有 → ファイルに保存」で保存可能
-            const blob = new Blob([arrayBuf], { type: 'application/pdf' });
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
-            setTimeout(() => URL.revokeObjectURL(url), 60000);
-          } else {
-            // Desktop / Android: application/octet-stream でダウンロード強制
-            const blob = new Blob([arrayBuf], { type: 'application/octet-stream' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 5000);
-          }
-        })
-        .catch(() => {
-          cleanupContainer();
-          alert('PDF生成に失敗しました。HTMLでのエクスポートをお試しください。');
-        });
+      // カード枚数が多いカテゴリでは buildFullHTML() での文字列生成・innerHTML への
+      // 流し込み自体にも時間がかかるため、そこも含めてローディング表示より後ろに
+      // 回す（先にオーバーレイを表示→二重rAFで実際に1フレーム描画されるのを待って
+      // から、コンテナ構築とhtml2canvasの重い処理を開始する）
+      showPdfExportLoading();
+      runAfterPaint(() => {
+        container = document.createElement('div');
+        container.innerHTML = buildFullHTML(false);
+        container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+        document.body.appendChild(container);
+
+        window.html2pdf()
+          .from(container)
+          .set({
+            margin: 10,
+            filename,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          })
+          .toPdf()
+          .get('pdf')
+          .then(pdf => {
+            cleanupContainer();
+            hidePdfExportLoading();
+            const arrayBuf = pdf.output('arraybuffer');
+            const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+            if (isIOS) {
+              // iOS Safari は <a download> を PDF に適用できないため新規タブで表示
+              // ユーザーは「共有 → ファイルに保存」で保存可能
+              const blob = new Blob([arrayBuf], { type: 'application/pdf' });
+              const url = URL.createObjectURL(blob);
+              window.open(url, '_blank');
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
+            } else {
+              // Desktop / Android: application/octet-stream でダウンロード強制
+              const blob = new Blob([arrayBuf], { type: 'application/octet-stream' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            }
+          })
+          .catch(() => {
+            cleanupContainer();
+            hidePdfExportLoading();
+            alert('PDF生成に失敗しました。HTMLでのエクスポートをお試しください。');
+          });
+      });
     }
   }
 }
