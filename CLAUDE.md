@@ -755,6 +755,18 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 
 ## 直近の対応（2026-08-02）
 
+- **ゲストのデータ消失バグを修正（完了・本番デプロイ済み、app.js?v=895）**: 決済成功モーダル（`showPaymentSuccessModal()`）の「Googleアカウントでログイン」ボタンが `signInWithPopup`（＝別アカウントとして新規サインインし直すAPI）を使っていたため、ゲスト（匿名）ユーザーが押すと **uidが別物に変わり、それまでに作成したパネル・カードが引き継がれず失われていた**。uid間のデータ移行処理はアプリ内に一切存在しないため、一度切り替わると本人には復旧不能だった（データ自体は `users/{匿名uid}/` にRTDB上は残るが、ルール上アクセス不能）
+  - **皮肉な状態だった点**: 決済時点でゲストuidには既に `isPremium: true` が書き込まれているため、「モーダルを閉じてゲストのまま使い続ける→データも課金状態も維持」「案内どおりボタンを押す→データを失う」という、案内に従った人ほど損をする状態になっていた
+  - **実装の制約**: `showPaymentSuccessModal()` は2文脈から呼ばれる（`app.js:6738-6739` ゲストログイン中／`app.js:6770-6771` 完全に未ログイン）。後者は `currentUser` が null で `linkWithPopup` を呼べないため、**単純な置き換えは不可**。現在のログイン状態による分岐が必須
+  - **修正**: ボタンハンドラで `currentUser && currentUser.isAnonymous` なら新関数 `upgradeGuestForPayment(user, provider)` に委譲し、**`linkWithPopup`（uid維持のまま昇格）**を使う。未ログイン・既にGoogleログイン済みの場合は引き継ぐデータが無いため従来の `signInWithPopup` 経路を維持
+  - **`auth/credential-already-in-use`（選んだGoogleアカウントが既に別データで使用中）**: この場合のみuidを変えるしかないため、切り替える**前に** `confirm()` で「ゲストで作成したパネル・カードは引き継がれません（元に戻すことはできません）」と明示して同意を取る設計。キャンセルなら何も変更せずゲストのまま案内モーダルを再表示（別アカウントで再試行可能）、OKなら `signInWithCredential` で切替（`pending_premium_grant` を残して新uidへ付与）
+  - **`auth/popup-blocked` のフォールバックも変更**: `signInWithRedirect` ではなく **`linkWithRedirect`**（uid維持）を使う
+  - **モーダル本文**: ゲストの場合のみ「作成したデータはそのまま引き継がれます」を緑色で追記（未ログイン時は非表示）
+  - **検証（Puppeteer+ローカルChrome。実Google OAuthは自動化不可のため、Firebase Authの各メソッドと`db.ref`をスタブし「どのAPIを呼びどのuidへ書くか」を検証）**: 全6シナリオPASS。①ゲスト昇格→`linkWithPopup`が呼ばれ`signInWithPopup`は呼ばれない・isPremiumが**ゲスト自身のuid**へ書かれる・両フラグ除去・ホーム遷移 ②credential-already-in-use→キャンセルで切替せずDB書き込みなし・モーダル再表示 ③同意時のみ`signInWithCredential` ④popup-blocked→`linkWithRedirect`使用 ⑤popup-closed→書き込みなし・再表示・不要トーストなし ⑥未ログイン/既Googleログインは`signInWithPopup`経路を維持（回帰なし）。修正前は①で別uidへ切り替わることも確認済み
+  - **未検証**: 実アカウントでのE2E確認は未実施（検証環境ではFirebase Authが403で接続不可）。実機で「ゲストでパネル作成→決済→Googleログイン→データが残っているか」の確認を推奨
+  - **教訓**: 匿名ユーザーをGoogleアカウントに昇格させる導線では、**`signInWithPopup`（新規サインイン）と `linkWithPopup`（uid維持のまま昇格）を混同しないこと**。前者を使うとuidが別物になり、匿名時代のデータがすべて引き継がれず失われる。既存の `linkGuestToGoogle()`（`app.js:6290`、★アイコン経由）は正しく `linkWithPopup` を使っており、決済モーダル側だけが取り残されていた
+  - **⚠️ 未対応の既知課題（要調査）**: **ブログ（100kin-blog `login.html`）経由で決済した既存Googleログイン済みユーザーは、isPremiumが一度も付与されないまま案内フラグだけ消費される**。ブログの購入ボタンはStripeへの直リンクで `startStripePayment()` を経由しないため `pending_payment_uid` が無く、起動時分岐（`app.js:6671` の `if (pendingUid)`）で書き込みがスキップされる。さらに非匿名のため `app.js:6740-6746` で `payment_modal_pending` が削除され、モーダルも二度と出ない。`pending_premium_grant` も立たないため**再ログインでも回復しない**のに「無制限でご利用いただけます」トーストだけ表示される
+- **`firebase.json` の hosting ignore に `"*.txt"` を追加（完了・本番デプロイ済み）**: ignore が `*.md` と `*.bat` のみで **`.txt` が対象外**だったため、調査メモ等をリポジトリ直下に置くと `crossmemo.web.app` 上で誰でも閲覧可能になる状態だった（`investigation_report.txt` 作成時に発覚）。他に `.txt` ファイルは無く robots.txt 等への影響もなし。デプロイ後に両ファイルが404になることを確認済み
 - **PDF一括エクスポートの「無反応に見える」不具合を修正（完了・本番デプロイ済み、app.js?v=894・style.css?v=728）**: カテゴリ画面の「一括エクスポート」→「📕 PDF」（`handleExportAllAction('pdf', ...)`）で、選択モーダルが閉じた直後からhtml2pdf.js（内部でhtml2canvas使用）によるPDF生成が始まるが、完了までローディング表示が一切なく「ボタンを押したら固まった」ように見えていた問題を修正
   - **原因**: html2canvasはメインスレッドをブロックするCPU処理。オーバーレイのDOM要素を追加しただけでは、ブラウザがそれを1回も描画しないうちに重い処理へ突入してしまい、スピナー自体が画面に出ないまま固まって見える
   - **修正**: `overlay.remove()`直後にローディング表示（スピナー+「PDFを作成しています…」、`showPdfExportLoading()`/`hidePdfExportLoading()`、`style.css`の`.pdf-export-loading-overlay`）を追加。二重`requestAnimationFrame`（`runAfterPaint()`）で実際に1フレーム描画されるのを待ってから重い処理を開始する。実測で、カード枚数の多いカテゴリでは`buildFullHTML()`によるHTML文字列生成・`innerHTML`流し込み自体にも無視できない時間がかかることが判明したため、コンテナ構築処理ごと`runAfterPaint`の中に移動（オーバーレイ表示→ブラウザ描画→コンテナ構築→html2canvasの順序を保証）。成功時・失敗時（`.catch`）どちらでも確実に`hidePdfExportLoading()`を呼ぶ
