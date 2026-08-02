@@ -6338,12 +6338,18 @@ function startStripePayment() {
 // 3. onAuthStateChanged の pending_premium_grant フラグ — 1・2で付与しきれなかった場合の保険
 function showPaymentSuccessModal() {
   const root = document.getElementById('modal-root');
+  // ゲスト（匿名）の場合は uid を維持したまま昇格するため、作成済みデータが
+  // そのまま引き継がれることを明示する（linkWithPopup 経路を通る）
+  const isGuest = !!(firebase.auth().currentUser && firebase.auth().currentUser.isAnonymous);
+  const carryOverNote = isGuest
+    ? '<br><span style="color:#86efac;">作成したデータはそのまま引き継がれます</span>'
+    : '';
   root.innerHTML = `
     <div class="modal-overlay" id="paymentSuccessModal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);">
       <div style="background:#1a1d24;border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
         <div style="font-size:2.5rem;margin-bottom:0.75rem;">🎉</div>
         <h3 style="color:#fff;font-size:1.1rem;font-weight:700;margin-bottom:0.75rem;">お支払いありがとうございます！</h3>
-        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;">Googleアカウントでログインすると<br>無制限で使えます</p>
+        <p style="color:rgba(255,255,255,0.75);font-size:0.92rem;line-height:1.6;margin-bottom:1.5rem;">Googleアカウントでログインすると<br>無制限で使えます${carryOverNote}</p>
         <button id="btnLinkGoogle" style="width:100%;padding:0.85rem;border:none;border-radius:14px;background:linear-gradient(135deg,#4285f4,#34a853);color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer;margin-bottom:0.5rem;font-family:var(--font);">Googleアカウントでログイン</button>
       </div>
     </div>
@@ -6360,7 +6366,20 @@ function showPaymentSuccessModal() {
     localStorage.setItem('pending_premium_grant', '1');
 
     const provider = new firebase.auth.GoogleAuthProvider();
-    const prevUid = firebase.auth().currentUser ? firebase.auth().currentUser.uid : null;
+    const currentUser = firebase.auth().currentUser;
+
+    // ⚠️ ゲスト（匿名）からの昇格には必ず linkWithPopup を使う（uidを維持する）。
+    // signInWithPopup は「別アカウントとしてサインインし直す」APIのため uid が変わり、
+    // ゲストが作成したパネル・カードが引き継がれず失われる
+    // （uid間のデータ移行処理はアプリ内に一切存在しない）。
+    if (currentUser && currentUser.isAnonymous) {
+      await upgradeGuestForPayment(currentUser, provider);
+      return;
+    }
+
+    // 未ログイン（ブログ経由で決済しそのままログインする場合）や、既にGoogleログイン
+    // 済みの場合は、引き継ぐべきゲストデータが無いため従来どおりサインインでよい
+    const prevUid = currentUser ? currentUser.uid : null;
     try {
       const result = await firebase.auth().signInWithPopup(provider);
       // isPremium付与・stateへの反映・テンプレートコピー・ホーム遷移は、ログイン確定で
@@ -6394,6 +6413,74 @@ function showPaymentSuccessModal() {
       }
     }
   };
+}
+
+// 決済後の案内モーダルから、ゲスト（匿名）をGoogleアカウントへ昇格させる。
+// linkWithPopup は現在のuidを保持したまま認証方式を追加するAPIのため、
+// ゲスト時代に作成したパネル・カード・累計カウントはすべてそのまま残る。
+// （signInWithPopup を使うと別uidの新規サインインになり、それらを失う）
+async function upgradeGuestForPayment(user, provider) {
+  const uid = user.uid;
+  try {
+    await user.linkWithPopup(provider);
+
+    // uid が変わっていないため、ゲスト時代のデータはすべてそのまま使える。
+    // 起動時の付与が失敗していた場合に備えて、ここでも同じuidへ付与しておく
+    await db.ref(`users/${uid}/isPremium`).set(true);
+    localStorage.removeItem('pending_premium_grant');
+    localStorage.removeItem('payment_modal_pending');
+    state.isAnonymous = false;
+    state.isPremium = true;
+    goTo('home');
+    revealAppAfterAuth();
+    showToast('ログイン完了！データはそのまま引き継がれました');
+  } catch (err) {
+    if (err.code === 'auth/credential-already-in-use') {
+      // 選ばれたGoogleアカウントは既に別uidとして登録済み。この場合は uid を
+      // 変えるしかなく、ゲストで作成したデータは引き継げない。
+      // 取り返しがつかないため、切り替える前に必ず警告して同意を取る
+      hideAuthOverlayNow();
+      const proceed = confirm(
+        'このGoogleアカウントは既に別のデータでご利用されています。\n\n' +
+        'このままログインすると、ゲストで作成したパネル・カードは引き継がれません。\n' +
+        '（元に戻すことはできません）\n\n' +
+        '別のGoogleアカウントを使う場合は「キャンセル」を選んでください。\n\n' +
+        'ログインを続けますか？'
+      );
+      if (!proceed) {
+        // 何も変更せずゲストのまま。別アカウントで再試行できるよう案内を開き直す
+        showPaymentSuccessModal();
+        return;
+      }
+      showAuthOverlay();
+      try {
+        // 別uidへ切り替わる。isPremium は pending_premium_grant を残したままなので
+        // onAuthStateChanged 側で新しいuidへ付与される
+        await firebase.auth().signInWithCredential(err.credential);
+      } catch (e) {
+        hideAuthOverlayNow();
+        console.error('Google Sign-In Error:', e);
+        showToast('ログインに失敗しました');
+        showPaymentSuccessModal();
+      }
+      return;
+    }
+
+    if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+      // リダイレクト版でも uid は維持される（signInWithRedirect を使ってはいけない）。
+      // ページごと遷移するためオーバーレイはそのままにしておく
+      await user.linkWithRedirect(provider).catch(() => {});
+      return;
+    }
+
+    hideAuthOverlayNow();
+    if (err.code !== 'auth/popup-closed-by-user') {
+      console.error('Google Link Error:', err);
+      showToast('ログインに失敗しました');
+    }
+    // 中断しても再試行できるよう案内モーダルを開き直す
+    showPaymentSuccessModal();
+  }
 }
 
 // ── テンプレートコンテンツ定数（createSampleData のフォールバック用。saveCurrentDataAsTemplate はFirebaseから読む）──
