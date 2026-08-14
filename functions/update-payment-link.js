@@ -11,9 +11,17 @@
 //   2. 実際に更新する
 //        node update-payment-link.js --apply
 //
-//   実行前に、そのターミナルで Stripe のシークレットキーを環境変数に入れておく:
-//        PowerShell:  $env:STRIPE_SECRET_KEY = "sk_live_ここに貼り付け"
-//        Git Bash:    export STRIPE_SECRET_KEY="sk_live_ここに貼り付け"
+//   実行前に、そのターミナルで Stripe のキーを環境変数に入れておく:
+//        PowerShell:  $env:STRIPE_SECRET_KEY = "rk_live_ここに貼り付け"
+//        Git Bash:    export STRIPE_SECRET_KEY="rk_live_ここに貼り付け"
+//
+// ■ どのキーを使うか（重要）
+//   既存の sk_live_ は作成時にしか表示されず、後から見ることはできない。
+//   かといって「ロール（作り直し）」すると旧キーが失効し、Secret Manager 経由で
+//   それを使っている stripeWebhook / verifyCheckoutSession が本番で止まる
+//   （復旧には Secret Manager への新バージョン登録＋3関数の再デプロイが必要）。
+//   → この用途では「Payment Links: 書き込み」だけを許可した
+//     制限付きキー(rk_live_) を新規作成して使い、終わったら削除するのが安全。
 //
 // ■ 注意
 //   - このスクリプトはキーを一切表示・保存しません（頭4文字だけ形式確認に使います）
@@ -41,19 +49,27 @@ function fail(message) {
   if (!key) {
     fail(
       "環境変数 STRIPE_SECRET_KEY が設定されていません。\n" +
-        '        PowerShell: $env:STRIPE_SECRET_KEY = "sk_live_..."\n' +
-        '        Git Bash:   export STRIPE_SECRET_KEY="sk_live_..."'
+        '        PowerShell: $env:STRIPE_SECRET_KEY = "rk_live_..."\n' +
+        '        Git Bash:   export STRIPE_SECRET_KEY="rk_live_..."\n' +
+        "        （Payment Links を『書き込み』にした制限付きキーの利用を推奨）"
     );
   }
   // 過去に mk_ で始まる誤った値を貼ってしまった事例があるため、形式だけ確認する
-  // （値そのものは表示しない）
-  if (!/^sk_(live|test)_/.test(key)) {
+  // （値そのものは表示しない）。
+  // rk_ = 制限付きキー。既存の sk_live_ を作り直す（ロールする）と Cloud Functions が
+  // 使っているキーが失効して本番の決済検証が止まるため、この用途では
+  // 「Payment Links: 書き込み」だけを許可した制限付きキーを使うのが安全
+  if (!/^(sk|rk)_(live|test)_/.test(key)) {
     fail(
       `キーの形式が正しくありません（先頭が "${key.slice(0, 4)}..."）。\n` +
-        "        Stripeのシークレットキーは sk_live_ または sk_test_ で始まります。"
+        "        Stripeのキーは sk_live_ / sk_test_ / rk_live_ / rk_test_ で始まります。"
     );
   }
-  console.log(`使用するキー: ${key.startsWith("sk_live_") ? "本番(sk_live)" : "テスト(sk_test)"}`);
+  const isRestricted = key.startsWith("rk_");
+  const isLive = /^(sk|rk)_live_/.test(key);
+  console.log(
+    `使用するキー: ${isLive ? "本番" : "テスト"}／${isRestricted ? "制限付き(rk)" : "標準シークレット(sk)"}`
+  );
 
   const stripe = new Stripe(key);
 
@@ -106,5 +122,13 @@ function fail(message) {
     fail("更新後の値が期待と違います。Stripeダッシュボードで確認してください。");
   }
 })().catch((err) => {
-  fail(`${err.type || "Error"}: ${err.message}`);
+  const permissionIssue =
+    err.type === "StripePermissionError" || /permission/i.test(err.message || "");
+  fail(
+    `${err.type || "Error"}: ${err.message}` +
+      (permissionIssue
+        ? "\n\n        制限付きキー(rk_)をお使いの場合は、権限の設定を確認してください。" +
+          "\n        「Payment Links」を『書き込み』にする必要があります（読み取りだけでは更新できません）。"
+        : "")
+  );
 });
