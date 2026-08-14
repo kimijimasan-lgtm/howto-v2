@@ -25,6 +25,10 @@
     "pendingPurchases": {
       ".read": false,
       ".write": false
+    },
+    "checkoutSessions": {
+      ".read": false,
+      ".write": false
     }
   }
 }

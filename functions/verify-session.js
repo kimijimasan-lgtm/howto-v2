@@ -1,5 +1,6 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
+const { grantApp } = require("./grant-app");
 
 // Stripe の Checkout Session ID の形式。ここで先に弾いておくと、
 // でたらめな値を延々と Stripe API に投げさせる総当たりをある程度防げる
@@ -96,9 +97,7 @@ async function verifyCheckoutSessionCore({
 
   // 6. 購入フラグの付与（true を入れるだけなので、何度実行しても結果は同じ）
   try {
-    await Promise.all(
-      appIds.map((appId) => db.ref(`users/${uid}/purchasedApps/${appId}`).set(true))
-    );
+    await Promise.all(appIds.map((appId) => grantApp(db, uid, appId)));
   } catch (err) {
     logger.error("failed to write purchasedApps from session verify", {
       sessionId,

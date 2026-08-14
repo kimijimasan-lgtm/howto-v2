@@ -4,6 +4,7 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const Stripe = require("stripe");
 const { verifyCheckoutSessionCore } = require("./verify-session");
+const { grantApp } = require("./grant-app");
 
 admin.initializeApp();
 
@@ -15,6 +16,7 @@ const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 const PRICE_TO_APP_ID = {
   price_1TyL6pJGshE4KWJ24f3wZODn: "jiyu-kenkyu-app",
   price_1U2kIrJGshE4KWJ2DpUjet62: "houji-pwa",
+  price_1TovepJGshE4KWJ2drDOBWzA: "crossmemo",
 };
 
 // メールアドレスをRTDBキーとして安全に使える形式に変換する（$ # [ ] . / を含められないため）。
@@ -116,9 +118,7 @@ exports.stripeWebhook = onRequest(
     if (uid) {
       try {
         await Promise.all(
-          Array.from(matchedAppIds).map((appId) =>
-            admin.database().ref(`users/${uid}/purchasedApps/${appId}`).set(true)
-          )
+          Array.from(matchedAppIds).map((appId) => grantApp(admin.database(), uid, appId))
         );
         await eventRef.set({
           processedAt: admin.database.ServerValue.TIMESTAMP,
@@ -204,7 +204,7 @@ exports.claimPendingPurchase = onCall(async (request) => {
       return current;
     });
     if (txResult.committed && wonClaim) {
-      await admin.database().ref(`users/${uid}/purchasedApps/${appId}`).set(true);
+      await grantApp(admin.database(), uid, appId);
       claimed.push(appId);
     }
   }

@@ -6237,6 +6237,141 @@ function showGuestSignoutModal() {
 // Stripe Payment Link URL（本番環境）
 const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/8x24gAe62bwQaYO07teUU00';
 
+// ── 決済完了リダイレクト（session_id）のサーバー検証 ────────────────────
+// Stripe は決済後に ?session_id=cs_... を付けてこのページへ戻してくる。
+// その値をサーバー（Cloud Functions の verifyCheckoutSession）へ渡し、Stripe に
+// 「本当に支払い済みか」を直接問い合わせてもらってから isPremium を付与する。
+//
+// 従来のクライアント3系統（pending_payment_uid / モーダル経由 / pending_premium_grant）は
+// そのまま残してあり、これはそれらが届かなかった場合を救う「追加の」経路。
+// 特にブログ（100kin-blog）の購入ボタンは Stripe への直リンクで startStripePayment() を
+// 通らないため pending_payment_uid が無く、既にGoogleログイン済みのユーザーは
+// これまでどの経路でも isPremium が付かないまま案内フラグだけ消費されていた。
+// 決済時のメールとログイン時のメールが違っても通る点も、メール照合方式との違い。
+//
+// 呼び出しは遅延取得にしてある。firebase-functions-compat の読み込みに失敗しても
+// アプリ本体（メモ機能）は問題なく動くべきで、起動時に例外を投げて全体を巻き添えに
+// してはいけないため（app.js 冒頭のCDN検出は database / auth しか見ていない）
+function getCallable(name) {
+  if (typeof firebase.functions !== 'function') {
+    console.warn('firebase-functions SDK が読み込めていないため、決済の照合をスキップします');
+    return null;
+  }
+  try {
+    return firebase.functions().httpsCallable(name);
+  } catch (e) {
+    console.warn('httpsCallable の取得に失敗しました:', name, e);
+    return null;
+  }
+}
+
+const SESSION_ID_STASH_KEY = 'crossmemo:checkoutSessionId';
+
+// URL の session_id を sessionStorage へ退避し、URLからは即座に消す。
+// URLに置きっぱなしにしない理由:
+//   1. リロード・履歴戻り・URLの共有で決済IDが再利用／流出するのを防ぐ
+//   2. ポップアップがブロックされて linkWithRedirect / signInWithRedirect に
+//      落ちるとページが再読み込みされる。URLだけに持っていると決済IDを失う
+// ★ 起動時の ?payment=success 分岐はクエリを丸ごと消す replaceState を行うため、
+//   この関数は必ずそれより前に実行すること（下でモジュール評価時に1回呼んでいる）
+function stashSessionIdFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const sid = params.get('session_id');
+  if (!sid) return;
+  try {
+    sessionStorage.setItem(SESSION_ID_STASH_KEY, sid);
+  } catch (e) {
+    // sessionStorage が使えない環境ではURLに残したままにする
+    // （消すと復元手段が無くなり決済が宙に浮くため）
+    console.warn('sessionStorage unavailable; keeping session_id in URL', e);
+    return;
+  }
+  removeSessionIdFromUrl(params);
+}
+
+function removeSessionIdFromUrl(params) {
+  params.delete('session_id');
+  const q = params.toString();
+  window.history.replaceState({}, '', window.location.pathname + (q ? `?${q}` : '') + window.location.hash);
+}
+
+function getStashedSessionId() {
+  try {
+    const v = sessionStorage.getItem(SESSION_ID_STASH_KEY);
+    if (v) return v;
+  } catch (e) { /* 上で warn 済み。URL側にフォールバックする */ }
+  return new URLSearchParams(window.location.search).get('session_id');
+}
+
+function clearStashedSessionId() {
+  try { sessionStorage.removeItem(SESSION_ID_STASH_KEY); } catch (e) {}
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('session_id')) removeSessionIdFromUrl(params);
+}
+
+// ?payment=success の replaceState より前に確保しておく（モジュール評価時に1回だけ）
+stashSessionIdFromUrl();
+
+// サーバー側で購入が確認できたときの反映。
+// 起動時の読み取りや従来のクライアント経路で既に付与済みなら何もしない（トーストの二重表示防止）
+function applyPremiumGrantedFromServer() {
+  if (state.isPremium) return;
+  state.isPremium = true;
+  updateSyncQuotaBadge();
+  showToast('お支払いを確認しました。無制限でご利用いただけます');
+}
+
+// uidごとに1回だけ実行する（同一uidでの多重呼び出しを防ぎつつ、アカウント切替では再実行する）
+let _sessionVerifyStartedForUid = null;
+let _pendingClaimStartedForUid = null;
+
+async function runCheckoutSessionVerify(user) {
+  const sessionId = getStashedSessionId();
+  if (!sessionId) return;
+  if (_sessionVerifyStartedForUid === user.uid) return;
+  const verifyCheckoutSessionFn = getCallable('verifyCheckoutSession');
+  if (!verifyCheckoutSessionFn) return; // stash は残す（次回起動で再試行できるように）
+  _sessionVerifyStartedForUid = user.uid;
+  try {
+    await verifyCheckoutSessionFn({ sessionId });
+    clearStashedSessionId();
+    applyPremiumGrantedFromServer();
+  } catch (err) {
+    const code = (err && err.code) || '';
+    console.error('verifyCheckoutSession failed:', code, err && err.message);
+    // crossmemo は未課金でもアプリ自体は使えるため、失敗しても専用のエラー画面は出さない。
+    // 画面を壊さず、復旧できるものだけ次回起動で再試行する
+    if (code === 'functions/failed-precondition' || code === 'functions/not-found' ||
+        code === 'functions/invalid-argument') {
+      // 未払い・対象外の決済・壊れたIDなど、何度試しても結果が変わらないもの
+      clearStashedSessionId();
+    } else if (code === 'functions/permission-denied') {
+      // 既に別のuidで有効化済み。ゲストのまま決済したあと Google 昇格で
+      // auth/credential-already-in-use によりuidが変わった場合がここに来る。
+      // その場合は従来の pending_premium_grant 経路が新uidへ付与しているため何も表示しない
+      clearStashedSessionId();
+    }
+    // それ以外（通信エラー等）は stash を残す。次回の起動で自動的に再試行される
+  }
+}
+
+// 決済時のメールと一致するアカウントでログインしたときの救済（サーバー側で照合・付与）。
+// 匿名ユーザーはメールを持たないため対象外
+async function runClaimPendingPurchase(user) {
+  if (user.isAnonymous) return;
+  if (_pendingClaimStartedForUid === user.uid) return;
+  const claimPendingPurchaseFn = getCallable('claimPendingPurchase');
+  if (!claimPendingPurchaseFn) return;
+  _pendingClaimStartedForUid = user.uid;
+  try {
+    const res = await claimPendingPurchaseFn();
+    const claimed = (res && res.data && res.data.claimedAppIds) || [];
+    if (claimed.indexOf('crossmemo') !== -1) applyPremiumGrantedFromServer();
+  } catch (err) {
+    console.error('claimPendingPurchase failed:', err && err.code, err && err.message);
+  }
+}
+
 function showLimitModal(message) {
   const root = document.getElementById('modal-root');
   root.innerHTML = `
@@ -6325,8 +6460,12 @@ function startStripePayment() {
   // ページ遷移中のエラーを無視するフラグ
   window._navigatingToStripe = true;
 
-  // Payment Linkページを開く
-  window.location.href = STRIPE_PAYMENT_LINK;
+  // Payment Linkページを開く。client_reference_id を付けておくと、決済完了時に
+  // Stripe Webhook（サーバー側）が「どのuidの決済か」を確定できるため、
+  // 戻り先での session_id 検証を待たずに付与が完了することがある（付与経路の多重化）
+  const sep = STRIPE_PAYMENT_LINK.indexOf('?') !== -1 ? '&' : '?';
+  window.location.href =
+    `${STRIPE_PAYMENT_LINK}${sep}client_reference_id=${encodeURIComponent(currentUser.uid)}`;
 }
 
 // 決済成功後のモーダル（Googleアカウントでログインを促す）
@@ -6834,6 +6973,12 @@ window.addEventListener('DOMContentLoaded', async () => {
           }
         }
       }
+      // 決済のサーバー検証（従来のクライアント3系統に対する追加の付与経路）。
+      // await せずバックグラウンドで走らせる — 2026-07-19 に「起動時の決済確認を
+      // 直列 await していたせいで低速回線の表示が10秒超になった」件があったため、
+      // 起動表示のクリティカルパスには絶対に入れない
+      runCheckoutSessionVerify(user);
+      runClaimPendingPurchase(user);
       // ホーム画面の初期表示が落ち着いたタイミングで、編集画面を開く前に
       // TipTapエディターの初期化コストを先払いしておく
       const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 600));

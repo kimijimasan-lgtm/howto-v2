@@ -5,13 +5,16 @@
 
 const assert = require("assert");
 const { verifyCheckoutSessionCore } = require("../verify-session");
+const { grantApp } = require("../grant-app");
 
 // ---------- テスト対象と同じ設定（index.js から写したもの） ----------
 const PRICE_HOUJI = "price_1U2kIrJGshE4KWJ2DpUjet62";
 const PRICE_JIYU = "price_1TyL6pJGshE4KWJ24f3wZODn";
+const PRICE_CROSSMEMO = "price_1TovepJGshE4KWJ2drDOBWzA";
 const PRICE_TO_APP_ID = {
   [PRICE_JIYU]: "jiyu-kenkyu-app",
   [PRICE_HOUJI]: "houji-pwa",
+  [PRICE_CROSSMEMO]: "crossmemo",
 };
 
 // index.js の emailToKey と同一の実装（回帰確認用にここでも固定する）
@@ -159,6 +162,8 @@ test("[1] 支払い済みセッション → houji-pwa が付与される", asyn
   assert.ok(typeof db._data.checkoutSessions[SID].claimedAt === "number");
   // 他アプリの購入フラグを巻き込んでいないこと
   assert.deepStrictEqual(Object.keys(db._data.users[UID_A].purchasedApps), ["houji-pwa"]);
+  // crossmemo 用の isPremium は、crossmemo 以外の決済では絶対に立たない
+  assert.strictEqual(db._data.users[UID_A].isPremium, undefined, "isPremium が誤って立っている");
 });
 
 test("[1-b] 複数商品でも、対象のPrice IDだけが appId に解決される", async () => {
@@ -329,6 +334,85 @@ test("[4-c] メール未取得のセッションでも付与自体は成功す�
   const result = await call({ db, stripe });
   assert.deepStrictEqual(result.grantedAppIds, ["houji-pwa"]);
   assert.strictEqual(db._data.users[UID_A].purchasedApps["houji-pwa"], true);
+});
+
+// [5] crossmemo（isPremium 併記）の付与
+// crossmemo だけは購入判定が users/{uid}/isPremium を読む古い設計のため、
+// purchasedApps に加えて isPremium も立てる必要がある
+function crossmemoSetup(extra) {
+  const db = makeFakeDb();
+  const stripe = makeFakeStripe(
+    Object.assign({ session: PAID_SESSION, lineItemPriceIds: [PRICE_CROSSMEMO] }, extra)
+  );
+  return { db, stripe };
+}
+
+test("[5-a] crossmemo の決済 → isPremium と purchasedApps/crossmemo の両方が立つ", async () => {
+  const { db, stripe } = crossmemoSetup();
+  const result = await call({ db, stripe });
+
+  assert.deepStrictEqual(result.grantedAppIds, ["crossmemo"]);
+  assert.strictEqual(db._data.users[UID_A].isPremium, true, "アプリが実際に読む isPremium が立っていない");
+  assert.strictEqual(db._data.users[UID_A].purchasedApps.crossmemo, true);
+  assert.strictEqual(db._data.checkoutSessions[SID].uid, UID_A);
+});
+
+test("[5-b] 他アプリの決済では isPremium を立てない（crossmemo以外への波及なし）", async () => {
+  for (const [price, appId] of [[PRICE_HOUJI, "houji-pwa"], [PRICE_JIYU, "jiyu-kenkyu-app"]]) {
+    const db = makeFakeDb();
+    const stripe = makeFakeStripe({ session: PAID_SESSION, lineItemPriceIds: [price] });
+    await call({ db, stripe });
+    assert.strictEqual(db._data.users[UID_A].purchasedApps[appId], true);
+    assert.strictEqual(db._data.users[UID_A].isPremium, undefined, `${appId} で isPremium が立った`);
+  }
+});
+
+test("[5-c] crossmemo でも二重付与にならず、別uidの使い回しは弾かれる", async () => {
+  const { db, stripe } = crossmemoSetup();
+  await call({ db, stripe, uid: UID_A });
+  const second = await call({ db, stripe, uid: UID_A });
+  assert.strictEqual(second.alreadyClaimed, true);
+  assert.strictEqual(db._data.users[UID_A].isPremium, true);
+
+  await expectFail(call({ db, stripe, uid: UID_B }), "permission-denied");
+  // 便乗した uid には isPremium も purchasedApps も付いていないこと
+  assert.strictEqual(db._data.users[UID_B], undefined, "別uidに isPremium が漏れている");
+});
+
+test("[5-d] 未払いの crossmemo セッションでは isPremium を立てない", async () => {
+  const db = makeFakeDb();
+  const stripe = makeFakeStripe({
+    session: { id: SID, payment_status: "unpaid" },
+    lineItemPriceIds: [PRICE_CROSSMEMO],
+  });
+  await expectFail(call({ db, stripe }), "failed-precondition");
+  assert.strictEqual(db._data.users, undefined, "未払いなのに書き込みが発生している");
+});
+
+test("[5-e] crossmemo と他アプリを同時購入しても、それぞれ正しく付与される", async () => {
+  const db = makeFakeDb();
+  const stripe = makeFakeStripe({
+    session: PAID_SESSION,
+    lineItemPriceIds: [PRICE_CROSSMEMO, PRICE_HOUJI],
+  });
+  const result = await call({ db, stripe });
+  assert.deepStrictEqual(result.grantedAppIds.sort(), ["crossmemo", "houji-pwa"]);
+  assert.strictEqual(db._data.users[UID_A].isPremium, true);
+  assert.strictEqual(db._data.users[UID_A].purchasedApps.crossmemo, true);
+  assert.strictEqual(db._data.users[UID_A].purchasedApps["houji-pwa"], true);
+});
+
+test("[5-f] grantApp 単体: crossmemo だけが isPremium を伴う", async () => {
+  // stripeWebhook（client_reference_id 経路）と claimPendingPurchase（メール照合経路）も
+  // この関数を通るため、3経路すべての付与内容がここで担保される
+  const db = makeFakeDb();
+  await grantApp(db, UID_A, "crossmemo");
+  assert.strictEqual(db._data.users[UID_A].isPremium, true);
+  assert.strictEqual(db._data.users[UID_A].purchasedApps.crossmemo, true);
+
+  await grantApp(db, UID_B, "houji-pwa");
+  assert.strictEqual(db._data.users[UID_B].isPremium, undefined);
+  assert.strictEqual(db._data.users[UID_B].purchasedApps["houji-pwa"], true);
 });
 
 // ---------- 実行 ----------
