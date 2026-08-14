@@ -769,7 +769,15 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
     ```
     （末尾に出る artifacts クリーンアップポリシー未設定のエラーはデプロイ自体の失敗ではない。既知の残タスク）
   - **検証**: functionsのユニットテスト **29/29通過**（既存23件の回帰なし。追加6件で「crossmemoはisPremiumも立つ」「他アプリでは立たない」「二重付与・別uid使い回しの防止」「未払いでは書き込まない」を担保）。ローカルChromeで**実際のデプロイ済み関数と通信**し、退避→検証→`not-found`→後始末の一連と、各エラーコードの分岐・既存フローの回帰なしを確認。本番デプロイ後に **CSP違反ゼロ**・関数オリジンへの到達（401）・`app.js?v=896` 配信を確認
-  - **未検証**: 実際の支払い済み session_id での付与（本番¥100決済テスト）／Googleログイン確定後に `claimPendingPurchase` が実際に付与する経路
+  - **本番¥100実決済テスト（2026-08-14・成功）**: **今回修正した不具合そのものを再現する経路**（＝ブログ `apps100kin.web.app` の「購入してログイン」直リンク × 既にGoogleログイン済みのユーザー。`client_reference_id` が付かないため、修正前は isPremium が一度も付かなかったケース）で実施し、全工程の本番動作を実証した
+    - 事前準備: `siro.usertest@gmail.com`（uid `LyR9ZaLwe0PktUVg5cvylXrcVtg2`）は2026-07-07のテストで `isPremium: true` のままだったため、付与を観測できるよう事前に削除（`articles`/`categories` は無傷）。**uidはFirebase Authのエクスポートで完全一致1件・類似アカウント無しを確認してから削除**。エクスポートファイル（142アカウント分のメールを含む）は作業後に削除済み
+    - 結果: 決済 → 本編に切り替わり（同期回数バッジ消滅）。RTDBで以下を確認
+      - `users/{uid}/isPremium: true`
+      - `users/{uid}/purchasedApps/crossmemo: true`（今回の新規）
+      - `checkoutSessions/cs_live_a1PsgU5z...` = `{appIds:["crossmemo"], uid:"LyR9ZaLwe0..."}`（今回の新規・予約レコード）
+      - `pendingPurchases` は空（メール照合待ちのレコードが正しく消し込まれている＝検証後の後始末が動作）
+    - `checkoutSessions` には houji-pwa・jiyu-kenkyu-app の予約レコードも残っており、**共有Functionsが3アプリすべてで機能している**ことも併せて確認できた
+  - **未検証**: Googleログイン確定後に `claimPendingPurchase` が実際に付与する経路（今回のテストでは session_id 検証が先に成功したため通らなかった）
   - **Stripe Payment Link の決済完了後URL変更（2026-08-14完了）**: `https://crossmemo.web.app/?payment=success&session_id={CHECKOUT_SESSION_ID}` に更新済み。これで session_id 検証が起動する状態になった
     - ⚠️ **このPayment Linkは Payment Links API で作成されているため、Stripeダッシュボードから編集できない**（「APIを使用してのみ編集できます」と表示される）。更新には `functions/update-payment-link.js` を使う（`buy.stripe.com/xxxx` の短いコードは `plink_` IDではないため、一覧から url 一致でIDを特定する処理を入れてある）
     - ⚠️ **既存の `sk_live_` は作成時にしか表示されず、後から確認できない。かといってロール（作り直し）すると旧キーが失効し、Secret Manager 経由でそれを使う `stripeWebhook` / `verifyCheckoutSession` が本番で停止する**（復旧にはSecret Managerへの新バージョン登録＋3関数の再デプロイが必要）。→ この種の作業では **「Payment Links: 書き込み」を含む制限付きキー（`rk_live_`）を新規作成し、使用後に削除する**こと。今回はStripeの「単発の支払い」テンプレートで作成し、使用後に削除済み
@@ -1027,6 +1035,7 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 12. **画像・カード削除時のStorage孤児ファイル削除連動**（未実装。現状は画像やカードを削除してもStorage上の `users/{uid}/images/*` が残り続ける。ルール上 `refFromURL().delete()` は本人なら可能なことを確認済み。項目11の「4.」がこれを指していた可能性あり）
 13. **画像ドラッグ書き出し（v887 Storage方式）とカーソル表示（v888）の実機最終確認**（新規挿入画像をワープロ・エクスプローラーへ実マウスでドロップ→実データが渡ること／カーソルがパー→グー→パー→矢印と遷移すること。既存のbase64画像は書き出し非対応が仕様）
 14. **App Checkモニタリング確認→enforcement有効化**（導入2026-07-11、目安1〜2週間。Firebase ConsoleでRTDB/Authのメトリクスを確認し、問題なければenforcement有効化。Storageも保護対象に追加するか検討）
+15. **【任意・Phase 2】isPremium のサーバー専用書き込み化の検討**（現状 `users/{uid}/isPremium` はRTDBルール上クライアント（本人）から書けるため、その気になれば誰でも自分を課金済みにできる。サーバー専用に閉じるには、先に「匿名uidが持っている `checkoutSessions` の予約を、Google昇格でuidが変わった新uidへ移譲する」仕組みが必要。これが無いまま閉じると `auth/credential-already-in-use` の経路で「払ったのに永久に制限が外れない」ハードロックが起きうる。あわせて購入判定の読み取りを `isPremium` から `purchasedApps/crossmemo` へ寄せるか、購入判定を `.once()` からテンプレート推奨の `.on()` リアルタイム監視に変えるかも同時に検討する）
 
 ## 直近の対応（2026-06-24）
 
