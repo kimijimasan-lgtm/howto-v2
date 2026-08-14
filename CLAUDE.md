@@ -770,7 +770,10 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
     （末尾に出る artifacts クリーンアップポリシー未設定のエラーはデプロイ自体の失敗ではない。既知の残タスク）
   - **検証**: functionsのユニットテスト **29/29通過**（既存23件の回帰なし。追加6件で「crossmemoはisPremiumも立つ」「他アプリでは立たない」「二重付与・別uid使い回しの防止」「未払いでは書き込まない」を担保）。ローカルChromeで**実際のデプロイ済み関数と通信**し、退避→検証→`not-found`→後始末の一連と、各エラーコードの分岐・既存フローの回帰なしを確認。本番デプロイ後に **CSP違反ゼロ**・関数オリジンへの到達（401）・`app.js?v=896` 配信を確認
   - **未検証**: 実際の支払い済み session_id での付与（本番¥100決済テスト）／Googleログイン確定後に `claimPendingPurchase` が実際に付与する経路
-  - **★残作業（しろちゃん）**: Stripe の Payment Link（`8x24gAe62bwQaYO07teUU00`）の**決済完了後URLを `https://crossmemo.web.app/?payment=success&session_id={CHECKOUT_SESSION_ID}` に変更する**（`{CHECKOUT_SESSION_ID}` はStripeが自動置換）。**これを入れるまで session_id 検証は起動しない**（webhook・メール照合の経路は既に稼働中）
+  - **Stripe Payment Link の決済完了後URL変更（2026-08-14完了）**: `https://crossmemo.web.app/?payment=success&session_id={CHECKOUT_SESSION_ID}` に更新済み。これで session_id 検証が起動する状態になった
+    - ⚠️ **このPayment Linkは Payment Links API で作成されているため、Stripeダッシュボードから編集できない**（「APIを使用してのみ編集できます」と表示される）。更新には `functions/update-payment-link.js` を使う（`buy.stripe.com/xxxx` の短いコードは `plink_` IDではないため、一覧から url 一致でIDを特定する処理を入れてある）
+    - ⚠️ **既存の `sk_live_` は作成時にしか表示されず、後から確認できない。かといってロール（作り直し）すると旧キーが失効し、Secret Manager 経由でそれを使う `stripeWebhook` / `verifyCheckoutSession` が本番で停止する**（復旧にはSecret Managerへの新バージョン登録＋3関数の再デプロイが必要）。→ この種の作業では **「Payment Links: 書き込み」を含む制限付きキー（`rk_live_`）を新規作成し、使用後に削除する**こと。今回はStripeの「単発の支払い」テンプレートで作成し、使用後に削除済み
+    - キーはスクリプト内にもリポジトリにも保存していない（実行時に環境変数から読み、値は表示しない）
   - **検証環境のメモ**: ポート8080はhouji-pwaのローカルサーバーも掴んでいることがあり、リロードで別アプリが返る（IPv4/IPv6の食い違い）。crossmemoのローカル検証は別ポート（8123等）に分けること
   - 詳細レポート: `report_2026-08-14_session_id_impl.txt` / 設計案: `proposal_2026-08-14_session_id.txt`
 
