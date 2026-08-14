@@ -21,6 +21,10 @@
     "webhookEvents": {
       ".read": false,
       ".write": false
+    },
+    "pendingPurchases": {
+      ".read": false,
+      ".write": false
     }
   }
 }
