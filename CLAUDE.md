@@ -750,8 +750,29 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 - **`logger.error` の第2引数に `message` キーを使うと本来のエラー内容が潰れる**（firebase-functions loggerの内部フィールドと衝突）。`errorMessage` 等の別名を使うこと（2026-07-29修正済み）
 - 初回デプロイ時にSecret Manager API等の有効化が必要だった（Console URLから手動有効化）
 - Git Bashで `firebase database:get /users/...` を実行するとMSYSのパス変換で「Path must begin with /」エラーになる。**`MSYS_NO_PATHCONV=1` を付けて実行**すること
-- 既存のTorisetu ¥100 Payment Link経由の決済もこのWebhookに届くが、`client_reference_id` 無し・price ID未登録のため警告ログと処理記録のみで実害なし
+- ~~既存のTorisetu ¥100 Payment Link経由の決済もこのWebhookに届くが、`client_reference_id` 無し・price ID未登録のため警告ログと処理記録のみで実害なし~~（**2026-08-14にcrossmemoもWebhookの対象に追加済み**。price ID登録＋`startStripePayment()`での`client_reference_id`付与を実施。「直近の対応（2026-08-14）」参照）
 - **残タスク**: ①Functionsのartifactsクリーンアップポリシー未設定（`firebase functions:artifacts:setpolicy`、放置で少額課金の可能性）②Node.js 20は2026-10-30にデプロイ不可化（それまでにruntime更新＋firebase-functionsパッケージ更新）③~~じゆうけんきゅうナビ側での `purchasedApps/jiyu-kenkyu-app` 読み取り実装~~（**実装済みと判明**。`jiyu-kenkyu-app/index.html`にGoogleログイン＋`purchasedApps/jiyu-kenkyu-app`読み取りによる認証ゲートが既に組み込み済み〔未購入時はStripeリンク`?client_reference_id={uid}`付きの購入案内画面を表示〕。100kin-blog側セッションでの調査・動作確認により判明。なお`jiyu-kenkyu-app`はgit管理下にないため変更履歴は追えない点に注意）
+
+## 直近の対応（2026-08-14）
+
+- **crossmemo に session_id 決済検証を導入（完了・本番デプロイ済み、app.js?v=896）**: houji-pwa・じゆうけんきゅうナビに導入済みの「決済後リダイレクトの `session_id` をサーバーでStripeに直接照会してから購入フラグを立てる」仕組みを、crossmemo（isPremium方式・匿名ログインあり）にも展開した。**方針は「追加のみ」**で、既存のクライアント付与3系統・匿名ログイン・Google昇格処理には一切手を入れていない
+  - **解消した既知バグ**: ブログ（100kin-blog `login.html`）の購入ボタンはStripeへの直リンクで `startStripePayment()` を通らないため `pending_payment_uid` が無く、**既にGoogleログイン済みのユーザーは isPremium が一度も付かないまま `payment_modal_pending` だけ消費され、「無制限でご利用いただけます」トーストだけ出る**状態だった（2026-08-02に「未対応の既知課題」として記録していたもの）。session_id 検証はメールにもlocalStorageにも依存しないためこれを直接解決する。別端末での決済・プライベートブラウズ・ストレージ削除も同様に救済される
+  - **サーバー側（共有Functions）**: 付与処理を **`functions/grant-app.js` の `grantApp(db, uid, appId)` に集約**し、`stripeWebhook` / `claimPendingPurchase` / `verifyCheckoutSession` の3経路すべてがここを通るようにした。`purchasedApps/{appId}` に加え、**appIdが `crossmemo` のときだけ `users/{uid}/isPremium` も true にする**（crossmemoだけ購入判定の置き場所が違う古い設計のため）。`PRICE_TO_APP_ID` に `price_1TovepJGshE4KWJ2drDOBWzA → crossmemo` を追加。他アプリ（houji-pwa / jiyu-kenkyu-app）の挙動は無変更（テストで担保）
+  - **クライアント側**: `session_id` を sessionStorage へ退避してURLから即座に除去（**`?payment=success` の `history.replaceState` はクエリを丸ごと消すため、退避は必ずそれより前＝モジュール評価時に実行する**）。ログイン確定後に `verifyCheckoutSession` と `claimPendingPurchase` を uid ごと1回だけ**バックグラウンド実行**（2026-07-19の「起動時の決済確認を直列awaitして低速回線で10秒超」の再発防止のため、絶対に起動表示のクリティカルパスに入れない）。`startStripePayment()` に `?client_reference_id={uid}` を付与
+  - **失敗時は画面を壊さない**: houji-pwaは専用エラー画面を出すが、crossmemoは未購入でもアプリが使えるため出さない。`not-found`/`invalid-argument`/`failed-precondition`/`permission-denied` は退避データを破棄して静かにログのみ、通信エラーは退避データを保持して次回起動で自動再試行
+  - **⚠️ 匿名→Google昇格との衝突（設計上の要点）**: session_id は「最初に使ったuid」で `checkoutSessions/{sessionId}` に予約され、別uidの使い回しは `permission-denied` で弾かれる。ゲストのまま決済し `auth/credential-already-in-use` でuidが変わった場合（8/2に警告confirmを入れた経路）、新uidからの検証はここに該当する。**既存の `pending_premium_grant` が新uidへ付与するため実害はない**。逆に言えば **isPremium をサーバー専用書き込みに閉じると、この逃げ道が消えて「払ったのに永久に制限が外れない」ハードロックになり得る**ため、閉じるなら先に「匿名uidの予約を新uidへ移譲する仕組み」が必要（今回は見送り）
+  - **⚠️ CSP（crossmemo固有の落とし穴）**: `firebase.json` の `connect-src` に `https://us-central1-torisetu-234c3.cloudfunctions.net` の追加が必須。**無いと本番でだけ機能が丸ごと死ぬ**（ローカルサーバーにはCSPが付かないため再現しない）。houji-pwa・じゆうけんきゅうナビは firebase.json にCSPが無いのでこの作業が要らず、crossmemoだけの追加手順。事前に本番エンドポイントへPOSTしてリダイレクトが無い（401直返し）ことを確認したので、この1オリジンの追加で足りる
+  - **⚠️ functions SDK読み込み失敗への耐性**: `app.js` 冒頭のCDN検出は `database`/`auth` しか見ていない。`firebase.functions()` をモジュール評価時に直接呼ぶと、functions SDKだけ落ちたときに例外でアプリ全体が起動不能になる。**`getCallable(name)` で遅延取得し、取れなければ検証をスキップするだけ**にしてある
+  - **⚠️ Functionsのデプロイ手順（重要）**: `firebase deploy --only functions` は**失敗する**。同じFirebaseプロジェクトに別アプリの関数（`generateEmpathyReplies` / `generateXPostDrafts`、asia-northeast1）が同居しており、このリポジトリのソースに無いため削除対象と判定されて中断される。**必ず対象を明示すること**:
+    ```
+    firebase deploy --only functions:stripeWebhook,functions:claimPendingPurchase,functions:verifyCheckoutSession
+    ```
+    （末尾に出る artifacts クリーンアップポリシー未設定のエラーはデプロイ自体の失敗ではない。既知の残タスク）
+  - **検証**: functionsのユニットテスト **29/29通過**（既存23件の回帰なし。追加6件で「crossmemoはisPremiumも立つ」「他アプリでは立たない」「二重付与・別uid使い回しの防止」「未払いでは書き込まない」を担保）。ローカルChromeで**実際のデプロイ済み関数と通信**し、退避→検証→`not-found`→後始末の一連と、各エラーコードの分岐・既存フローの回帰なしを確認。本番デプロイ後に **CSP違反ゼロ**・関数オリジンへの到達（401）・`app.js?v=896` 配信を確認
+  - **未検証**: 実際の支払い済み session_id での付与（本番¥100決済テスト）／Googleログイン確定後に `claimPendingPurchase` が実際に付与する経路
+  - **★残作業（しろちゃん）**: Stripe の Payment Link（`8x24gAe62bwQaYO07teUU00`）の**決済完了後URLを `https://crossmemo.web.app/?payment=success&session_id={CHECKOUT_SESSION_ID}` に変更する**（`{CHECKOUT_SESSION_ID}` はStripeが自動置換）。**これを入れるまで session_id 検証は起動しない**（webhook・メール照合の経路は既に稼働中）
+  - **検証環境のメモ**: ポート8080はhouji-pwaのローカルサーバーも掴んでいることがあり、リロードで別アプリが返る（IPv4/IPv6の食い違い）。crossmemoのローカル検証は別ポート（8123等）に分けること
+  - 詳細レポート: `report_2026-08-14_session_id_impl.txt` / 設計案: `proposal_2026-08-14_session_id.txt`
 
 ## 直近の対応（2026-08-02）
 
@@ -997,7 +1018,7 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 6. ~~残タスク（100kin-blog側）: カルーセル1枚目の画像差し替え~~（**2026-07-07完了**。100kin-blog側のCLAUDE.md・gitログで確認済み）
 7. ~~残タスク（100kin-blog側・未着手）: PWAホーム画面追加の案内モーダル実装~~（**2026-07-07完了**。実機iPhone Safariで確認済み。詳細は100kin-blog側CLAUDE.md「0-8」参照）
 8. ~~authDomainのクロスオリジン問題の恒久対応~~（**2026-07-08完了・本番デプロイ済み（v868）**。詳細は「直近の対応（2026-07-08）」参照。残検証: 実機iPhone Safariでポップアップブロック時のredirectフォールバック成功確認）
-9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応のインフラ（Stripe Webhook + Cloud Functions）は**2026-07-29に稼働開始**（「Stripe Webhook自動付与」セクション参照）。ただし現在の対象はじゆうけんきゅうナビの `purchasedApps` のみで、**Torisetu本体のisPremium自動付与への適用は未実施**（適用するにはTorisetuのprice IDをPRICE_TO_APP_IDに登録し、isPremium書き込みロジックを追加、かつ決済リンクに `?client_reference_id={uid}` を付与する改修が必要）
+9. **「購入済みなのに反映されない」ユーザーの復元導線** — 小対応（問い合わせ誘導リンク）は**2026-07-08完了**（ログイン画面・制限モーダルに `apps100kin.web.app/contact.html` へのリンクを設置、v867）。根本対応のインフラ（Stripe Webhook + Cloud Functions）は**2026-07-29に稼働開始**（「Stripe Webhook自動付与」セクション参照）。~~ただし現在の対象はじゆうけんきゅうナビの `purchasedApps` のみで、**Torisetu本体のisPremium自動付与への適用は未実施**~~（**2026-08-14完了**。price ID登録・`grantApp()`によるisPremium書き込み・`client_reference_id`付与・session_id検証・メール照合をすべて実装し本番デプロイ済み。「直近の対応（2026-08-14）」参照。**残るはStripe側の決済完了後URLに `&session_id={CHECKOUT_SESSION_ID}` を追加する作業のみ**）
 10. ~~serve.bat修正~~（**2026-07-15完了・コミット`d470fc2`**。旧OneDriveパス固定を `cd /d "%~dp0"`（bat自身のディレクトリ基準）に修正済み。python 3.14.3 の存在も確認済み）
 11. **画像ドラッグ書き出し関連の実装項目「4.」の内容確認**（2026-07-17のユーザー指示メッセージが「4.」で途切れており内容未受領。次回ユーザーに確認すること）
 12. **画像・カード削除時のStorage孤児ファイル削除連動**（未実装。現状は画像やカードを削除してもStorage上の `users/{uid}/images/*` が残り続ける。ルール上 `refFromURL().delete()` は本人なら可能なことを確認済み。項目11の「4.」がこれを指していた可能性あり）
@@ -1048,7 +1069,7 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 
 ### 現在の設定値（本番用・2026-07-03移行）
 - **Payment Link URL**: `https://buy.stripe.com/8x24gAe62bwQaYO07teUU00`（本番環境）
-- **価格ID**: `price_1TkgClJHIlRyZ2PYuHomfChN`（100円）
+- **価格ID**: `price_1TovepJGshE4KWJ2drDOBWzA`（100円）※2026-08-14にStripeダッシュボードで実物を確認して訂正。それ以前この欄に記載されていた `price_1TkgClJHIlRyZ2PYuHomfChN` は誤り（他アプリの本番priceとStripeアカウント区分が異なり、別アカウントかテスト側の値だったと思われる）。**Cloud Functions の `PRICE_TO_APP_ID` と直結する値なので、変更時は両方を必ず合わせること**
 - **決済完了後URL**: `https://crossmemo.web.app/?payment=success`（2026-07-03に更新済み）
 - **テスト決済（旧テスト用Payment Link `test_5kQ2...`）**: 動作確認済み（2026-06-21）
 - もう1つのPayment Link（`test_3cI4gAaU6fov7RVcWD7Re00`、06/21 11:06作成）はコード上どこからも未参照。2026-07-02の完了ページURL更新はこちらに誤って行われていた（旧URL着地バグの原因）。2026-07-03に**無効化済み**（ダッシュボードからいつでも再有効化可能）
