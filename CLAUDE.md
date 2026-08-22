@@ -701,7 +701,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=891, style.css?v=722, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=898, style.css?v=728, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,900行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -714,9 +714,9 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 
 ## キャッシュバスティング（重要）
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
-- `style.css?v=723`
+- `style.css?v=728`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=892`
+- `app.js?v=898`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -752,6 +752,14 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 - Git Bashで `firebase database:get /users/...` を実行するとMSYSのパス変換で「Path must begin with /」エラーになる。**`MSYS_NO_PATHCONV=1` を付けて実行**すること
 - ~~既存のTorisetu ¥100 Payment Link経由の決済もこのWebhookに届くが、`client_reference_id` 無し・price ID未登録のため警告ログと処理記録のみで実害なし~~（**2026-08-14にcrossmemoもWebhookの対象に追加済み**。price ID登録＋`startStripePayment()`での`client_reference_id`付与を実施。「直近の対応（2026-08-14）」参照）
 - **残タスク**: ①Functionsのartifactsクリーンアップポリシー未設定（`firebase functions:artifacts:setpolicy`、放置で少額課金の可能性）②Node.js 20は2026-10-30にデプロイ不可化（それまでにruntime更新＋firebase-functionsパッケージ更新）③~~じゆうけんきゅうナビ側での `purchasedApps/jiyu-kenkyu-app` 読み取り実装~~（**実装済みと判明**。`jiyu-kenkyu-app/index.html`にGoogleログイン＋`purchasedApps/jiyu-kenkyu-app`読み取りによる認証ゲートが既に組み込み済み〔未購入時はStripeリンク`?client_reference_id={uid}`付きの購入案内画面を表示〕。100kin-blog側セッションでの調査・動作確認により判明。なお`jiyu-kenkyu-app`はgit管理下にないため変更履歴は追えない点に注意）
+
+## 直近の対応（2026-08-23）
+
+- **カード1枚のPDF共有機能を追加（app.js?v=898）**: エディター画面トップバーに共有アイコン（`#btnShareCard`、緑系、iOS標準の四角+上矢印アイコン）を追加。タップで現在開いているカード1枚（タイトル・本文・画像含む）をhtml2pdf.jsでPDF化し、Web Share API（`navigator.share({files: [...]})`）経由でiOSの共有シートに渡す。GoodNotes等の外部アプリにPDFとして取り込み可能
+  - **配置**: `btnRemoveEmptyLines`（💥）と`btnAttach`（クリップ）の間。閲覧モード・編集モードとも常時表示（共有は読み取り専用操作のためカードロック中も利用可能、`applyCardLockUI`の非表示リストに含めていない）
+  - **フォールバック**: `navigator.canShare({files:[...]})` で事前チェックし、Web Share APIファイル共有非対応環境ではiOSは新規タブでPDF表示（共有→ファイルに保存で対応可）、その他はダウンロードリンクとして提供
+  - **PDF生成**: 既存のhtml2pdf.js（CDN、index.htmlで読み込み済み）を使用。ライトテーマ（白背景・黒文字）でA4縦・scale 2で生成。ローディング表示は既存の`showPdfExportLoading()`/`hidePdfExportLoading()`を共用
+  - **未検証**: 実機iPhone（Safari単体・PWAホーム画面追加状態）でのWeb Share APIファイル共有の動作確認、GoodNotesへの取り込み確認
 
 ## 直近の対応（2026-08-14）
 

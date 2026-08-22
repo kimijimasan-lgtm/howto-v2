@@ -2104,6 +2104,9 @@ function renderCategory(container) {
             isDragging = false;
             list.style.overflow = '';
             if (!consumeSyncQuota()) return;
+            // 手動並び替えをしたら自動ソート（名前順・日付順）を解除し、手動の順番を優先する
+            sortField = null;
+            updateSortUI();
             const items = list.querySelectorAll('.article-item');
             const updates = {};
             const total = items.length;
@@ -2334,6 +2337,91 @@ function hidePdfExportLoading() {
 }
 function runAfterPaint(fn) {
   requestAnimationFrame(() => requestAnimationFrame(fn));
+}
+
+// ── カード1枚のPDF共有（Web Share API + html2pdf.js）──────────────
+function shareCardAsPdf() {
+  if (!tiptapEditor) { showToast('カードが読み込まれていません'); return; }
+  if (!window.html2pdf) { showToast('PDFライブラリの読み込みに失敗しました'); return; }
+
+  const editorHtml = tiptapEditor.getHTML();
+  const lines = htmlToLines(editorHtml);
+  const cardTitle = lines[0] || 'メモ';
+  const filename = `${cardTitle}.pdf`;
+
+  const buildCardHTML = () => {
+    const bodyHtml = editorHtml;
+    return `<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<style>
+body{background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.8;padding:1.5rem 1rem;max-width:800px;margin:0 auto}
+h1{font-size:1.4rem;font-weight:800;margin:0 0 0.8rem;border-bottom:2px solid #e5e7eb;padding-bottom:0.4rem}
+h2{font-size:1.2rem;font-weight:700;margin:1rem 0 0.5rem}
+p{margin:0.3rem 0;min-height:1em}
+img{max-width:100%;height:auto;border-radius:8px;margin:0.5rem 0}
+strong{font-weight:700}
+u{text-decoration:underline}
+ul,ol{margin:0.3rem 0;padding-left:1.5rem}
+li{margin:0.2rem 0}
+</style></head>
+<body>${bodyHtml}</body></html>`;
+  };
+
+  showPdfExportLoading();
+  runAfterPaint(() => {
+    const container = document.createElement('div');
+    container.innerHTML = buildCardHTML();
+    container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+    document.body.appendChild(container);
+
+    window.html2pdf()
+      .from(container)
+      .set({
+        margin: 10,
+        filename,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      })
+      .toPdf()
+      .get('pdf')
+      .then(async pdf => {
+        try { document.body.removeChild(container); } catch (_) {}
+        hidePdfExportLoading();
+
+        const arrayBuf = pdf.output('arraybuffer');
+        const pdfBlob = new Blob([arrayBuf], { type: 'application/pdf' });
+        const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+          try {
+            await navigator.share({ files: [pdfFile], title: cardTitle });
+          } catch (e) {
+            if (e.name !== 'AbortError') showToast('共有に失敗しました');
+          }
+        } else {
+          const url = URL.createObjectURL(pdfBlob);
+          const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+          if (isIOS) {
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          } else {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+          }
+        }
+      })
+      .catch(() => {
+        try { document.body.removeChild(container); } catch (_) {}
+        hidePdfExportLoading();
+        showToast('PDF生成に失敗しました');
+      });
+  });
 }
 
 // ── 実際の一括エクスポート処理の実行 ──────────────────
@@ -2797,6 +2885,13 @@ function renderEditor(container) {
           <button class="btn-icon" id="btnRemoveEmptyLines" title="空行削除" style="background: rgba(20, 184, 166, 0.2); border: 1px solid #14b8a6; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #14b8a6; transition: transform 0.2s; align-items: center; justify-content: center;">
             <span style="font-size:1.3rem; line-height:1; pointer-events:none;">💥</span>
           </button>
+          <button class="btn-icon" id="btnShareCard" title="このカードをPDF共有" style="background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; width: 42px; height: 42px; margin-right: 0.35rem; border-radius: 12px; color: #10b981; transition: transform 0.2s; align-items: center; justify-content: center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+              <polyline points="16 6 12 2 8 6"/>
+              <line x1="12" y1="2" x2="12" y2="15"/>
+            </svg>
+          </button>
           <button class="btn-icon" id="btnAttach" title="画像を添付" style="margin-right: 0.35rem;">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="display: block;">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -3111,6 +3206,8 @@ function renderEditor(container) {
     if (state.cardLocked) { showToast("このカードは削除できません"); return; }
     deleteArticle();
   };
+
+  document.getElementById('btnShareCard').onclick = () => shareCardAsPdf();
 
   // 貼り付けキャンセルボタン（カットを元に戻す）
   const pasteCancelBtn = document.getElementById('btnPasteCancel');
