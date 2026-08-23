@@ -701,7 +701,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=910, style.css?v=728, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=914, style.css?v=728, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,900行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -716,7 +716,7 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=728`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=910`
+- `app.js?v=914`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -758,12 +758,16 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 - **カード1枚のPDF共有機能（GoodNotes連携）を実装完了（app.js?v=899→v=910）**: エディター画面トップバーに共有アイコン（`#btnShareCard`、緑系、iOS標準の四角+上矢印アイコン）を追加。タップで現在開いているカード1枚（タイトル・本文・画像含む）をPDF化し、Web Share API（`navigator.share({files: [...]})`）経由でiOSの共有シートに渡す。GoodNotes等の外部アプリにPDFとして取り込み可能
   - **配置**: `btnRemoveEmptyLines`（💥）と`btnAttach`（クリップ）の間。閲覧モード・編集モードとも常時表示（共有は読み取り専用操作のためカードロック中も利用可能、`applyCardLockUI`の非表示リストに含めていない）
   - **フォールバック**: `navigator.canShare({files:[...]})` で事前チェックし、Web Share APIファイル共有非対応環境ではiOSは新規タブでPDF表示（共有→ファイルに保存で対応可）、その他はダウンロードリンクとして提供
-  - **PDF生成方式（v=906以降、html2pdf.js不使用）**: html2pdf.jsが内部にhtml2canvasをバンドルしており`window.html2canvas`をグローバルに公開しない問題、および内部で0x0のcanvasを生成する不具合があったため、**html2canvas（CDN v1.4.1、明示的にグローバル読み込み）+ jsPDF（CDN v2.5.1）の直接組み立て方式**に変更。html2pdf.jsは一括エクスポートでのみ使用
+  - **PDF生成方式（v=906以降、html2pdf.js不使用）**: html2pdf.jsが内部にhtml2canvasをバンドルしており`window.html2canvas`をグローバルに公開しない問題、および内部で0x0のcanvasを生成する不具合があったため、**html2canvas（CDN v1.4.1、明示的にグローバル読み込み）+ jsPDF（CDN v2.5.1）の直接組み立て方式**に変更。v=914で一括エクスポートもhtml2pdf.js廃止・同方式に統一済み（html2pdf.jsのCDN読み込みはindex.htmlに残存するが未使用）
   - **PDF生成フロー**: オフスクリーンcontainer生成（`*{color:#111!important}`で白背景黒文字強制）→ 全画像をfetch→data URL変換（CORS回避）→ `window.html2canvas(container, {scale:2})` → canvas.toDataURL → jsPDF addImage（A4縦、複数ページ時はcanvasスライスで分割）→ navigator.share or フォールバック
   - **Firebase Storage CORS設定**: `functions/set-cors.js`でStorageバケット（`torisetu-234c3.firebasestorage.app`）にCORS設定済み（origin: `crossmemo.web.app`、GET許可）。Firebase CLIのリフレッシュトークンからアクセストークンを取得してREST APIで設定する方式
   - **index.html CDN追加**: html2canvas・jsPDFをhtml2pdf.jsの前に明示的に読み込み。`firebase.json`のCSPは`cdnjs.cloudflare.com`が既に許可済みのため変更不要
   - **実機検証済み**: Safari単体・PWAホーム画面追加状態の両方でPDF共有→GoodNotes取り込みが正常動作することを確認
-- **カード内複数画像の横2枚並びレイアウト修正（app.js?v=908→v=910）**: クリップアイコンから画像を追加した際、設計上は縦画像が常に横2枚並びになるはずが、途中から1枚ずつ縦並びに崩れる不具合を修正
+- **一括エクスポートのPDF機能を修正完了（app.js?v=910→v=914）**: 旧html2pdf.js方式を廃止し、html2canvas+jsPDF直接組み立て方式に統一（共有ボタンと同じ方式）。画像はfetch→data URL変換でCORS回避
+  - **【重要な学び】navigator.share()のuser activation制約**: `navigator.share()`はユーザーのタップから直接（同期的に）呼び出さないとiOS Safariで「The request is not allowed by the user agent」エラーになる。時間のかかる非同期処理（html2canvas→jsPDF組み立て等）を挟むとuser activationが失効するため、**「PDF生成完了→共有モーダル表示（`showPdfShareModal`）→ボタンタップで直接`navigator.share()`」という2段階方式**に変更。単体カードの共有ボタンは処理が軽量で速いため失効せず成功していたが、一括エクスポートは6ページ分の処理時間で失効していた
+  - **`showPdfShareModal(pdfFile, filename, pageCount)`**: PDF生成完了後に表示するモーダル。📄アイコン＋「PDF生成完了」＋ファイル名・ページ数＋「共有する」ボタン（緑、`navigator.canShare`対応時）or「PDFを開く」ボタン（青、非対応時のフォールバック）＋「閉じる」ボタン。「共有する」ボタンのclickハンドラ内で直接`navigator.share({files:[pdfFile]})`を呼ぶため、ボタンタップが新しいuser activationとなりiOS Safariでも失効しない
+  - **実機検証済み**: Safari・複数ページ（6件）でGoodNotesへの取り込みまで確認
+- **カード内複数画像の横2枚並びレイアウト修正（app.js?v=908→v=914）**: クリップアイコンから画像を追加した際、設計上は縦画像が常に横2枚並びになるはずが、途中から1枚ずつ縦並びに崩れる不具合を修正
   - **縦画像判定の閾値緩和**: `compressImageForLayout()`の`isPortrait`判定を`h > w`（厳密な縦長のみ）→`h >= w`（正方形も縦画像扱い）に変更。正方形やわずかに縦長の画像もportrait-imgクラスが付き、2列ペアリングの対象になる
   - **単体追加（`insertSingleImageIntoTipTap`）**: 縦画像挿入時、直前の段落が「奇数枚の縦画像のみ」の場合はその段落に追記してペアにするauto-pairing機能を実装済み
   - **一括追加（`handleMultipleImagesForTipTap`）**: ループ内で状態フラグを一切持たない単純な判定方式: 「現在+次がportraitなら2枚ペアとして`insertPortraitGroupIntoTipTap`で挿入しインデックスを2つ進める。そうでなければ単独挿入しインデックスを1つ進める」。途中で単独挿入になっても後続のペアリングに影響しない

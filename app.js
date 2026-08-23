@@ -2335,6 +2335,44 @@ function hidePdfExportLoading() {
   const overlay = document.getElementById('pdfExportLoadingOverlay');
   if (overlay) overlay.remove();
 }
+function showPdfShareModal(pdfFile, filename, pageCount) {
+  const existing = document.getElementById('pdfShareModal');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'pdfShareModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100000;display:flex;align-items:center;justify-content:center;';
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#1c2230;border-radius:16px;padding:2rem 1.5rem;max-width:320px;width:90%;text-align:center;color:#fff;';
+  const canShare = navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] });
+  card.innerHTML = '<div style="font-size:2.5rem;margin-bottom:0.75rem;">📄</div>'
+    + '<div style="font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;">PDF生成完了</div>'
+    + '<div style="font-size:0.85rem;color:#9ca3af;margin-bottom:1.5rem;">' + esc(filename) + '（' + pageCount + 'ページ）</div>'
+    + (canShare
+      ? '<button id="btnPdfShare" style="width:100%;padding:0.85rem;border:none;border-radius:10px;background:#22c55e;color:#fff;font-size:1.05rem;font-weight:700;cursor:pointer;margin-bottom:0.75rem;">共有する</button>'
+      : '<button id="btnPdfOpen" style="width:100%;padding:0.85rem;border:none;border-radius:10px;background:#3b82f6;color:#fff;font-size:1.05rem;font-weight:700;cursor:pointer;margin-bottom:0.75rem;">PDFを開く</button>')
+    + '<button id="btnPdfClose" style="width:100%;padding:0.7rem;border:none;border-radius:10px;background:transparent;color:#9ca3af;font-size:0.9rem;cursor:pointer;">閉じる</button>';
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  const closeModal = () => { overlay.remove(); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  card.querySelector('#btnPdfClose').onclick = closeModal;
+  if (canShare) {
+    card.querySelector('#btnPdfShare').onclick = () => {
+      navigator.share({ files: [pdfFile], title: filename }).then(() => {
+        closeModal();
+      }).catch(err => {
+        if (err.name !== 'AbortError') showToast('共有に失敗しました');
+      });
+    };
+  } else {
+    card.querySelector('#btnPdfOpen').onclick = () => {
+      const url = URL.createObjectURL(pdfFile);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      closeModal();
+    };
+  }
+}
 function runAfterPaint(fn) {
   requestAnimationFrame(() => requestAnimationFrame(fn));
 }
@@ -2588,9 +2626,13 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
       a.click();
       URL.revokeObjectURL(url);
     } else {
-      // PDF: html2pdf.js を使用（印刷向けライトテーマ）
-      if (!window.html2pdf) {
-        alert('PDFライブラリの読み込みに失敗しました。HTMLでのエクスポートをお試しください。');
+      // PDF: html2canvas + jsPDF 直接方式（html2pdf.jsは0x0 canvas問題があるため不使用）
+      if (!window.html2canvas) {
+        alert('html2canvasの読み込みに失敗しました。HTMLでのエクスポートをお試しください。');
+        return;
+      }
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert('jsPDFの読み込みに失敗しました。HTMLでのエクスポートをお試しください。');
         return;
       }
       const filename = `${catName}_一括エクスポート.pdf`;
@@ -2599,58 +2641,104 @@ body{background:${bg};color:${text};font-family:-apple-system,BlinkMacSystemFont
         if (container) { try { document.body.removeChild(container); } catch (_) {} }
       };
 
-      // カード枚数が多いカテゴリでは buildFullHTML() での文字列生成・innerHTML への
-      // 流し込み自体にも時間がかかるため、そこも含めてローディング表示より後ろに
-      // 回す（先にオーバーレイを表示→二重rAFで実際に1フレーム描画されるのを待って
-      // から、コンテナ構築とhtml2canvasの重い処理を開始する）
       showPdfExportLoading();
       runAfterPaint(() => {
+        try {
         container = document.createElement('div');
-        container.innerHTML = buildFullHTML(false);
-        container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
+        container.style.cssText = 'position:absolute;left:0;top:0;width:800px;z-index:-1;background:#ffffff;color:#111111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.7;padding:2rem 1rem;max-width:800px;margin:0 auto;';
+
+        const styleEl = document.createElement('style');
+        styleEl.textContent = '*{color:#111!important}.category-title{font-size:1.5rem;font-weight:800;color:#4f46e5;border-bottom:2px solid #e5e7eb;padding-bottom:.5rem;margin-bottom:2rem;text-align:center}.article-section{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:1.5rem;margin-bottom:2rem}.article-title{font-size:1.25rem;font-weight:700;color:#111;margin:0 0 1rem;border-bottom:1px solid #e5e7eb;padding-bottom:.5rem}.article-body{color:#374151}.article-body p{margin:.4rem 0;min-height:1em}.article-body img{max-width:100%;height:auto;border-radius:8px;margin:.75rem 0}.page-separator{text-align:center;margin:2rem 0;color:#9ca3af;font-size:.9rem;font-weight:600}';
+        container.appendChild(styleEl);
+
+        const contentDiv = document.createElement('div');
+        contentDiv.innerHTML = `<div class="category-title">【${esc(catName)}】</div>${buildArticlesHTML()}`;
+        container.appendChild(contentDiv);
         document.body.appendChild(container);
 
-        window.html2pdf()
-          .from(container)
-          .set({
-            margin: 10,
-            filename,
-            image: { type: 'jpeg', quality: 0.95 },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-          })
-          .toPdf()
-          .get('pdf')
-          .then(pdf => {
-            cleanupContainer();
-            hidePdfExportLoading();
-            const arrayBuf = pdf.output('arraybuffer');
-            const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-            if (isIOS) {
-              // iOS Safari は <a download> を PDF に適用できないため新規タブで表示
-              // ユーザーは「共有 → ファイルに保存」で保存可能
-              const blob = new Blob([arrayBuf], { type: 'application/pdf' });
-              const url = URL.createObjectURL(blob);
-              window.open(url, '_blank');
-              setTimeout(() => URL.revokeObjectURL(url), 60000);
-            } else {
-              // Desktop / Android: application/octet-stream でダウンロード強制
-              const blob = new Blob([arrayBuf], { type: 'application/octet-stream' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              setTimeout(() => URL.revokeObjectURL(url), 5000);
-            }
-          })
-          .catch(() => {
-            cleanupContainer();
-            hidePdfExportLoading();
-            alert('PDF生成に失敗しました。HTMLでのエクスポートをお試しください。');
+        const imgs = container.querySelectorAll('img');
+        Promise.all(Array.from(imgs).map(img => new Promise(resolve => {
+          const src = img.src;
+          if (!src || src.startsWith('data:')) { resolve(); return; }
+          fetch(src)
+            .then(r => r.blob())
+            .then(blob => new Promise((res, rej) => {
+              const reader = new FileReader();
+              reader.onload = () => res(reader.result);
+              reader.onerror = rej;
+              reader.readAsDataURL(blob);
+            }))
+            .then(dataUrl => { img.src = dataUrl; resolve(); })
+            .catch(() => { resolve(); });
+        }))).then(() => {
+          runAfterPaint(() => {
+            window.html2canvas(container, {
+              scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
+            }).then(canvas => {
+              cleanupContainer();
+
+              try {
+              const { jsPDF } = window.jspdf;
+              const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+              const margin = 10;
+              const pdfW = pdf.internal.pageSize.getWidth() - margin * 2;
+              const pdfH = pdf.internal.pageSize.getHeight() - margin * 2;
+              const imgW = pdfW;
+              const imgH = (canvas.height * imgW) / canvas.width;
+              let pageCount = 1;
+
+              if (imgH <= pdfH) {
+                pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, imgW, imgH);
+              } else {
+                const totalPages = Math.ceil(imgH / pdfH);
+                const srcPageH = (canvas.width * pdfH) / imgW;
+                pageCount = totalPages;
+                for (let i = 0; i < totalPages; i++) {
+                  if (i > 0) pdf.addPage();
+                  const srcY = i * srcPageH;
+                  const sliceH = Math.min(srcPageH, canvas.height - srcY);
+                  const sliceCanvas = document.createElement('canvas');
+                  sliceCanvas.width = canvas.width;
+                  sliceCanvas.height = sliceH;
+                  const ctx = sliceCanvas.getContext('2d');
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+                  ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+                  pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, imgW, (sliceH * imgW) / canvas.width);
+                }
+              }
+
+              hidePdfExportLoading();
+              const arrayBuf = pdf.output('arraybuffer');
+              const pdfBlob = new Blob([arrayBuf], { type: 'application/pdf' });
+              const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+              showPdfShareModal(pdfFile, filename, pageCount);
+
+              } catch (pdfErr) {
+                console.error('[exportPdf] PDF build error:', pdfErr);
+                cleanupContainer();
+                hidePdfExportLoading();
+                showToast('PDF生成に失敗しました');
+              }
+            }).catch(err => {
+              console.error('[exportPdf] html2canvas error:', err);
+              cleanupContainer();
+              hidePdfExportLoading();
+              showToast('PDF生成に失敗しました');
+            });
           });
+        }).catch(imgErr => {
+          console.error('[exportPdf] image conversion error:', imgErr);
+          cleanupContainer();
+          hidePdfExportLoading();
+          showToast('PDF生成に失敗しました');
+        });
+        } catch (outerErr) {
+          console.error('[exportPdf] outer error:', outerErr);
+          cleanupContainer();
+          hidePdfExportLoading();
+          showToast('PDF生成に失敗しました');
+        }
       });
     }
   }
