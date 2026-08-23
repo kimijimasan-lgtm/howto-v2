@@ -701,7 +701,7 @@ function stripTrailingEmptyP(html) {
 
 ## ファイル構成
 ```
-index.html          — エントリポイント（app.js?v=898, style.css?v=728, tiptap.bundle.js?v=8）
+index.html          — エントリポイント（app.js?v=910, style.css?v=728, tiptap.bundle.js?v=8）
 app.js              — アプリ全体（約5,900行）
 style.css           — スタイル
 tiptap.bundle.js    — TipTapバンドル（IIFE）
@@ -716,7 +716,7 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=728`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=899`
+- `app.js?v=910`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -755,13 +755,21 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 
 ## 直近の対応（2026-08-23）
 
-- **カード1枚のPDF共有機能を追加（app.js?v=898→v=899で白紙バグ修正）**: エディター画面トップバーに共有アイコン（`#btnShareCard`、緑系、iOS標準の四角+上矢印アイコン）を追加。タップで現在開いているカード1枚（タイトル・本文・画像含む）をhtml2pdf.jsでPDF化し、Web Share API（`navigator.share({files: [...]})`）経由でiOSの共有シートに渡す。GoodNotes等の外部アプリにPDFとして取り込み可能
+- **カード1枚のPDF共有機能（GoodNotes連携）を実装完了（app.js?v=899→v=910）**: エディター画面トップバーに共有アイコン（`#btnShareCard`、緑系、iOS標準の四角+上矢印アイコン）を追加。タップで現在開いているカード1枚（タイトル・本文・画像含む）をPDF化し、Web Share API（`navigator.share({files: [...]})`）経由でiOSの共有シートに渡す。GoodNotes等の外部アプリにPDFとして取り込み可能
   - **配置**: `btnRemoveEmptyLines`（💥）と`btnAttach`（クリップ）の間。閲覧モード・編集モードとも常時表示（共有は読み取り専用操作のためカードロック中も利用可能、`applyCardLockUI`の非表示リストに含めていない）
   - **フォールバック**: `navigator.canShare({files:[...]})` で事前チェックし、Web Share APIファイル共有非対応環境ではiOSは新規タブでPDF表示（共有→ファイルに保存で対応可）、その他はダウンロードリンクとして提供
-  - **PDF生成**: 既存のhtml2pdf.js（CDN、index.htmlで読み込み済み）を使用。ライトテーマ（白背景・黒文字）でA4縦・scale 2で生成。ローディング表示は既存の`showPdfExportLoading()`/`hidePdfExportLoading()`を共用
-  - **v=899 白紙バグ修正**: GoodNotesに取り込むと白紙になる問題を2点修正。①`buildCardHTML()`が完全なHTML文書（`<html><body>...`）を返していたが、`container.innerHTML`にセットするとHTMLパーサーが`<body>`タグを除去するため、CSSの`body{color:#111}`が適用先を失い、テキスト色がページのダークテーマ（白/明るい色）を継承→白背景+白文字=白紙。修正: スタイルを`<style>`要素として直接containerに追加し、全要素に`color:#111`を明示指定 ②Firebase Storage画像（https URL）のCORS問題でhtml2canvasのcanvasが汚染される。修正: html2pdf実行前に全画像を`fetch()`→`FileReader`でdata URLに事前変換（失敗時はスキップ）
-  - **デバッグログ**: `console.log('[shareCardAsPdf]')` でcontainerサイズ・画像数・変換後サイズを出力。html2canvasに`logging: true, allowTaint: false`を設定
-  - **未検証**: 実機iPhone（Safari単体・PWAホーム画面追加状態）でのWeb Share APIファイル共有の動作確認、GoodNotesへの取り込み確認
+  - **PDF生成方式（v=906以降、html2pdf.js不使用）**: html2pdf.jsが内部にhtml2canvasをバンドルしており`window.html2canvas`をグローバルに公開しない問題、および内部で0x0のcanvasを生成する不具合があったため、**html2canvas（CDN v1.4.1、明示的にグローバル読み込み）+ jsPDF（CDN v2.5.1）の直接組み立て方式**に変更。html2pdf.jsは一括エクスポートでのみ使用
+  - **PDF生成フロー**: オフスクリーンcontainer生成（`*{color:#111!important}`で白背景黒文字強制）→ 全画像をfetch→data URL変換（CORS回避）→ `window.html2canvas(container, {scale:2})` → canvas.toDataURL → jsPDF addImage（A4縦、複数ページ時はcanvasスライスで分割）→ navigator.share or フォールバック
+  - **Firebase Storage CORS設定**: `functions/set-cors.js`でStorageバケット（`torisetu-234c3.firebasestorage.app`）にCORS設定済み（origin: `crossmemo.web.app`、GET許可）。Firebase CLIのリフレッシュトークンからアクセストークンを取得してREST APIで設定する方式
+  - **index.html CDN追加**: html2canvas・jsPDFをhtml2pdf.jsの前に明示的に読み込み。`firebase.json`のCSPは`cdnjs.cloudflare.com`が既に許可済みのため変更不要
+  - **実機検証済み**: Safari単体・PWAホーム画面追加状態の両方でPDF共有→GoodNotes取り込みが正常動作することを確認
+- **カード内複数画像の横2枚並びレイアウト修正（app.js?v=908→v=910）**: クリップアイコンから画像を追加した際、設計上は縦画像が常に横2枚並びになるはずが、途中から1枚ずつ縦並びに崩れる不具合を修正
+  - **縦画像判定の閾値緩和**: `compressImageForLayout()`の`isPortrait`判定を`h > w`（厳密な縦長のみ）→`h >= w`（正方形も縦画像扱い）に変更。正方形やわずかに縦長の画像もportrait-imgクラスが付き、2列ペアリングの対象になる
+  - **単体追加（`insertSingleImageIntoTipTap`）**: 縦画像挿入時、直前の段落が「奇数枚の縦画像のみ」の場合はその段落に追記してペアにするauto-pairing機能を実装済み
+  - **一括追加（`handleMultipleImagesForTipTap`）**: ループ内で状態フラグを一切持たない単純な判定方式: 「現在+次がportraitなら2枚ペアとして`insertPortraitGroupIntoTipTap`で挿入しインデックスを2つ進める。そうでなければ単独挿入しインデックスを1つ進める」。途中で単独挿入になっても後続のペアリングに影響しない
+  - **デバッグログ**: `[imgLayout]`プレフィックスで各画像のw/h/isPortrait、バッチ挿入時の全画像一覧、ループ判定結果、auto-pairingの前段落検索結果をコンソールに出力
+  - **検証中**: 実機テストで閾値緩和後のレイアウト確認を継続中
+- **Service Workerの不在を確認**: 本プロジェクトにはsw.js等のService Worker、`navigator.serviceWorker.register()`呼び出し、Cache APIの使用は一切存在しない。キャッシュバスティングは`index.html`の`?v=NNN`クエリパラメータ方式のみ。iPhoneで古い版が残り続ける問題はSafariの通常キャッシュが原因。将来オフライン対応が必要になった場合にService Worker導入を検討
 
 ## 直近の対応（2026-08-14）
 

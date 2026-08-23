@@ -2342,7 +2342,8 @@ function runAfterPaint(fn) {
 // ── カード1枚のPDF共有（Web Share API + html2pdf.js）──────────────
 function shareCardAsPdf() {
   if (!tiptapEditor) { showToast('カードが読み込まれていません'); return; }
-  if (!window.html2pdf) { showToast('PDFライブラリの読み込みに失敗しました'); return; }
+  if (!window.html2canvas) { showToast('html2canvasの読み込みに失敗しました'); return; }
+  if (!window.jspdf || !window.jspdf.jsPDF) { showToast('jsPDFの読み込みに失敗しました'); return; }
 
   const editorHtml = tiptapEditor.getHTML();
   const lines = htmlToLines(editorHtml);
@@ -2352,10 +2353,10 @@ function shareCardAsPdf() {
   showPdfExportLoading();
 
   const container = document.createElement('div');
-  container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;background:#ffffff;color:#111111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.8;padding:1.5rem 1rem;';
+  container.style.cssText = 'position:absolute;left:0;top:0;width:800px;z-index:-1;background:#ffffff;color:#111111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.8;padding:1.5rem 1rem;';
 
   const styleEl = document.createElement('style');
-  styleEl.textContent = 'h1{font-size:1.4rem;font-weight:800;color:#111;margin:0 0 0.8rem;border-bottom:2px solid #e5e7eb;padding-bottom:0.4rem}h2{font-size:1.2rem;font-weight:700;color:#111;margin:1rem 0 0.5rem}p{margin:0.3rem 0;min-height:1em;color:#111}img{max-width:100%;height:auto;border-radius:8px;margin:0.5rem 0}strong{font-weight:700;color:inherit}u{text-decoration:underline}ul,ol{margin:0.3rem 0;padding-left:1.5rem;color:#111}li{margin:0.2rem 0}span{color:inherit}';
+  styleEl.textContent = '*{color:#111!important}h1{font-size:1.4rem;font-weight:800;margin:0 0 0.8rem;border-bottom:2px solid #e5e7eb;padding-bottom:0.4rem}h2{font-size:1.2rem;font-weight:700;margin:1rem 0 0.5rem}p{margin:0.3rem 0;min-height:1em}img{max-width:100%;height:auto;border-radius:8px;margin:0.5rem 0}strong{font-weight:700}u{text-decoration:underline}ul,ol{margin:0.3rem 0;padding-left:1.5rem}li{margin:0.2rem 0}';
   container.appendChild(styleEl);
 
   const contentDiv = document.createElement('div');
@@ -2364,18 +2365,10 @@ function shareCardAsPdf() {
   document.body.appendChild(container);
 
   const imgs = container.querySelectorAll('img');
-  const _dbgLog = [];
-  let _imgOk = 0, _imgFail = 0;
-  const totalImgs = imgs.length;
-
-  _dbgLog.push('innerHTML.length: ' + container.innerHTML.length);
-  _dbgLog.push('p/ul/li count: ' + container.querySelectorAll('p, ul, li').length);
-  _dbgLog.push('img count: ' + totalImgs);
-  _dbgLog.push('container size: ' + container.offsetWidth + 'x' + container.offsetHeight);
 
   const convertImagesToDataUrls = () => Promise.all(Array.from(imgs).map(img => new Promise(resolve => {
     const src = img.src;
-    if (!src || src.startsWith('data:')) { _imgOk++; resolve(); return; }
+    if (!src || src.startsWith('data:')) { resolve(); return; }
     fetch(src)
       .then(r => r.blob())
       .then(blob => new Promise((res, rej) => {
@@ -2384,65 +2377,77 @@ function shareCardAsPdf() {
         reader.onerror = rej;
         reader.readAsDataURL(blob);
       }))
-      .then(dataUrl => { img.src = dataUrl; _imgOk++; resolve(); })
-      .catch(e => { _imgFail++; _dbgLog.push('IMG ERR: ' + (e.message || e)); resolve(); });
+      .then(dataUrl => { img.src = dataUrl; resolve(); })
+      .catch(() => { resolve(); });
   })));
 
   convertImagesToDataUrls().then(() => {
-    _dbgLog.push('img convert: ' + _imgOk + '/' + totalImgs + ' ok, ' + _imgFail + ' fail');
-    _dbgLog.push('after convert size: ' + container.offsetWidth + 'x' + container.offsetHeight);
-
-    alert(_dbgLog.join('\n'));
-
     runAfterPaint(() => {
-        window.html2pdf()
-        .from(container)
-        .set({
-          margin: 10,
-          filename,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, allowTaint: false, logging: true, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        })
-        .toPdf()
-        .get('pdf')
-        .then(async pdf => {
-          try { document.body.removeChild(container); } catch (_) {}
-          hidePdfExportLoading();
+      window.html2canvas(container, {
+        scale: 2, useCORS: true, allowTaint: false, backgroundColor: '#ffffff', logging: false
+      }).then(canvas => {
+        try { document.body.removeChild(container); } catch (_) {}
 
-          const arrayBuf = pdf.output('arraybuffer');
-          const pdfBlob = new Blob([arrayBuf], { type: 'application/pdf' });
-          const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-            try {
-              await navigator.share({ files: [pdfFile], title: cardTitle });
-            } catch (e) {
-              if (e.name !== 'AbortError') showToast('共有に失敗しました');
-            }
-          } else {
-            const url = URL.createObjectURL(pdfBlob);
-            const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-            if (isIOS) {
-              window.open(url, '_blank');
-              setTimeout(() => URL.revokeObjectURL(url), 60000);
-            } else {
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = filename;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              setTimeout(() => URL.revokeObjectURL(url), 5000);
-            }
+        const margin = 10;
+        const pdfW = pdf.internal.pageSize.getWidth() - margin * 2;
+        const pdfH = pdf.internal.pageSize.getHeight() - margin * 2;
+        const imgW = pdfW;
+        const imgH = (canvas.height * imgW) / canvas.width;
+
+        if (imgH <= pdfH) {
+          pdf.addImage(imgData, 'JPEG', margin, margin, imgW, imgH);
+        } else {
+          const totalPages = Math.ceil(imgH / pdfH);
+          const srcPageH = (canvas.width * pdfH) / imgW;
+
+          for (let i = 0; i < totalPages; i++) {
+            if (i > 0) pdf.addPage();
+            const srcY = i * srcPageH;
+            const sliceH = Math.min(srcPageH, canvas.height - srcY);
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = canvas.width;
+            sliceCanvas.height = sliceH;
+            const ctx = sliceCanvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+            ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+            const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+            const destH = (sliceH * imgW) / canvas.width;
+            pdf.addImage(sliceData, 'JPEG', margin, margin, imgW, destH);
           }
-        })
-        .catch(err => {
-          console.error('[shareCardAsPdf] html2pdf error:', err);
-          try { document.body.removeChild(container); } catch (_) {}
-          hidePdfExportLoading();
-          showToast('PDF生成に失敗しました');
-        });
+        }
+
+        hidePdfExportLoading();
+
+        const arrayBuf = pdf.output('arraybuffer');
+        const pdfBlob = new Blob([arrayBuf], { type: 'application/pdf' });
+        const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+          navigator.share({ files: [pdfFile], title: cardTitle }).catch(e => {
+            if (e.name !== 'AbortError') showToast('共有に失敗しました');
+          });
+        } else {
+          const url = URL.createObjectURL(pdfBlob);
+          if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          } else {
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+          }
+        }
+      }).catch(err => {
+        console.error('[shareCardAsPdf] html2canvas error:', err);
+        try { document.body.removeChild(container); } catch (_) {}
+        hidePdfExportLoading();
+        showToast('PDF生成に失敗しました');
+      });
     });
   });
 }
@@ -4599,7 +4604,9 @@ function compressImageForLayout(file) {
         }
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve({ src: canvas.toDataURL('image/jpeg', 0.75), w, h, isPortrait: h > w });
+        const isP = h >= w;
+        console.log(`[imgLayout] compress: ${img.width}x${img.height} → ${w}x${h}, isPortrait=${isP}`);
+        resolve({ src: canvas.toDataURL('image/jpeg', 0.75), w, h, isPortrait: isP });
       };
       img.src = evt.target.result;
     };
@@ -4709,10 +4716,57 @@ function _insertImageBlock(imgHtml) {
 }
 
 // 1枚の画像をTipTapに挿入（portrait/landscape に応じたクラスを付与）
+// 縦画像の場合、直前の段落が「奇数枚の縦画像のみ」なら同じ段落に追記してペアにする
 function insertSingleImageIntoTipTap(data) {
   return new Promise(resolve => {
     if (!tiptapEditor) { resolve(); return; }
     const cls = data.isPortrait ? 'portrait-img' : 'landscape-img';
+
+    if (data.isPortrait) {
+      const pmState = tiptapEditor.state;
+      const $from = pmState.doc.resolve(pmState.selection.from);
+      if ($from.depth >= 1) {
+        const curNode = $from.node(1);
+        const curStart = $from.before(1);
+        let prevNode = null, prevStart = -1;
+        if (curStart > 1) {
+          const $prev = pmState.doc.resolve(curStart - 1);
+          if ($prev.depth >= 1) {
+            prevNode = $prev.node(1);
+            prevStart = $prev.before(1);
+          }
+        }
+        const target = (curNode.type.name === 'paragraph' && curNode.childCount === 0 && prevNode) ? prevNode : curNode;
+        const targetStart = (target === prevNode) ? prevStart : curStart;
+
+        console.log(`[imgLayout] autoPair check: curNode=${curNode.type.name}(children=${curNode.childCount}), prevNode=${prevNode?.type.name || 'null'}, target=${target === prevNode ? 'prev' : 'cur'}`);
+
+        if (target && target.type.name === 'paragraph') {
+          let allPortrait = true, imgCount = 0, hasText = false;
+          target.forEach(child => {
+            if (child.type.name === 'image') {
+              imgCount++;
+              const cls = child.attrs.class || '';
+              if (!cls.includes('portrait-img')) allPortrait = false;
+            } else if (child.type.name !== 'hardBreak') {
+              hasText = true;
+            }
+          });
+          console.log(`[imgLayout] autoPair target: imgCount=${imgCount}, allPortrait=${allPortrait}, hasText=${hasText}, odd=${imgCount % 2 === 1}, → ${imgCount > 0 && allPortrait && !hasText && imgCount % 2 === 1 ? 'PAIR!' : 'new <p>'}`);
+          if (imgCount > 0 && allPortrait && !hasText && imgCount % 2 === 1) {
+            const targetEnd = targetStart + target.nodeSize;
+            const insertPos = targetEnd - 1;
+            tiptapEditor.chain()
+              .focus()
+              .insertContentAt(insertPos, `<img class="inserted-img portrait-img" src="${data.src}">`)
+              .run();
+            resolve();
+            return;
+          }
+        }
+      }
+    }
+
     _insertImageBlock(`<p><img class="${cls}" src="${data.src}"></p>`);
     resolve();
   });
@@ -4726,31 +4780,21 @@ function insertPortraitGroupIntoTipTap(imageData) {
 }
 
 // 複数画像を向き・枚数に応じてレイアウト分けして挿入
+// 縦画像は常に2枚ずつペアにして1つの<p>にまとめる（奇数なら最後の1枚は単独）
 async function handleMultipleImagesForTipTap(files) {
-  if (state.cardLocked) return; // ロック中のカードへの画像挿入を禁止
+  if (state.cardLocked) return;
   const imageData = await Promise.all(files.map(prepareImageForInsert));
-  const count = imageData.length;
-  if (count === 0) return;
+  if (imageData.length === 0) return;
 
-  const allPortrait = imageData.every(d => d.isPortrait);
-
-  // 1枚 or 縦横混在: 個別に縦積み
-  if (!allPortrait || count === 1) {
-    for (const d of imageData) {
-      await insertSingleImageIntoTipTap(d);
-    }
-    return;
-  }
-
-  // 縦画像のみ: 枚数に応じたグループレイアウト
-  if (count === 2) {
-    insertPortraitGroupIntoTipTap(imageData);
-  } else if (count === 3) {
-    insertPortraitGroupIntoTipTap(imageData.slice(0, 2));
-    await insertSingleImageIntoTipTap(imageData[2]);
-  } else {
-    insertPortraitGroupIntoTipTap(imageData.slice(0, 4));
-    for (const d of imageData.slice(4)) {
+  console.log(`[imgLayout] batch: ${imageData.length}枚, portrait=[${imageData.map((d,j)=>`${j}:${d.isPortrait}(${d.w}x${d.h})`).join(', ')}]`);
+  for (let i = 0; i < imageData.length; i++) {
+    const d = imageData[i];
+    if (d.isPortrait && i + 1 < imageData.length && imageData[i + 1].isPortrait) {
+      console.log(`[imgLayout] pair: i=${i},${i+1}`);
+      insertPortraitGroupIntoTipTap([d, imageData[i + 1]]);
+      i++;
+    } else {
+      console.log(`[imgLayout] single: i=${i}, isPortrait=${d.isPortrait}`);
       await insertSingleImageIntoTipTap(d);
     }
   }
