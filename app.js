@@ -2364,12 +2364,18 @@ function shareCardAsPdf() {
   document.body.appendChild(container);
 
   const imgs = container.querySelectorAll('img');
-  console.log('[shareCardAsPdf] container size:', container.offsetWidth, 'x', container.offsetHeight);
-  console.log('[shareCardAsPdf] HTML length:', editorHtml.length, 'images:', imgs.length);
+  const _dbgLog = [];
+  let _imgOk = 0, _imgFail = 0;
+  const totalImgs = imgs.length;
+
+  _dbgLog.push('innerHTML.length: ' + container.innerHTML.length);
+  _dbgLog.push('p/ul/li count: ' + container.querySelectorAll('p, ul, li').length);
+  _dbgLog.push('img count: ' + totalImgs);
+  _dbgLog.push('container size: ' + container.offsetWidth + 'x' + container.offsetHeight);
 
   const convertImagesToDataUrls = () => Promise.all(Array.from(imgs).map(img => new Promise(resolve => {
     const src = img.src;
-    if (!src || src.startsWith('data:')) { resolve(); return; }
+    if (!src || src.startsWith('data:')) { _imgOk++; resolve(); return; }
     fetch(src)
       .then(r => r.blob())
       .then(blob => new Promise((res, rej) => {
@@ -2378,15 +2384,24 @@ function shareCardAsPdf() {
         reader.onerror = rej;
         reader.readAsDataURL(blob);
       }))
-      .then(dataUrl => { img.src = dataUrl; resolve(); })
-      .catch(e => { console.warn('[shareCardAsPdf] image fetch failed:', src, e); resolve(); });
+      .then(dataUrl => { img.src = dataUrl; _imgOk++; resolve(); })
+      .catch(e => { _imgFail++; _dbgLog.push('IMG ERR: ' + (e.message || e)); resolve(); });
   })));
 
   convertImagesToDataUrls().then(() => {
-    runAfterPaint(() => {
-      console.log('[shareCardAsPdf] after image conversion, container size:', container.offsetWidth, 'x', container.offsetHeight);
+    _dbgLog.push('img convert: ' + _imgOk + '/' + totalImgs + ' ok, ' + _imgFail + ' fail');
+    _dbgLog.push('after convert size: ' + container.offsetWidth + 'x' + container.offsetHeight);
 
-      window.html2pdf()
+    const dbgOverlay = document.createElement('div');
+    dbgOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff;color:#000;font-size:12px;padding:8px;max-height:150px;overflow:auto;border-bottom:2px solid red;font-family:monospace;white-space:pre-wrap;';
+    dbgOverlay.textContent = _dbgLog.join('\n');
+    document.body.appendChild(dbgOverlay);
+
+    setTimeout(() => {
+      try { document.body.removeChild(dbgOverlay); } catch (_) {}
+
+      runAfterPaint(() => {
+        window.html2pdf()
         .from(container)
         .set({
           margin: 10,
@@ -2434,7 +2449,8 @@ function shareCardAsPdf() {
           hidePdfExportLoading();
           showToast('PDF生成に失敗しました');
         });
-    });
+      });
+    }, 3000);
   });
 }
 
