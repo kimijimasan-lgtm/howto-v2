@@ -2349,78 +2349,92 @@ function shareCardAsPdf() {
   const cardTitle = lines[0] || 'メモ';
   const filename = `${cardTitle}.pdf`;
 
-  const buildCardHTML = () => {
-    const bodyHtml = editorHtml;
-    return `<!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8">
-<style>
-body{background:#fff;color:#111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.8;padding:1.5rem 1rem;max-width:800px;margin:0 auto}
-h1{font-size:1.4rem;font-weight:800;margin:0 0 0.8rem;border-bottom:2px solid #e5e7eb;padding-bottom:0.4rem}
-h2{font-size:1.2rem;font-weight:700;margin:1rem 0 0.5rem}
-p{margin:0.3rem 0;min-height:1em}
-img{max-width:100%;height:auto;border-radius:8px;margin:0.5rem 0}
-strong{font-weight:700}
-u{text-decoration:underline}
-ul,ol{margin:0.3rem 0;padding-left:1.5rem}
-li{margin:0.2rem 0}
-</style></head>
-<body>${bodyHtml}</body></html>`;
-  };
-
   showPdfExportLoading();
-  runAfterPaint(() => {
-    const container = document.createElement('div');
-    container.innerHTML = buildCardHTML();
-    container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
-    document.body.appendChild(container);
 
-    window.html2pdf()
-      .from(container)
-      .set({
-        margin: 10,
-        filename,
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      })
-      .toPdf()
-      .get('pdf')
-      .then(async pdf => {
-        try { document.body.removeChild(container); } catch (_) {}
-        hidePdfExportLoading();
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;background:#ffffff;color:#111111;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;line-height:1.8;padding:1.5rem 1rem;';
 
-        const arrayBuf = pdf.output('arraybuffer');
-        const pdfBlob = new Blob([arrayBuf], { type: 'application/pdf' });
-        const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+  const styleEl = document.createElement('style');
+  styleEl.textContent = 'h1{font-size:1.4rem;font-weight:800;color:#111;margin:0 0 0.8rem;border-bottom:2px solid #e5e7eb;padding-bottom:0.4rem}h2{font-size:1.2rem;font-weight:700;color:#111;margin:1rem 0 0.5rem}p{margin:0.3rem 0;min-height:1em;color:#111}img{max-width:100%;height:auto;border-radius:8px;margin:0.5rem 0}strong{font-weight:700;color:inherit}u{text-decoration:underline}ul,ol{margin:0.3rem 0;padding-left:1.5rem;color:#111}li{margin:0.2rem 0}span{color:inherit}';
+  container.appendChild(styleEl);
 
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-          try {
-            await navigator.share({ files: [pdfFile], title: cardTitle });
-          } catch (e) {
-            if (e.name !== 'AbortError') showToast('共有に失敗しました');
-          }
-        } else {
-          const url = URL.createObjectURL(pdfBlob);
-          const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-          if (isIOS) {
-            window.open(url, '_blank');
-            setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const contentDiv = document.createElement('div');
+  contentDiv.innerHTML = editorHtml;
+  container.appendChild(contentDiv);
+  document.body.appendChild(container);
+
+  const imgs = container.querySelectorAll('img');
+  console.log('[shareCardAsPdf] container size:', container.offsetWidth, 'x', container.offsetHeight);
+  console.log('[shareCardAsPdf] HTML length:', editorHtml.length, 'images:', imgs.length);
+
+  const convertImagesToDataUrls = () => Promise.all(Array.from(imgs).map(img => new Promise(resolve => {
+    const src = img.src;
+    if (!src || src.startsWith('data:')) { resolve(); return; }
+    fetch(src)
+      .then(r => r.blob())
+      .then(blob => new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      }))
+      .then(dataUrl => { img.src = dataUrl; resolve(); })
+      .catch(e => { console.warn('[shareCardAsPdf] image fetch failed:', src, e); resolve(); });
+  })));
+
+  convertImagesToDataUrls().then(() => {
+    runAfterPaint(() => {
+      console.log('[shareCardAsPdf] after image conversion, container size:', container.offsetWidth, 'x', container.offsetHeight);
+
+      window.html2pdf()
+        .from(container)
+        .set({
+          margin: 10,
+          filename,
+          image: { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, allowTaint: false, logging: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        })
+        .toPdf()
+        .get('pdf')
+        .then(async pdf => {
+          try { document.body.removeChild(container); } catch (_) {}
+          hidePdfExportLoading();
+
+          const arrayBuf = pdf.output('arraybuffer');
+          const pdfBlob = new Blob([arrayBuf], { type: 'application/pdf' });
+          const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+            try {
+              await navigator.share({ files: [pdfFile], title: cardTitle });
+            } catch (e) {
+              if (e.name !== 'AbortError') showToast('共有に失敗しました');
+            }
           } else {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            const url = URL.createObjectURL(pdfBlob);
+            const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+            if (isIOS) {
+              window.open(url, '_blank');
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
+            } else {
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            }
           }
-        }
-      })
-      .catch(() => {
-        try { document.body.removeChild(container); } catch (_) {}
-        hidePdfExportLoading();
-        showToast('PDF生成に失敗しました');
-      });
+        })
+        .catch(err => {
+          console.error('[shareCardAsPdf] html2pdf error:', err);
+          try { document.body.removeChild(container); } catch (_) {}
+          hidePdfExportLoading();
+          showToast('PDF生成に失敗しました');
+        });
+    });
   });
 }
 

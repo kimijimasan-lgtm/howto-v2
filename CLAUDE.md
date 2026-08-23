@@ -716,7 +716,7 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 `index.html` の `?v=NNN` をインクリメントすること。iPhoneは古いキャッシュを長く保持する。
 - `style.css?v=728`
 - `tiptap.bundle.js?v=8`
-- `app.js?v=898`
+- `app.js?v=899`
 
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
@@ -755,10 +755,12 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 
 ## 直近の対応（2026-08-23）
 
-- **カード1枚のPDF共有機能を追加（app.js?v=898）**: エディター画面トップバーに共有アイコン（`#btnShareCard`、緑系、iOS標準の四角+上矢印アイコン）を追加。タップで現在開いているカード1枚（タイトル・本文・画像含む）をhtml2pdf.jsでPDF化し、Web Share API（`navigator.share({files: [...]})`）経由でiOSの共有シートに渡す。GoodNotes等の外部アプリにPDFとして取り込み可能
+- **カード1枚のPDF共有機能を追加（app.js?v=898→v=899で白紙バグ修正）**: エディター画面トップバーに共有アイコン（`#btnShareCard`、緑系、iOS標準の四角+上矢印アイコン）を追加。タップで現在開いているカード1枚（タイトル・本文・画像含む）をhtml2pdf.jsでPDF化し、Web Share API（`navigator.share({files: [...]})`）経由でiOSの共有シートに渡す。GoodNotes等の外部アプリにPDFとして取り込み可能
   - **配置**: `btnRemoveEmptyLines`（💥）と`btnAttach`（クリップ）の間。閲覧モード・編集モードとも常時表示（共有は読み取り専用操作のためカードロック中も利用可能、`applyCardLockUI`の非表示リストに含めていない）
   - **フォールバック**: `navigator.canShare({files:[...]})` で事前チェックし、Web Share APIファイル共有非対応環境ではiOSは新規タブでPDF表示（共有→ファイルに保存で対応可）、その他はダウンロードリンクとして提供
   - **PDF生成**: 既存のhtml2pdf.js（CDN、index.htmlで読み込み済み）を使用。ライトテーマ（白背景・黒文字）でA4縦・scale 2で生成。ローディング表示は既存の`showPdfExportLoading()`/`hidePdfExportLoading()`を共用
+  - **v=899 白紙バグ修正**: GoodNotesに取り込むと白紙になる問題を2点修正。①`buildCardHTML()`が完全なHTML文書（`<html><body>...`）を返していたが、`container.innerHTML`にセットするとHTMLパーサーが`<body>`タグを除去するため、CSSの`body{color:#111}`が適用先を失い、テキスト色がページのダークテーマ（白/明るい色）を継承→白背景+白文字=白紙。修正: スタイルを`<style>`要素として直接containerに追加し、全要素に`color:#111`を明示指定 ②Firebase Storage画像（https URL）のCORS問題でhtml2canvasのcanvasが汚染される。修正: html2pdf実行前に全画像を`fetch()`→`FileReader`でdata URLに事前変換（失敗時はスキップ）
+  - **デバッグログ**: `console.log('[shareCardAsPdf]')` でcontainerサイズ・画像数・変換後サイズを出力。html2canvasに`logging: true, allowTaint: false`を設定
   - **未検証**: 実機iPhone（Safari単体・PWAホーム画面追加状態）でのWeb Share APIファイル共有の動作確認、GoodNotesへの取り込み確認
 
 ## 直近の対応（2026-08-14）
