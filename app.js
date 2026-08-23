@@ -2392,15 +2392,9 @@ function shareCardAsPdf() {
     _dbgLog.push('img convert: ' + _imgOk + '/' + totalImgs + ' ok, ' + _imgFail + ' fail');
     _dbgLog.push('after convert size: ' + container.offsetWidth + 'x' + container.offsetHeight);
 
-    const dbgOverlay = document.createElement('div');
-    dbgOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#fff;color:#000;font-size:12px;padding:8px;max-height:150px;overflow:auto;border-bottom:2px solid red;font-family:monospace;white-space:pre-wrap;';
-    dbgOverlay.textContent = _dbgLog.join('\n');
-    document.body.appendChild(dbgOverlay);
+    alert(_dbgLog.join('\n'));
 
-    setTimeout(() => {
-      try { document.body.removeChild(dbgOverlay); } catch (_) {}
-
-      runAfterPaint(() => {
+    runAfterPaint(() => {
         window.html2pdf()
         .from(container)
         .set({
@@ -2449,8 +2443,7 @@ function shareCardAsPdf() {
           hidePdfExportLoading();
           showToast('PDF生成に失敗しました');
         });
-      });
-    }, 3000);
+    });
   });
 }
 
