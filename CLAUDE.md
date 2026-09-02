@@ -718,6 +718,8 @@ firebase.json       — Hosting設定＋CSPヘッダー＋storageルール参照
 - `tiptap.bundle.js?v=8`
 - `app.js?v=914`
 
+**`index.html`・`manifest.json` 自体は2026-09-02より `Cache-Control: no-cache` を明示設定済み**（詳細は「直近の対応（2026-09-02）」参照）。`?v=NNN` 方式は「参照元のHTMLが常に最新であること」が前提のため、エントリポイントHTML側は長期キャッシュしないこと。`app.js`/`style.css`/`tiptap.bundle.js` 等のアセット側は `max-age=3600` のままでよい（HTML側が必ず最新の`?v=`を指すため）。
+
 ## テスト
 - ローカルサーバー: `serve.bat`（port 8080）または `python -m http.server 8080`
 - テスト用アカウント: `kimijimasan+test@gmail.com`
@@ -752,6 +754,21 @@ Stripe決済とユーザーアカウントをサーバーサイドで自動紐�
 - Git Bashで `firebase database:get /users/...` を実行するとMSYSのパス変換で「Path must begin with /」エラーになる。**`MSYS_NO_PATHCONV=1` を付けて実行**すること
 - ~~既存のTorisetu ¥100 Payment Link経由の決済もこのWebhookに届くが、`client_reference_id` 無し・price ID未登録のため警告ログと処理記録のみで実害なし~~（**2026-08-14にcrossmemoもWebhookの対象に追加済み**。price ID登録＋`startStripePayment()`での`client_reference_id`付与を実施。「直近の対応（2026-08-14）」参照）
 - **残タスク**: ①Functionsのartifactsクリーンアップポリシー未設定（`firebase functions:artifacts:setpolicy`、放置で少額課金の可能性）②Node.js 20は2026-10-30にデプロイ不可化（それまでにruntime更新＋firebase-functionsパッケージ更新）③~~じゆうけんきゅうナビ側での `purchasedApps/jiyu-kenkyu-app` 読み取り実装~~（**実装済みと判明**。`jiyu-kenkyu-app/index.html`にGoogleログイン＋`purchasedApps/jiyu-kenkyu-app`読み取りによる認証ゲートが既に組み込み済み〔未購入時はStripeリンク`?client_reference_id={uid}`付きの購入案内画面を表示〕。100kin-blog側セッションでの調査・動作確認により判明。なお`jiyu-kenkyu-app`はgit管理下にないため変更履歴は追えない点に注意）
+
+## 直近の対応（2026-09-02）
+
+- **「PC・スマホともにcrossmemoが起動できない」不具合の根本原因を特定・修正（完了・本番デプロイ済み、firebase.jsonのみ変更・app.js/style.css/tiptap.bundle.jsのバージョン番号は無変更）**: スマホは一度PWAアイコンを削除してリンクを再読み込みしたら直った、という報告を受けて調査。**Service Workerはこのプロジェクトに一切存在しない**（コード上の`serviceWorker`言及はCLAUDE.md内の記述のみとgrepで確認済み）ため、SW関連の対策は不要と判断し、Firebase Hostingのキャッシュ設定を調査した
+  - **原因①（本命）**: `firebase.json` の `hosting.headers` に `Cache-Control` の明示設定が一切なく、Firebase Hostingのデフォルト値 `max-age=3600` が**SPAのエントリポイントである `index.html` にまで**適用されていた（本番の実レスポンスヘッダーをcurlで確認して特定）。`index.html`が最大1時間（PWAとしてホーム画面に追加した場合はiOS WebKit側のスタンドアロンWebViewが通常のSafariキャッシュ削除より粘って保持することがあり、体感的にはそれ以上）キャッシュされる状態だった
+  - **なぜ「起動できない」まで壊れるのか**: Firebase Hostingは**リクエストパスのみでファイルを解決し、`?v=NNN`のようなクエリ文字列は無視する**（クエリはブラウザ側のキャッシュキーとしてのみ機能し、サーバー側のルーティングには影響しない）。そのため、何らかの理由で古い`index.html`だけがキャッシュに残り、`app.js`は再取得されて最新の中身になる、という「**古いHTML構造＋新しいJS**」の不整合な組み合わせが起こり得る。新しいapp.jsが、古いHTMLには存在しないDOM要素や後から追加されたCDN scriptタグ（Firebase App Check SDK等）に起動時点で依存していた場合、その場で例外が発生してアプリ全体がフリーズ/起動不能になる。「PWA削除→再読み込みで直った」（＝強制的に完全に新しいHTMLを再取得した）という報告と整合する
+  - **修正**: `firebase.json` の `hosting.headers` に、`/`・`/index.html`・`/manifest.json` を対象とした専用ブロックを追加し `Cache-Control: no-cache` を明示設定。`app.js`/`style.css`/`tiptap.bundle.js` 等のアセットは`max-age=3600`のまま変更していない（HTML側が必ず最新の`?v=`を参照するようになるため、アセット側の長期キャッシュ自体は問題ない）
+    - **ハマった点**: 最初 `source: "/index.html"` のみでデプロイしたところ、実際にユーザーがアクセスする `https://crossmemo.web.app/`（ルートパス `/`）には反映されなかった。**Firebase Hostingのheaders設定はクリーンURL解決前のリクエストパスに対してマッチする**ため、`/` へのリクエストは内部的に`index.html`へ解決される前の時点で`source`マッチングが行われる。`source: "/"` を別途追加して解決（`/index.html`への直接アクセス分も残置）
+  - **検証**: curlで本番のレスポンスヘッダーを確認し、`/`・`/index.html`・`/manifest.json`が`no-cache`、`app.js`/`style.css`/`tiptap.bundle.js`が`max-age=3600`のまま、CSP等の既存セキュリティヘッダーも引き続き付与されていることを確認済み。実機（PC・iPhone）での通常起動・PWA起動確認はしろちゃんが実施し、問題なしを確認
+  - **副産物として発覚したCSP不備を同時に修正**: 上記の実機確認中、PC版のChrome DevTools Consoleで `script-src` / `connect-src` のCSP違反ログが見つかった。調査の結果、**Firebase Realtime DatabaseはWebSocket接続に失敗すると`<script>`タグを使ったロングポーリング方式（`.lp`エンドポイント）にフォールバックする仕様があり**、このとき読み込むURL（`https://{db-id}.{region}.firebasedatabase.app/.lp?...`）が`script-src`の許可リストに含まれておらず接続が確立できず無限リトライしていた（`connect-src`には`https://*.firebasedatabase.app`が含まれていたが、`script-src`側に同じドメインが漏れていた）
+    - **確認**: 今回のno-cache変更の前後でCSP文字列自体は1文字も変わっていないことをGit差分で確認済み（CSP不備は今回のキャッシュ修正が引き起こしたものではなく、元々あった見落とし）
+    - **修正**: `script-src` に `https://*.firebasedatabase.app` を追加
+    - **旧形式ドメイン（`*.firebaseio.com`）の要否確認**: `app.js`の`databaseURL`は`torisetu-234c3-default-rtdb.asia-southeast1.firebasedatabase.app`（新形式）のみで、`firebaseio.com`への参照はコード上どこにも無いことをgrepで確認。追加不要と判断
+    - **対応不要と判断したノイズ**: DevTools Consoleに出ていた`.map`ファイル（ソースマップ）関連のブロックは開発者ツールの補助情報読み込み失敗によるもので、アプリの動作自体には影響しない。`apple-mobile-web-app-capable`のdeprecated警告も同様に優先度低・対応不要
+  - **教訓**: SPAのエントリポイントHTML（`index.html`）とPWAの`manifest.json`は、アセット（バージョン管理されたJS/CSS）と異なり**長期キャッシュしてはいけない**。Firebase Hostingはデフォルトで全ファイルに`max-age=3600`を適用するため、`hosting.headers`で明示的に上書きしないと「クエリ文字列でのバージョン管理」の前提が崩れる。また、Firebase Hostingのheaders `source`はクリーンURL解決前のパスに対してマッチするため、ルートパス（`/`）向けの設定は`source: "/"`を明示的に用意する必要がある（`/index.html`だけでは不十分）
 
 ## 直近の対応（2026-08-23）
 
